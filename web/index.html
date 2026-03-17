@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0c0c14">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>LeaveSafe</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="screen">
+        <div class="auth-container">
+            <div class="auth-icon">
+                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <h1>LeaveSafe</h1>
+            <p class="subtitle">Device Security Monitor</p>
+            <div class="auth-form">
+                <label for="pairing-key">Pairing Key</label>
+                <input type="text" id="pairing-key" placeholder="0000-0000-0000-0000" maxlength="19" autocomplete="off" inputmode="numeric">
+                <button id="connect-btn" type="button">Connect</button>
+                <p id="auth-error" class="error hidden"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboard-screen" class="screen hidden">
+        <header>
+            <h1>LeaveSafe</h1>
+            <div id="status-badge" class="badge disarmed">DISARMED</div>
+        </header>
+
+        <div class="card card-connection">
+            <div class="card-header">
+                <h2>Connection</h2>
+                <button id="refresh-btn" class="btn-icon" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="conn-indicator">
+                <span class="conn-dot" id="conn-dot"></span>
+                <span id="conn-status" class="status-ok">Connected</span>
+            </div>
+            <div class="info-row">
+                <span>Uptime</span>
+                <span id="conn-uptime">0s</span>
+            </div>
+            <div class="info-row">
+                <span>Last check</span>
+                <span id="conn-last-check">just now</span>
+            </div>
+        </div>
+
+        <div class="card card-sensors">
+            <h2>Sensors</h2>
+            <div id="sensor-list"></div>
+        </div>
+
+        <div class="card card-alerts">
+            <div class="card-header">
+                <h2>Alerts</h2>
+                <button id="test-alert-btn" class="btn-icon" type="button">Test</button>
+            </div>
+            <div id="alert-feed">
+                <p class="muted">No alerts yet</p>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button id="arm-btn" class="btn-arm" type="button">ARM</button>
+        </div>
+
+        <footer class="app-footer">
+            <span>LeaveSafe v1.0</span>
+        </footer>
+    </div>
+
+    <!-- Disconnect Warning Overlay -->
+    <div id="disconnect-overlay" class="overlay hidden">
+        <div class="overlay-backdrop"></div>
+        <div class="disconnect-popup">
+            <div class="disconnect-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+            </div>
+            <div id="disconnect-text">Connection Lost</div>
+            <p class="disconnect-sub">Attempting to reconnect...</p>
+            <button id="dismiss-disconnect-btn" type="button">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- Alert Overlay -->
+    <div id="alert-overlay" class="overlay hidden">
+        <div class="overlay-backdrop alert-backdrop"></div>
+        <div class="alert-popup">
+            <div class="alert-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+            </div>
+            <div id="alert-overlay-text">ALERT</div>
+            <button id="dismiss-alert-btn" type="button">Dismiss</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
