@@ -104,7 +104,7 @@ func (sb *statusBar) gridLines() []string {
 	}
 
 	w := sb.gridWidth
-	top    := "┌" + strings.Repeat("─", w-2) + "┐"
+	top := "┌" + strings.Repeat("─", w-2) + "┐"
 	midSep := "├" + strings.Repeat("─", w-2) + "┤"
 	bottom := "└" + strings.Repeat("─", w-2) + "┘"
 
@@ -292,7 +292,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	// Status grid is placed gap chars to the right of the QR code.
 	const gap = 3
 	statusCol := qrIndent + qrW + gap + 1 // +1: columns are 1-indexed
-	statusW := termW - statusCol - 1       // right margin 1
+	statusW := termW - statusCol - 1      // right margin 1
 	if statusW > 50 {
 		statusW = 50
 	}
