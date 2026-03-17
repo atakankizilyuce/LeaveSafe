@@ -15,7 +15,8 @@ import (
 
 // Config holds server configuration.
 type Config struct {
-	Hub *ws.Hub
+	Hub  *ws.Hub
+	Port int // 0 means pick a free port automatically
 }
 
 // Server is the HTTP server that serves the web UI and handles WebSocket connections.
@@ -29,7 +30,8 @@ type Server struct {
 // New creates a new HTTP server.
 func New(cfg Config) *Server {
 	s := &Server{
-		hub: cfg.Hub,
+		hub:  cfg.Hub,
+		port: cfg.Port,
 	}
 
 	mux := http.NewServeMux()
@@ -44,10 +46,10 @@ func New(cfg Config) *Server {
 	return s
 }
 
-// Listen binds to a free port and stores the actual port number.
+// Listen binds to the configured port (or a free port if Port is 0).
 // Call this before URLs() or Start().
 func (s *Server) Listen() error {
-	ln, err := net.Listen("tcp", ":0")
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
