@@ -1,0 +1,8 @@
+dist/
+*.exe
+.git/
+.github/
+.claude/
+.gitignore
+leavesafe
+leavesafe.exe

@@ -1,0 +1,10 @@
+services:
+  leavesafe:
+    build: .
+    ports:
+      - "8443:8443"
+    privileged: true
+    volumes:
+      - /sys:/sys:ro
+      - /proc:/proc:ro
+    restart: unless-stopped
