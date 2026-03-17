@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -135,9 +136,9 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 			return
 		case alert := <-alertCh:
 			if !h.IsArmed() {
-				log.Printf("[DEBUG] Alert filtered (not armed): sensor=%s msg=%s", alert.Sensor, alert.Message)
 				continue
 			}
+			log.Printf("[ALERT] %s — %s", strings.ToUpper(alert.Sensor), alert.Message)
 			msg := NewAlert(alert.Sensor, string(alert.Level), alert.Message)
 			h.PushAlert(msg)
 		}
