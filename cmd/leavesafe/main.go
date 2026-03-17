@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -187,7 +188,12 @@ func main() {
 
 	hub := ws.NewHub(authMgr, sensorMgr)
 
-	srv := server.New(server.Config{Hub: hub})
+	port := 0
+	if v := os.Getenv("PORT"); v != "" {
+		port, _ = strconv.Atoi(v)
+	}
+
+	srv := server.New(server.Config{Hub: hub, Port: port})
 	if err := srv.Listen(); err != nil {
 		log.Fatalf("Failed to bind port: %v", err)
 	}
