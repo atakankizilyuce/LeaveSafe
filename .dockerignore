@@ -6,3 +6,5 @@ dist/
 .gitignore
 leavesafe
 leavesafe.exe
+README.md
+Makefile
