@@ -174,9 +174,12 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 
-	// Maximize the console window before drawing anything.
-	maximizeConsole()
-	time.Sleep(200 * time.Millisecond)
+	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
+
+	if isTTY {
+		maximizeConsole()
+		time.Sleep(200 * time.Millisecond)
+	}
 
 	authMgr, err := auth.NewManager()
 	if err != nil {
@@ -198,34 +201,41 @@ func main() {
 		log.Fatalf("Failed to bind port: %v", err)
 	}
 
-	// Draw the full dashboard, set up scroll region, return the live status bar.
-	sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr)
-
-	log.SetOutput(&logWriter{sb: sb})
-
 	hub.SetDisconnectCallback(func() {
 		log.Println("[ALARM] All clients disconnected while armed — local alarm triggered.")
 		triggerLocalAlarm()
-	})
-	hub.SetClientChangeCallback(func(_ int, _ bool) {
-		sb.refresh()
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if isTTY {
+		sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr)
+		log.SetOutput(&logWriter{sb: sb})
+		hub.SetClientChangeCallback(func(_ int, _ bool) { sb.refresh() })
+		go runStatusTicker(ctx, sb)
+		go runConsole(hub, sb)
+	} else {
+		log.Println("[INFO] No TTY detected, running in headless mode")
+		for _, u := range srv.URLs() {
+			log.Printf("[INFO] URL: %s?key=%s", u, authMgr.RawPairingKey())
+		}
+		log.Printf("[INFO] Pairing key: %s", authMgr.PairingKey())
+	}
+
 	go hub.RunAlertDispatcher(ctx)
 	go hub.RunHeartbeat(ctx)
-	go runStatusTicker(ctx, sb)
-	go runConsole(hub, sb)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		// Reset scroll region so the terminal is clean after exit.
-		fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
-		fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
+		if isTTY {
+			fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
+			fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
+		} else {
+			log.Println("[INFO] Shutting down...")
+		}
 		cancel()
 		sensorMgr.StopAll()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
