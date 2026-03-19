@@ -37,4 +37,4 @@ docker:
 	docker build -t $(BINARY_NAME) .
 
 docker-run:
-	docker run --rm -it -p 8443:8443 --privileged -v /sys:/sys:ro -v /proc:/proc:ro $(BINARY_NAME)
+	docker run --rm -it -p 8080:8080 -e PORT=8080 -e CONTAINER=1 $(BINARY_NAME)
