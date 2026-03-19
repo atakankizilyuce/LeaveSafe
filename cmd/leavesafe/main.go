@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/leavesafe/leavesafe/internal/alarm"
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/qr"
@@ -24,7 +25,6 @@ import (
 	"github.com/leavesafe/leavesafe/internal/ws"
 )
 
-// ANSI color / style codes
 const (
 	cReset  = "\033[0m"
 	cBold   = "\033[1m"
@@ -35,25 +35,20 @@ const (
 	cRed    = "\033[31m"
 )
 
-// ── Status grid ──────────────────────────────────────────────────────────────
-
-// statusBar owns the status grid drawn to the right of the QR code.
-// It updates that region in-place without touching the scroll area.
 type statusBar struct {
 	mu        sync.Mutex
 	hub       *ws.Hub
 	sensorMgr *monitor.Manager
 	out       io.Writer
 
-	gridRow   int // terminal row of the top border (1-indexed)
-	gridCol   int // terminal column of the left border (1-indexed)
-	gridWidth int // total visual width including border chars
+	gridRow   int
+	gridCol   int
+	gridWidth int
 
 	key  string
 	urls []string
 }
 
-// visLen returns the visible (column) width of s, ignoring ANSI escape sequences.
 func visLen(s string) int {
 	n, i := 0, 0
 	for i < len(s) {
@@ -63,7 +58,7 @@ func visLen(s string) int {
 				i++
 			}
 			if i < len(s) {
-				i++ // skip 'm'
+				i++
 			}
 			continue
 		}
@@ -74,7 +69,6 @@ func visLen(s string) int {
 	return n
 }
 
-// boxLine pads content to fill the inner width of the grid and adds side borders.
 func (sb *statusBar) boxLine(content string) string {
 	inner := sb.gridWidth - 2
 	pad := inner - visLen(content)
@@ -84,9 +78,7 @@ func (sb *statusBar) boxLine(content string) string {
 	return "│" + content + strings.Repeat(" ", pad) + "│"
 }
 
-// gridLines builds every line of the status grid with current runtime values.
 func (sb *statusBar) gridLines() []string {
-	// Armed state
 	armedLabel := cDim + "DISARMED" + cReset
 	armedDot := cDim + "●" + cReset
 	if sb.hub.IsArmed() {
@@ -120,7 +112,6 @@ func (sb *statusBar) gridLines() []string {
 		sb.boxLine(fmt.Sprintf("  %s●%s  Key      %s%s%s", cYellow, cReset, cBold, sb.key, cReset)),
 	}
 
-	// URL lines — truncate to fit inside the box
 	maxURLVis := w - 2 - visLen("  ●  URL      ")
 	for _, url := range sb.urls {
 		if utf8.RuneCountInString(url) > maxURLVis {
@@ -136,14 +127,13 @@ func (sb *statusBar) gridLines() []string {
 	return lines
 }
 
-// doRedrawGrid redraws the status grid at its fixed position (caller holds mu or is at init).
 func (sb *statusBar) doRedrawGrid() {
 	lines := sb.gridLines()
-	fmt.Fprintf(sb.out, "\033[s") // save cursor
+	fmt.Fprintf(sb.out, "\033[s")
 	for i, line := range lines {
 		fmt.Fprintf(sb.out, "\033[%d;%dH%s", sb.gridRow+i, sb.gridCol, line)
 	}
-	fmt.Fprintf(sb.out, "\033[u") // restore cursor
+	fmt.Fprintf(sb.out, "\033[u")
 }
 
 func (sb *statusBar) refresh() {
@@ -159,7 +149,6 @@ func (sb *statusBar) writeLine(format string, args ...interface{}) {
 	sb.doRedrawGrid()
 }
 
-// logWriter routes log output through the status bar so it scrolls cleanly.
 type logWriter struct{ sb *statusBar }
 
 func (w *logWriter) Write(p []byte) (n int, err error) {
@@ -169,17 +158,11 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
-
 func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 
-	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
-
-	if isTTY {
-		maximizeConsole()
-		time.Sleep(200 * time.Millisecond)
-	}
+	maximizeConsole()
+	time.Sleep(200 * time.Millisecond)
 
 	authMgr, err := auth.NewManager()
 	if err != nil {
@@ -201,41 +184,40 @@ func main() {
 		log.Fatalf("Failed to bind port: %v", err)
 	}
 
+	sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr)
+
+	log.SetOutput(&logWriter{sb: sb})
+
+	localAlarm := alarm.New()
+
+	hub.SetAlarmTriggerCallback(func() {
+		localAlarm.Start()
+	})
+	hub.SetAlarmDismissCallback(func() {
+		localAlarm.Stop()
+	})
 	hub.SetDisconnectCallback(func() {
 		log.Println("[ALARM] All clients disconnected while armed — local alarm triggered.")
-		triggerLocalAlarm()
+		localAlarm.Start()
+	})
+	hub.SetClientChangeCallback(func(_ int, _ bool) {
+		sb.refresh()
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if isTTY {
-		sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr)
-		log.SetOutput(&logWriter{sb: sb})
-		hub.SetClientChangeCallback(func(_ int, _ bool) { sb.refresh() })
-		go runStatusTicker(ctx, sb)
-		go runConsole(hub, sb)
-	} else {
-		log.Println("[INFO] No TTY detected, running in headless mode")
-		for _, u := range srv.URLs() {
-			log.Printf("[INFO] URL: %s?key=%s", u, authMgr.RawPairingKey())
-		}
-		log.Printf("[INFO] Pairing key: %s", authMgr.PairingKey())
-	}
-
 	go hub.RunAlertDispatcher(ctx)
 	go hub.RunHeartbeat(ctx)
+	go runStatusTicker(ctx, sb)
+	go runConsole(hub, sb, localAlarm)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		if isTTY {
-			fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
-			fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
-		} else {
-			log.Println("[INFO] Shutting down...")
-		}
+		fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
+		fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
 		cancel()
 		sensorMgr.StopAll()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -249,11 +231,6 @@ func main() {
 	}
 }
 
-// ── Dashboard layout ──────────────────────────────────────────────────────────
-
-// buildDashboard clears the terminal, draws the static header (banner + QR + status
-// grid side by side), sets the VT scroll region to the area below the header, and
-// returns the statusBar ready for in-place refreshes.
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	hub *ws.Hub, sensorMgr *monitor.Manager) *statusBar {
 
@@ -262,12 +239,10 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		termW, termH = 120, 40
 	}
 
-	// Clear screen and move cursor to top-left.
 	fmt.Fprintf(out, "\033[2J\033[H")
 
-	row := 1 // tracks the next row to write (1-indexed)
+	row := 1
 
-	// ── ASCII banner (6 lines) ────────────────────────────────────────────────
 	banner := []string{
 		"  ██╗     ███████╗ █████╗ ██╗   ██╗███████╗███████╗ █████╗ ███████╗███████╗",
 		"  ██║     ██╔════╝██╔══██╗██║   ██║██╔════╝██╔════╝██╔══██╗██╔════╝██╔════╝",
@@ -287,10 +262,9 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	fmt.Fprintf(out, "%s%s%s\n", cDim, sep, cReset)
 	row++
 
-	fmt.Fprintf(out, "\n") // blank line
+	fmt.Fprintf(out, "\n")
 	row++
 
-	// ── QR code + status grid side by side ───────────────────────────────────
 	urls := srv.URLs()
 	qrURL := ""
 	if len(urls) > 0 {
@@ -305,10 +279,9 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		qrW = utf8.RuneCountInString(qrLines[0])
 	}
 
-	// Status grid is placed gap chars to the right of the QR code.
 	const gap = 3
-	statusCol := qrIndent + qrW + gap + 1 // +1: columns are 1-indexed
-	statusW := termW - statusCol - 1      // right margin 1
+	statusCol := qrIndent + qrW + gap + 1
+	statusW := termW - statusCol - 1
 	if statusW > 50 {
 		statusW = 50
 	}
@@ -316,7 +289,6 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		statusW = 30
 	}
 
-	// "Scan to connect:" label on the left, before the QR+grid block.
 	fmt.Fprintf(out, "  %sScan to connect:%s\n", cDim, cReset)
 	row++
 
@@ -341,7 +313,6 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		totalRows = statusH
 	}
 
-	// Vertically center the shorter column within the taller one.
 	qrVOff, statusVOff := 0, 0
 	if len(qrLines) < totalRows {
 		qrVOff = (totalRows - len(qrLines)) / 2
@@ -349,10 +320,8 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	if statusH < totalRows {
 		statusVOff = (totalRows - statusH) / 2
 	}
-	sb.gridRow = qrStartRow + statusVOff // real row where the grid top border sits
+	sb.gridRow = qrStartRow + statusVOff
 
-	// Render QR and status using absolute cursor positioning so they don't
-	// interfere with each other or trigger unexpected scrolling.
 	for i := 0; i < totalRows; i++ {
 		fmt.Fprintf(out, "\033[%d;1H", qrStartRow+i)
 
@@ -369,41 +338,49 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	row = qrStartRow + totalRows
 
-	// ── Footer ────────────────────────────────────────────────────────────────
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s test, help  %s│%s  %sCtrl+C to quit%s\n",
+	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s test, trigger <sensor>, stop, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
 	row++
 
-	// ── Scroll region ─────────────────────────────────────────────────────────
-	// Reserve rows (row..termH) as the live log area.  The header above is
-	// outside the scroll region and will never be scrolled away.
 	headerRows := row - 1
 	if headerRows > termH-3 {
 		headerRows = termH - 3
 	}
-	fmt.Fprintf(out, "\033[%d;%dr", headerRows+1, termH) // set scroll region
-	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)         // move cursor into it
+	fmt.Fprintf(out, "\033[%d;%dr", headerRows+1, termH)
+	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)
 
 	return sb
 }
 
-// ── Background helpers ────────────────────────────────────────────────────────
-
-func runConsole(hub *ws.Hub, sb *statusBar) {
+func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
-		switch line := strings.TrimSpace(scanner.Text()); line {
-		case "test":
+		line := strings.TrimSpace(scanner.Text())
+		switch {
+		case line == "test":
 			hub.PushAlert(ws.NewAlert("test", "warning", "Test alert from console"))
 			sb.writeLine("  %s[TEST]%s Alert sent to %d client(s)", cYellow, cReset, hub.ClientCount())
-		case "help":
-			sb.writeLine("  Commands: test, help")
-		case "":
-			// ignore empty input
+		case strings.HasPrefix(line, "trigger "):
+			name := strings.TrimSpace(line[8:])
+			if !hub.TriggerSensorTest(name) {
+				sb.writeLine("  Unknown sensor: %q  (type 'help')", name)
+			} else {
+				sb.writeLine("  %s[TEST]%s Sensor %q triggered", cYellow, cReset, name)
+			}
+		case line == "stop" || line == "silence":
+			if localAlarm.IsPlaying() {
+				localAlarm.Stop()
+				sb.writeLine("  %s[ALARM]%s Alarm dismissed from console", cYellow, cReset)
+			} else {
+				sb.writeLine("  No alarm is currently active")
+			}
+		case line == "help":
+			sb.writeLine("  Commands: test, trigger <sensor>, stop, help")
+		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)
 		}
@@ -422,8 +399,6 @@ func runStatusTicker(ctx context.Context, sb *statusBar) {
 		}
 	}
 }
-
-// ── Sensor registration ───────────────────────────────────────────────────────
 
 func registerSensors(mgr *monitor.Manager) {
 	mgr.Register(monitor.NewPowerSensor())
@@ -445,11 +420,3 @@ func registerSensors(mgr *monitor.Manager) {
 	log.Printf("[INFO] %d/%d sensors available", available, len(sensors))
 }
 
-// ── Alarm ─────────────────────────────────────────────────────────────────────
-
-func triggerLocalAlarm() {
-	for range 10 {
-		fmt.Print("\a")
-		time.Sleep(500 * time.Millisecond)
-	}
-}

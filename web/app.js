@@ -14,7 +14,6 @@
     var lastPongTime = null;
     var disconnectShown = false;
 
-    // DOM elements
     var authScreen = document.getElementById('auth-screen');
     var dashScreen = document.getElementById('dashboard-screen');
     var keyInput = document.getElementById('pairing-key');
@@ -32,7 +31,6 @@
     var alertOverlayText = document.getElementById('alert-overlay-text');
     var disconnectOverlay = document.getElementById('disconnect-overlay');
 
-    // Auto-format pairing key input
     keyInput.addEventListener('input', function(e) {
         var v = e.target.value.replace(/[^0-9]/g, '');
         if (v.length > 16) v = v.substring(0, 16);
@@ -48,7 +46,6 @@
         if (e.key === 'Enter') authenticate();
     });
 
-    // Check URL params for key (from QR code)
     var params = new URLSearchParams(window.location.search);
     var urlKey = params.get('key');
     if (urlKey) {
@@ -68,7 +65,6 @@
         connectBtn.classList.add('connecting');
         authError.classList.add('hidden');
 
-        // Pre-check server reachability before attempting WebSocket
         var checkUrl = location.protocol + '//' + location.host + '/';
         var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
         var fetchOpts = controller ? { signal: controller.signal } : {};
@@ -79,7 +75,6 @@
             connectWebSocket(key);
         }).catch(function() {
             if (fetchTimeout) clearTimeout(fetchTimeout);
-            // If fetch fails but we might still succeed with WS (some browsers), try anyway
             connectWebSocket(key);
         });
     }
@@ -188,10 +183,12 @@
             case 'alert':
                 if (msg.alert) {
                     addAlert(msg.alert, msg.ts);
-                    if (msg.alert.level === 'critical') {
-                        triggerAlarm(msg.alert.message);
-                    }
+                    triggerAlarm(msg.alert.message);
                 }
+                break;
+
+            case 'alarm_active':
+                triggerAlarm(msg.alert ? msg.alert.message : 'Security alarm triggered!');
                 break;
 
             case 'pong':
@@ -279,6 +276,9 @@
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(function() {});
+        }
     }
 
     function showAuthError(msg) {
@@ -306,10 +306,14 @@
                         '<div class="sensor-status">' + (s.status || (s.available === false ? 'Unavailable' : 'OK')) + '</div>' +
                     '</div>' +
                 '</div>' +
-                '<label class="toggle">' +
-                    '<input type="checkbox" ' + (s.enabled ? 'checked' : '') + ' ' + (s.available === false ? 'disabled' : '') + ' data-sensor="' + escapeHtml(name) + '">' +
-                    '<span class="slider"></span>' +
-                '</label>';
+                '<div class="sensor-actions">' +
+                    '<button class="btn-trigger-sensor" data-sensor="' + escapeHtml(name) + '" ' +
+                        (s.available === false ? 'disabled' : '') + '>Test</button>' +
+                    '<label class="toggle">' +
+                        '<input type="checkbox" ' + (s.enabled ? 'checked' : '') + ' ' + (s.available === false ? 'disabled' : '') + ' data-sensor="' + escapeHtml(name) + '">' +
+                        '<span class="slider"></span>' +
+                    '</label>' +
+                '</div>';
             sensorList.appendChild(div);
         }
         sensorList.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
@@ -317,6 +321,11 @@
                 var cfg = {};
                 cfg[this.dataset.sensor] = this.checked;
                 sendMsg({ type: 'configure', sensors: cfg });
+            });
+        });
+        sensorList.querySelectorAll('.btn-trigger-sensor').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                sendMsg({ type: 'trigger_sensor', sensor: this.dataset.sensor });
             });
         });
     }
@@ -359,60 +368,128 @@
         }
     }
 
+    var vibrateInterval = null;
+    var titleFlashInterval = null;
+    var titleFlashTimeout = null;
+
     function triggerAlarm(message) {
+        dismissAlarmIntervals();
+
         alertOverlayText.textContent = message;
         alertOverlay.classList.remove('hidden');
 
         var flash = true;
         var originalTitle = document.title;
-        var titleFlash = setInterval(function() {
+        titleFlashInterval = setInterval(function() {
             document.title = flash ? 'ALERT! ' + message : originalTitle;
             flash = !flash;
         }, 500);
-        setTimeout(function() { clearInterval(titleFlash); document.title = originalTitle; }, 30000);
+        titleFlashTimeout = setTimeout(function() {
+            clearInterval(titleFlashInterval);
+            titleFlashInterval = null;
+            titleFlashTimeout = null;
+            document.title = originalTitle;
+        }, 30000);
 
         startAlarmSound();
 
         if (navigator.vibrate) {
             navigator.vibrate([500, 200, 500, 200, 500]);
+            vibrateInterval = setInterval(function() {
+                if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+            }, 2000);
         }
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('LeaveSafe Alert', { body: message, tag: 'leavesafe-alert' });
+
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'alarm',
+                message: message
+            });
+        } else if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('LeaveSafe ALERT', {
+                body: message,
+                tag: 'leavesafe-alert',
+                requireInteraction: true,
+                renotify: true
+            });
         } else if ('Notification' in window && Notification.permission !== 'denied') {
             Notification.requestPermission();
         }
     }
 
+    function dismissAlarmIntervals() {
+        if (vibrateInterval) {
+            clearInterval(vibrateInterval);
+            vibrateInterval = null;
+        }
+        if (titleFlashInterval) {
+            clearInterval(titleFlashInterval);
+            titleFlashInterval = null;
+        }
+        if (titleFlashTimeout) {
+            clearTimeout(titleFlashTimeout);
+            titleFlashTimeout = null;
+        }
+        document.title = 'LeaveSafe';
+        if (navigator.vibrate) navigator.vibrate(0);
+    }
+
     function dismissAlert() {
         alertOverlay.classList.add('hidden');
         stopAlarmSound();
+        dismissAlarmIntervals();
+        sendMsg({ type: 'dismiss_alarm' });
     }
+
+    var alarmHarmonicOsc = null;
+    var modulateInterval = null;
 
     function startAlarmSound() {
         try {
             if (alarmCtx) stopAlarmSound();
             alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+
             alarmOscillator = alarmCtx.createOscillator();
-            var gain = alarmCtx.createGain();
+            var mainGain = alarmCtx.createGain();
             alarmOscillator.type = 'square';
             alarmOscillator.frequency.value = 880;
-            gain.gain.value = 0.3;
-            alarmOscillator.connect(gain);
-            gain.connect(alarmCtx.destination);
+            mainGain.gain.value = 1.0;
+            alarmOscillator.connect(mainGain);
+            mainGain.connect(alarmCtx.destination);
+
+            alarmHarmonicOsc = alarmCtx.createOscillator();
+            var harmGain = alarmCtx.createGain();
+            alarmHarmonicOsc.type = 'square';
+            alarmHarmonicOsc.frequency.value = 1760;
+            harmGain.gain.value = 0.5;
+            alarmHarmonicOsc.connect(harmGain);
+            harmGain.connect(alarmCtx.destination);
+
             alarmOscillator.start();
+            alarmHarmonicOsc.start();
+
             var high = true;
-            var modulate = setInterval(function() {
-                if (!alarmOscillator) { clearInterval(modulate); return; }
+            modulateInterval = setInterval(function() {
+                if (!alarmOscillator) { clearInterval(modulateInterval); modulateInterval = null; return; }
                 alarmOscillator.frequency.value = high ? 880 : 660;
+                alarmHarmonicOsc.frequency.value = high ? 1760 : 1320;
                 high = !high;
             }, 400);
         } catch(e) {}
     }
 
     function stopAlarmSound() {
+        if (modulateInterval) {
+            clearInterval(modulateInterval);
+            modulateInterval = null;
+        }
         if (alarmOscillator) {
             try { alarmOscillator.stop(); } catch(e) {}
             alarmOscillator = null;
+        }
+        if (alarmHarmonicOsc) {
+            try { alarmHarmonicOsc.stop(); } catch(e) {}
+            alarmHarmonicOsc = null;
         }
         if (alarmCtx) {
             try { alarmCtx.close(); } catch(e) {}
@@ -470,12 +547,10 @@
         return div.innerHTML;
     }
 
-    // Ping keepalive
     setInterval(function() {
         sendMsg({ type: 'ping' });
     }, 15000);
 
-    // Event listeners (instead of inline onclick for mobile compatibility)
     connectBtn.addEventListener('click', authenticate);
     document.getElementById('refresh-btn').addEventListener('click', refreshConnection);
     document.getElementById('test-alert-btn').addEventListener('click', sendTestAlert);
