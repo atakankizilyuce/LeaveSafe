@@ -2,7 +2,6 @@ package ws
 
 import "time"
 
-// Message types for client-to-server communication.
 const (
 	MsgTypeAuth         = "auth"
 	MsgTypeArm          = "arm"
@@ -10,10 +9,10 @@ const (
 	MsgTypeConfigure    = "configure"
 	MsgTypePing         = "ping"
 	MsgTypeTestAlert    = "test_alert"
-	MsgTypeDismissAlarm = "dismiss_alarm"
+	MsgTypeDismissAlarm  = "dismiss_alarm"
+	MsgTypeTriggerSensor = "trigger_sensor"
 )
 
-// Message types for server-to-client communication.
 const (
 	MsgTypeAuthOK            = "auth_ok"
 	MsgTypeAuthFail          = "auth_fail"
@@ -30,6 +29,7 @@ type ClientMessage struct {
 	Key     string            `json:"key,omitempty"`
 	Token   string            `json:"token,omitempty"`
 	Sensors map[string]bool   `json:"sensors,omitempty"`
+	Sensor  string            `json:"sensor,omitempty"`
 }
 
 // ServerMessage represents a message from the laptop to the phone.
@@ -56,13 +56,13 @@ type SensorInfo struct {
 // SensorState represents the current state of a sensor.
 type SensorState struct {
 	Enabled bool   `json:"enabled"`
-	Status  string `json:"status"` // "ok", "alert", "unavailable"
+	Status  string `json:"status"`
 }
 
 // AlertData represents an alert event.
 type AlertData struct {
 	Sensor  string `json:"sensor"`
-	Level   string `json:"level"`   // "warning", "critical"
+	Level   string `json:"level"`
 	Message string `json:"message"`
 }
 

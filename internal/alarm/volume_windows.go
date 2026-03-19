@@ -4,108 +4,189 @@ package alarm
 
 import (
 	"fmt"
-	"os/exec"
-	"strconv"
-	"strings"
+	"math"
+	"syscall"
+	"unsafe"
 )
 
-// PowerShell script that uses COM interop to control Windows audio volume.
-// Uses the IAudioEndpointVolume interface via inline C#.
-const volumeScript = `
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-
-[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IAudioEndpointVolume {
-    int NotImpl1();
-    int NotImpl2();
-    int NotImpl3();
-    int NotImpl4();
-    int NotImpl5();
-    int NotImpl6();
-    int NotImpl7();
-    int SetMasterVolumeLevelScalar(float fLevel, System.Guid pguidEventContext);
-    int NotImpl8();
-    int GetMasterVolumeLevelScalar(out float pfLevel);
-    int NotImpl9();
-    int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, System.Guid pguidEventContext);
-    int GetMute(out bool pbMute);
+type comGUID struct {
+	Data1 uint32
+	Data2 uint16
+	Data3 uint16
+	Data4 [8]byte
 }
 
-[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDevice {
-    int Activate(ref System.Guid iid, int dwClsCtx, IntPtr pActivationParams, [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface);
+var (
+	clsidMMDeviceEnumerator = comGUID{0xBCDE0395, 0xE52F, 0x467C, [8]byte{0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}}
+	iidIMMDeviceEnumerator  = comGUID{0xA95664D2, 0x9614, 0x4F35, [8]byte{0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}}
+	iidIAudioEndpointVolume = comGUID{0x5CDF2C82, 0x841E, 0x4546, [8]byte{0x97, 0x22, 0x0C, 0xF7, 0x40, 0x78, 0x22, 0x9A}}
+)
+
+var (
+	ole32                = syscall.NewLazyDLL("ole32.dll")
+	procCoInitializeEx   = ole32.NewProc("CoInitializeEx")
+	procCoCreateInstance = ole32.NewProc("CoCreateInstance")
+	procCoUninitialize   = ole32.NewProc("CoUninitialize")
+)
+
+const (
+	clsctxAll           = 0x17
+	coinitMultithreaded = 0x0
+	eRender             = 0
+	eConsole            = 1
+)
+
+var ptrSize = unsafe.Sizeof(uintptr(0))
+
+func comVtableMethod(obj unsafe.Pointer, index int) uintptr {
+	vtable := *(*unsafe.Pointer)(obj)
+	return *(*uintptr)(unsafe.Add(vtable, index*int(ptrSize)))
 }
 
-[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IMMDeviceEnumerator {
-    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppDevice);
+func comRelease(obj unsafe.Pointer) {
+	if obj != nil {
+		fn := comVtableMethod(obj, 2)
+		syscall.SyscallN(fn, uintptr(obj))
+	}
 }
-
-[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
-class MMDeviceEnumerator { }
-
-public static class AudioControl {
-    public static float GetVolume() {
-        var enumerator = new MMDeviceEnumerator() as IMMDeviceEnumerator;
-        IMMDevice device;
-        enumerator.GetDefaultAudioEndpoint(0, 1, out device);
-        var iid = typeof(IAudioEndpointVolume).GUID;
-        object obj;
-        device.Activate(ref iid, 1, IntPtr.Zero, out obj);
-        var volume = (IAudioEndpointVolume)obj;
-        float level;
-        volume.GetMasterVolumeLevelScalar(out level);
-        return level;
-    }
-    public static void SetVolume(float level) {
-        var enumerator = new MMDeviceEnumerator() as IMMDeviceEnumerator;
-        IMMDevice device;
-        enumerator.GetDefaultAudioEndpoint(0, 1, out device);
-        var iid = typeof(IAudioEndpointVolume).GUID;
-        object obj;
-        device.Activate(ref iid, 1, IntPtr.Zero, out obj);
-        var volume = (IAudioEndpointVolume)obj;
-        volume.SetMasterVolumeLevelScalar(level, System.Guid.Empty);
-        volume.SetMute(false, System.Guid.Empty);
-    }
-}
-'@
-`
 
 // maxVolume saves the current volume level and sets it to 100%.
-// Returns the previous volume level (0.0 - 1.0).
 func maxVolume() (float64, error) {
-	// Get current volume
-	getCmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
-		volumeScript+"\n[AudioControl]::GetVolume()")
-	out, err := getCmd.Output()
-	if err != nil {
-		// Even if getting volume fails, try to set it
-		setMax()
-		return 0, fmt.Errorf("get volume: %w", err)
+	hr, _, _ := procCoInitializeEx.Call(0, coinitMultithreaded)
+	if hr != 0 && hr != 1 {
+		hr, _, _ = procCoInitializeEx.Call(0, 0x2)
+		if hr != 0 && hr != 1 {
+			return 0, fmt.Errorf("CoInitializeEx failed: 0x%x", hr)
+		}
+	}
+	defer procCoUninitialize.Call()
+
+	var enumerator unsafe.Pointer
+	hr, _, _ = procCoCreateInstance.Call(
+		uintptr(unsafe.Pointer(&clsidMMDeviceEnumerator)),
+		0, clsctxAll,
+		uintptr(unsafe.Pointer(&iidIMMDeviceEnumerator)),
+		uintptr(unsafe.Pointer(&enumerator)),
+	)
+	if hr != 0 {
+		return 0, fmt.Errorf("CoCreateInstance failed: 0x%x", hr)
+	}
+	defer comRelease(enumerator)
+
+	// IMMDeviceEnumerator::GetDefaultAudioEndpoint (vtable 4)
+	var device unsafe.Pointer
+	fn := comVtableMethod(enumerator, 4)
+	hr, _, _ = syscall.SyscallN(fn,
+		uintptr(enumerator),
+		uintptr(eRender), uintptr(eConsole),
+		uintptr(unsafe.Pointer(&device)),
+	)
+	if hr != 0 {
+		return 0, fmt.Errorf("GetDefaultAudioEndpoint failed: 0x%x", hr)
+	}
+	defer comRelease(device)
+
+	// IMMDevice::Activate (vtable 3) -> IAudioEndpointVolume
+	var volume unsafe.Pointer
+	fn = comVtableMethod(device, 3)
+	hr, _, _ = syscall.SyscallN(fn,
+		uintptr(device),
+		uintptr(unsafe.Pointer(&iidIAudioEndpointVolume)),
+		clsctxAll, 0,
+		uintptr(unsafe.Pointer(&volume)),
+	)
+	if hr != 0 {
+		return 0, fmt.Errorf("Activate failed: 0x%x", hr)
+	}
+	defer comRelease(volume)
+
+	// GetMasterVolumeLevelScalar (vtable 9)
+	var prevLevel float32
+	fn = comVtableMethod(volume, 9)
+	hr, _, _ = syscall.SyscallN(fn, uintptr(volume), uintptr(unsafe.Pointer(&prevLevel)))
+	if hr != 0 {
+		prevLevel = 0
 	}
 
-	prev, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-
-	// Set volume to max
-	if err := setMax(); err != nil {
-		return prev, fmt.Errorf("set volume: %w", err)
+	// SetMasterVolumeLevelScalar (vtable 7)
+	maxLevel := float32(1.0)
+	var emptyGUID comGUID
+	fn = comVtableMethod(volume, 7)
+	hr, _, _ = syscall.SyscallN(fn,
+		uintptr(volume),
+		uintptr(math.Float32bits(maxLevel)),
+		uintptr(unsafe.Pointer(&emptyGUID)),
+	)
+	if hr != 0 {
+		return float64(prevLevel), fmt.Errorf("SetMasterVolumeLevelScalar failed: 0x%x", hr)
 	}
 
-	return prev, nil
-}
+	// SetMute (vtable 11)
+	fn = comVtableMethod(volume, 11)
+	syscall.SyscallN(fn, uintptr(volume), 0, uintptr(unsafe.Pointer(&emptyGUID)))
 
-func setMax() error {
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
-		volumeScript+"\n[AudioControl]::SetVolume(1.0)")
-	return cmd.Run()
+	return float64(prevLevel), nil
 }
 
 // restoreVolume sets the system volume back to the saved level.
 func restoreVolume(level float64) error {
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
-		fmt.Sprintf("%s\n[AudioControl]::SetVolume(%f)", volumeScript, level))
-	return cmd.Run()
+	hr, _, _ := procCoInitializeEx.Call(0, coinitMultithreaded)
+	if hr != 0 && hr != 1 {
+		hr, _, _ = procCoInitializeEx.Call(0, 0x2)
+		if hr != 0 && hr != 1 {
+			return fmt.Errorf("CoInitializeEx failed: 0x%x", hr)
+		}
+	}
+	defer procCoUninitialize.Call()
+
+	var enumerator unsafe.Pointer
+	hr, _, _ = procCoCreateInstance.Call(
+		uintptr(unsafe.Pointer(&clsidMMDeviceEnumerator)),
+		0, clsctxAll,
+		uintptr(unsafe.Pointer(&iidIMMDeviceEnumerator)),
+		uintptr(unsafe.Pointer(&enumerator)),
+	)
+	if hr != 0 {
+		return fmt.Errorf("CoCreateInstance failed: 0x%x", hr)
+	}
+	defer comRelease(enumerator)
+
+	var device unsafe.Pointer
+	fn := comVtableMethod(enumerator, 4)
+	hr, _, _ = syscall.SyscallN(fn,
+		uintptr(enumerator),
+		uintptr(eRender), uintptr(eConsole),
+		uintptr(unsafe.Pointer(&device)),
+	)
+	if hr != 0 {
+		return fmt.Errorf("GetDefaultAudioEndpoint failed: 0x%x", hr)
+	}
+	defer comRelease(device)
+
+	var volume unsafe.Pointer
+	fn = comVtableMethod(device, 3)
+	hr, _, _ = syscall.SyscallN(fn,
+		uintptr(device),
+		uintptr(unsafe.Pointer(&iidIAudioEndpointVolume)),
+		clsctxAll, 0,
+		uintptr(unsafe.Pointer(&volume)),
+	)
+	if hr != 0 {
+		return fmt.Errorf("Activate failed: 0x%x", hr)
+	}
+	defer comRelease(volume)
+
+	restoreLevel := float32(level)
+	var emptyGUID comGUID
+	fn = comVtableMethod(volume, 7)
+	hr, _, _ = syscall.SyscallN(fn,
+		uintptr(volume),
+		uintptr(math.Float32bits(restoreLevel)),
+		uintptr(unsafe.Pointer(&emptyGUID)),
+	)
+	if hr != 0 {
+		return fmt.Errorf("SetMasterVolumeLevelScalar failed: 0x%x", hr)
+	}
+
+	return nil
 }
