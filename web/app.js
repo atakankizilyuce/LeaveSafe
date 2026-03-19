@@ -14,7 +14,6 @@
     var lastPongTime = null;
     var disconnectShown = false;
 
-    // DOM elements
     var authScreen = document.getElementById('auth-screen');
     var dashScreen = document.getElementById('dashboard-screen');
     var keyInput = document.getElementById('pairing-key');
@@ -32,7 +31,6 @@
     var alertOverlayText = document.getElementById('alert-overlay-text');
     var disconnectOverlay = document.getElementById('disconnect-overlay');
 
-    // Auto-format pairing key input
     keyInput.addEventListener('input', function(e) {
         var v = e.target.value.replace(/[^0-9]/g, '');
         if (v.length > 16) v = v.substring(0, 16);
@@ -48,7 +46,6 @@
         if (e.key === 'Enter') authenticate();
     });
 
-    // Check URL params for key (from QR code)
     var params = new URLSearchParams(window.location.search);
     var urlKey = params.get('key');
     if (urlKey) {
@@ -68,7 +65,6 @@
         connectBtn.classList.add('connecting');
         authError.classList.add('hidden');
 
-        // Pre-check server reachability before attempting WebSocket
         var checkUrl = location.protocol + '//' + location.host + '/';
         var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
         var fetchOpts = controller ? { signal: controller.signal } : {};
@@ -79,7 +75,6 @@
             connectWebSocket(key);
         }).catch(function() {
             if (fetchTimeout) clearTimeout(fetchTimeout);
-            // If fetch fails but we might still succeed with WS (some browsers), try anyway
             connectWebSocket(key);
         });
     }
@@ -311,10 +306,14 @@
                         '<div class="sensor-status">' + (s.status || (s.available === false ? 'Unavailable' : 'OK')) + '</div>' +
                     '</div>' +
                 '</div>' +
-                '<label class="toggle">' +
-                    '<input type="checkbox" ' + (s.enabled ? 'checked' : '') + ' ' + (s.available === false ? 'disabled' : '') + ' data-sensor="' + escapeHtml(name) + '">' +
-                    '<span class="slider"></span>' +
-                '</label>';
+                '<div class="sensor-actions">' +
+                    '<button class="btn-trigger-sensor" data-sensor="' + escapeHtml(name) + '" ' +
+                        (s.available === false ? 'disabled' : '') + '>Test</button>' +
+                    '<label class="toggle">' +
+                        '<input type="checkbox" ' + (s.enabled ? 'checked' : '') + ' ' + (s.available === false ? 'disabled' : '') + ' data-sensor="' + escapeHtml(name) + '">' +
+                        '<span class="slider"></span>' +
+                    '</label>' +
+                '</div>';
             sensorList.appendChild(div);
         }
         sensorList.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
@@ -322,6 +321,11 @@
                 var cfg = {};
                 cfg[this.dataset.sensor] = this.checked;
                 sendMsg({ type: 'configure', sensors: cfg });
+            });
+        });
+        sensorList.querySelectorAll('.btn-trigger-sensor').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                sendMsg({ type: 'trigger_sensor', sensor: this.dataset.sensor });
             });
         });
     }
@@ -380,7 +384,6 @@
 
         startAlarmSound();
 
-        // Continuous vibration until dismissed
         if (navigator.vibrate) {
             navigator.vibrate([500, 200, 500, 200, 500]);
             vibrateInterval = setInterval(function() {
@@ -388,7 +391,6 @@
             }, 2000);
         }
 
-        // Send notification via Service Worker for persistent background alerts
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({
                 type: 'alarm',
@@ -414,7 +416,6 @@
             vibrateInterval = null;
         }
         if (navigator.vibrate) navigator.vibrate(0);
-        // Tell the server to stop the laptop alarm too
         sendMsg({ type: 'dismiss_alarm' });
     }
 
@@ -425,7 +426,6 @@
             if (alarmCtx) stopAlarmSound();
             alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-            // Main oscillator (fundamental)
             alarmOscillator = alarmCtx.createOscillator();
             var mainGain = alarmCtx.createGain();
             alarmOscillator.type = 'square';
@@ -434,7 +434,6 @@
             alarmOscillator.connect(mainGain);
             mainGain.connect(alarmCtx.destination);
 
-            // Harmonic oscillator (octave up for piercing sound)
             alarmHarmonicOsc = alarmCtx.createOscillator();
             var harmGain = alarmCtx.createGain();
             alarmHarmonicOsc.type = 'square';
@@ -521,12 +520,10 @@
         return div.innerHTML;
     }
 
-    // Ping keepalive
     setInterval(function() {
         sendMsg({ type: 'ping' });
     }, 15000);
 
-    // Event listeners (instead of inline onclick for mobile compatibility)
     connectBtn.addEventListener('click', authenticate);
     document.getElementById('refresh-btn').addEventListener('click', refreshConnection);
     document.getElementById('test-alert-btn').addEventListener('click', sendTestAlert);

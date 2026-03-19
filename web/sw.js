@@ -1,4 +1,3 @@
-// LeaveSafe Service Worker — persistent alarm notifications
 self.addEventListener('install', function(e) {
     self.skipWaiting();
 });

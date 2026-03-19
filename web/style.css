@@ -223,6 +223,24 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
 .sensor-status { font-size: 0.75rem; color: var(--text-secondary); }
 .sensor-unavailable { opacity: 0.3; }
 
+/* ── Sensor Actions ── */
+.sensor-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.btn-trigger-sensor {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.btn-trigger-sensor:active { background: rgba(255,255,255,0.1); }
+.btn-trigger-sensor:disabled { opacity: 0.3; cursor: not-allowed; }
+
 /* ── Toggle ── */
 .toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
 .toggle input { opacity: 0; width: 0; height: 0; }

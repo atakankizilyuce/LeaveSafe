@@ -121,7 +121,6 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn) {
 		conn.Close(websocket.StatusNormalClosure, "")
 	}()
 
-	// Read loop
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
@@ -164,7 +163,6 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 			msg := NewAlert(alert.Sensor, string(alert.Level), alert.Message)
 			h.PushAlert(msg)
 
-			// Trigger local alarm on the laptop
 			h.mu.RLock()
 			triggerCb := h.onAlarmTrigger
 			h.mu.RUnlock()
@@ -172,7 +170,6 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 				triggerCb()
 			}
 
-			// Notify all phone clients that the laptop alarm is active
 			alarmMsg := NewAlarmActive(alert.Sensor, alert.Message)
 			h.PushAlert(alarmMsg)
 		}
@@ -215,8 +212,7 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 	case MsgTypePing:
 		client.send(ServerMessage{Type: MsgTypePong})
 	default:
-		// All other messages require authentication
-		if !client.authenticated {
+			if !client.authenticated {
 			client.send(NewAuthFail("not authenticated", 0))
 			return
 		}
@@ -231,6 +227,33 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 			msg := NewAlert("test", "warning", "Test alert triggered")
 			h.PushAlert(msg)
 			log.Println("[TEST] Test alert triggered from client")
+		case MsgTypeTriggerSensor:
+			sensorName := msg.Sensor
+			if sensorName == "" {
+				break
+			}
+			var displayName string
+			for _, info := range h.GetSensorInfos() {
+				if info.Name == sensorName {
+					displayName = info.DisplayName
+					break
+				}
+			}
+			if displayName == "" {
+				break
+			}
+			alertMsg := NewAlert(sensorName, "critical", displayName+" triggered (manual test)")
+			h.PushAlert(alertMsg)
+			if h.IsArmed() {
+				h.mu.RLock()
+				triggerCb := h.onAlarmTrigger
+				h.mu.RUnlock()
+				if triggerCb != nil {
+					triggerCb()
+				}
+				h.PushAlert(NewAlarmActive(sensorName, displayName+" triggered (manual test)"))
+			}
+			log.Printf("[TEST] Manual sensor trigger: %s", sensorName)
 		case MsgTypeDismissAlarm:
 			h.mu.RLock()
 			dismissCb := h.onAlarmDismiss
@@ -290,7 +313,6 @@ func (h *Hub) removeClient(client *Client) {
 		h.authManager.RemoveSession(client.token)
 	}
 
-	// Check if all clients disconnected while armed
 	armed := h.armed
 	clientCount := len(h.clients)
 	disconnectCb := h.onAllDisconnect
