@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	heartbeatInterval   = 15 * time.Second
+	heartbeatInterval     = 15 * time.Second
 	disconnectGracePeriod = 30 * time.Second
 )
 
@@ -58,15 +58,14 @@ func (h *Hub) SetClientChangeCallback(fn func(count int, armed bool)) {
 }
 
 // SetAlarmTriggerCallback sets the function called when a sensor alert fires
-// while the system is armed (triggers the local laptop alarm).
+// while the system is armed.
 func (h *Hub) SetAlarmTriggerCallback(fn func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.onAlarmTrigger = fn
 }
 
-// SetAlarmDismissCallback sets the function called when the alarm should stop
-// (from phone dismiss, disarm, or other sources).
+// SetAlarmDismissCallback sets the function called when the alarm should stop.
 func (h *Hub) SetAlarmDismissCallback(fn func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -100,12 +99,9 @@ func (h *Hub) Arm() {
 func (h *Hub) Disarm() {
 	h.mu.Lock()
 	h.armed = false
-	dismissCb := h.onAlarmDismiss
 	h.mu.Unlock()
 	h.sensorMgr.StopAll()
-	if dismissCb != nil {
-		dismissCb()
-	}
+	h.fireAlarmDismiss()
 	h.broadcastStatus()
 }
 
@@ -148,6 +144,31 @@ func (h *Hub) PushAlert(alert ServerMessage) {
 	}
 }
 
+// TriggerSensorTest simulates a sensor alert by name for testing.
+func (h *Hub) TriggerSensorTest(sensorName string) bool {
+	var displayName string
+	for _, s := range h.sensorMgr.Sensors() {
+		if s.Name() == sensorName {
+			displayName = s.DisplayName()
+			break
+		}
+	}
+	if displayName == "" {
+		return false
+	}
+
+	message := displayName + " triggered (manual test)"
+	h.PushAlert(NewAlert(sensorName, "critical", message))
+
+	if h.IsArmed() {
+		h.fireAlarmTrigger()
+		h.PushAlert(NewAlarmActive(sensorName, message))
+	}
+
+	log.Printf("[TEST] Manual sensor trigger: %s", sensorName)
+	return true
+}
+
 // RunAlertDispatcher listens for alerts from the sensor manager and dispatches them.
 func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 	alertCh := h.sensorMgr.AlertChannel()
@@ -160,18 +181,9 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 				continue
 			}
 			log.Printf("[ALERT] %s — %s", strings.ToUpper(alert.Sensor), alert.Message)
-			msg := NewAlert(alert.Sensor, string(alert.Level), alert.Message)
-			h.PushAlert(msg)
-
-			h.mu.RLock()
-			triggerCb := h.onAlarmTrigger
-			h.mu.RUnlock()
-			if triggerCb != nil {
-				triggerCb()
-			}
-
-			alarmMsg := NewAlarmActive(alert.Sensor, alert.Message)
-			h.PushAlert(alarmMsg)
+			h.PushAlert(NewAlert(alert.Sensor, string(alert.Level), alert.Message))
+			h.fireAlarmTrigger()
+			h.PushAlert(NewAlarmActive(alert.Sensor, alert.Message))
 		}
 	}
 }
@@ -205,6 +217,24 @@ func (h *Hub) GetSensorInfos() []SensorInfo {
 	return infos
 }
 
+func (h *Hub) fireAlarmTrigger() {
+	h.mu.RLock()
+	cb := h.onAlarmTrigger
+	h.mu.RUnlock()
+	if cb != nil {
+		cb()
+	}
+}
+
+func (h *Hub) fireAlarmDismiss() {
+	h.mu.RLock()
+	cb := h.onAlarmDismiss
+	h.mu.RUnlock()
+	if cb != nil {
+		cb()
+	}
+}
+
 func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessage) {
 	switch msg.Type {
 	case MsgTypeAuth:
@@ -212,7 +242,7 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 	case MsgTypePing:
 		client.send(ServerMessage{Type: MsgTypePong})
 	default:
-			if !client.authenticated {
+		if !client.authenticated {
 			client.send(NewAuthFail("not authenticated", 0))
 			return
 		}
@@ -224,43 +254,14 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 		case MsgTypeConfigure:
 			h.handleConfigure(msg)
 		case MsgTypeTestAlert:
-			msg := NewAlert("test", "warning", "Test alert triggered")
-			h.PushAlert(msg)
+			h.PushAlert(NewAlert("test", "warning", "Test alert triggered"))
 			log.Println("[TEST] Test alert triggered from client")
 		case MsgTypeTriggerSensor:
-			sensorName := msg.Sensor
-			if sensorName == "" {
-				break
+			if msg.Sensor != "" {
+				h.TriggerSensorTest(msg.Sensor)
 			}
-			var displayName string
-			for _, info := range h.GetSensorInfos() {
-				if info.Name == sensorName {
-					displayName = info.DisplayName
-					break
-				}
-			}
-			if displayName == "" {
-				break
-			}
-			alertMsg := NewAlert(sensorName, "critical", displayName+" triggered (manual test)")
-			h.PushAlert(alertMsg)
-			if h.IsArmed() {
-				h.mu.RLock()
-				triggerCb := h.onAlarmTrigger
-				h.mu.RUnlock()
-				if triggerCb != nil {
-					triggerCb()
-				}
-				h.PushAlert(NewAlarmActive(sensorName, displayName+" triggered (manual test)"))
-			}
-			log.Printf("[TEST] Manual sensor trigger: %s", sensorName)
 		case MsgTypeDismissAlarm:
-			h.mu.RLock()
-			dismissCb := h.onAlarmDismiss
-			h.mu.RUnlock()
-			if dismissCb != nil {
-				dismissCb()
-			}
+			h.fireAlarmDismiss()
 			log.Println("[ALARM] Alarm dismissed from client")
 		}
 	}

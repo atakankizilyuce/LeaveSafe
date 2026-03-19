@@ -210,7 +210,7 @@ func main() {
 	go hub.RunAlertDispatcher(ctx)
 	go hub.RunHeartbeat(ctx)
 	go runStatusTicker(ctx, sb)
-	go runConsole(hub, sb, localAlarm, sensorMgr)
+	go runConsole(hub, sb, localAlarm)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -356,7 +356,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	return sb
 }
 
-func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, sensorMgr *monitor.Manager) {
+func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -366,22 +366,10 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, sensorMgr *
 			sb.writeLine("  %s[TEST]%s Alert sent to %d client(s)", cYellow, cReset, hub.ClientCount())
 		case strings.HasPrefix(line, "trigger "):
 			name := strings.TrimSpace(line[8:])
-			found := false
-			for _, s := range sensorMgr.Sensors() {
-				if s.Name() == name {
-					found = true
-					break
-				}
-			}
-			if !found {
-				names := make([]string, 0)
-				for _, s := range sensorMgr.Sensors() {
-					names = append(names, s.Name())
-				}
-				sb.writeLine("  Unknown sensor: %q (available: %s)", name, strings.Join(names, ", "))
+			if !hub.TriggerSensorTest(name) {
+				sb.writeLine("  Unknown sensor: %q  (type 'help')", name)
 			} else {
-				hub.PushAlert(ws.NewAlert(name, "critical", name+" triggered (manual test)"))
-				sb.writeLine("  %s[TEST]%s Sensor %q triggered, alert sent to %d client(s)", cYellow, cReset, name, hub.ClientCount())
+				sb.writeLine("  %s[TEST]%s Sensor %q triggered", cYellow, cReset, name)
 			}
 		case line == "stop" || line == "silence":
 			if localAlarm.IsPlaying() {
