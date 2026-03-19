@@ -4,12 +4,13 @@ import "time"
 
 // Message types for client-to-server communication.
 const (
-	MsgTypeAuth      = "auth"
-	MsgTypeArm       = "arm"
-	MsgTypeDisarm    = "disarm"
-	MsgTypeConfigure = "configure"
-	MsgTypePing      = "ping"
-	MsgTypeTestAlert = "test_alert"
+	MsgTypeAuth         = "auth"
+	MsgTypeArm          = "arm"
+	MsgTypeDisarm       = "disarm"
+	MsgTypeConfigure    = "configure"
+	MsgTypePing         = "ping"
+	MsgTypeTestAlert    = "test_alert"
+	MsgTypeDismissAlarm = "dismiss_alarm"
 )
 
 // Message types for server-to-client communication.
@@ -20,6 +21,7 @@ const (
 	MsgTypeStatus            = "status"
 	MsgTypePong              = "pong"
 	MsgTypeDisconnectWarning = "disconnect_warning"
+	MsgTypeAlarmActive       = "alarm_active"
 )
 
 // ClientMessage represents a message from the phone to the laptop.
@@ -92,6 +94,18 @@ func NewAuthFail(reason string, remaining int) ServerMessage {
 		Type:              MsgTypeAuthFail,
 		Reason:            reason,
 		RemainingAttempts: remaining,
+	}
+}
+
+// NewAlarmActive creates a message indicating the laptop alarm is sounding.
+func NewAlarmActive(sensor, message string) ServerMessage {
+	return ServerMessage{
+		Type: MsgTypeAlarmActive,
+		Alert: &AlertData{
+			Sensor:  sensor,
+			Message: message,
+		},
+		Timestamp: time.Now().Unix(),
 	}
 }
 

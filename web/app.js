@@ -188,10 +188,12 @@
             case 'alert':
                 if (msg.alert) {
                     addAlert(msg.alert, msg.ts);
-                    if (msg.alert.level === 'critical') {
-                        triggerAlarm(msg.alert.message);
-                    }
+                    triggerAlarm(msg.alert.message);
                 }
+                break;
+
+            case 'alarm_active':
+                triggerAlarm(msg.alert ? msg.alert.message : 'Security alarm triggered!');
                 break;
 
             case 'pong':
@@ -279,6 +281,9 @@
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(function() {});
+        }
     }
 
     function showAuthError(msg) {
@@ -359,6 +364,8 @@
         }
     }
 
+    var vibrateInterval = null;
+
     function triggerAlarm(message) {
         alertOverlayText.textContent = message;
         alertOverlay.classList.remove('hidden');
@@ -373,11 +380,27 @@
 
         startAlarmSound();
 
+        // Continuous vibration until dismissed
         if (navigator.vibrate) {
             navigator.vibrate([500, 200, 500, 200, 500]);
+            vibrateInterval = setInterval(function() {
+                if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+            }, 2000);
         }
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('LeaveSafe Alert', { body: message, tag: 'leavesafe-alert' });
+
+        // Send notification via Service Worker for persistent background alerts
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'alarm',
+                message: message
+            });
+        } else if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('LeaveSafe ALERT', {
+                body: message,
+                tag: 'leavesafe-alert',
+                requireInteraction: true,
+                renotify: true
+            });
         } else if ('Notification' in window && Notification.permission !== 'denied') {
             Notification.requestPermission();
         }
@@ -386,24 +409,48 @@
     function dismissAlert() {
         alertOverlay.classList.add('hidden');
         stopAlarmSound();
+        if (vibrateInterval) {
+            clearInterval(vibrateInterval);
+            vibrateInterval = null;
+        }
+        if (navigator.vibrate) navigator.vibrate(0);
+        // Tell the server to stop the laptop alarm too
+        sendMsg({ type: 'dismiss_alarm' });
     }
+
+    var alarmHarmonicOsc = null;
 
     function startAlarmSound() {
         try {
             if (alarmCtx) stopAlarmSound();
             alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Main oscillator (fundamental)
             alarmOscillator = alarmCtx.createOscillator();
-            var gain = alarmCtx.createGain();
+            var mainGain = alarmCtx.createGain();
             alarmOscillator.type = 'square';
             alarmOscillator.frequency.value = 880;
-            gain.gain.value = 0.3;
-            alarmOscillator.connect(gain);
-            gain.connect(alarmCtx.destination);
+            mainGain.gain.value = 1.0;
+            alarmOscillator.connect(mainGain);
+            mainGain.connect(alarmCtx.destination);
+
+            // Harmonic oscillator (octave up for piercing sound)
+            alarmHarmonicOsc = alarmCtx.createOscillator();
+            var harmGain = alarmCtx.createGain();
+            alarmHarmonicOsc.type = 'square';
+            alarmHarmonicOsc.frequency.value = 1760;
+            harmGain.gain.value = 0.5;
+            alarmHarmonicOsc.connect(harmGain);
+            harmGain.connect(alarmCtx.destination);
+
             alarmOscillator.start();
+            alarmHarmonicOsc.start();
+
             var high = true;
             var modulate = setInterval(function() {
                 if (!alarmOscillator) { clearInterval(modulate); return; }
                 alarmOscillator.frequency.value = high ? 880 : 660;
+                alarmHarmonicOsc.frequency.value = high ? 1760 : 1320;
                 high = !high;
             }, 400);
         } catch(e) {}
@@ -413,6 +460,10 @@
         if (alarmOscillator) {
             try { alarmOscillator.stop(); } catch(e) {}
             alarmOscillator = null;
+        }
+        if (alarmHarmonicOsc) {
+            try { alarmHarmonicOsc.stop(); } catch(e) {}
+            alarmHarmonicOsc = null;
         }
         if (alarmCtx) {
             try { alarmCtx.close(); } catch(e) {}

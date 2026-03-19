@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/leavesafe/leavesafe/internal/alarm"
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/qr"
@@ -203,9 +204,17 @@ func main() {
 
 	log.SetOutput(&logWriter{sb: sb})
 
+	localAlarm := alarm.New()
+
+	hub.SetAlarmTriggerCallback(func() {
+		localAlarm.Start()
+	})
+	hub.SetAlarmDismissCallback(func() {
+		localAlarm.Stop()
+	})
 	hub.SetDisconnectCallback(func() {
 		log.Println("[ALARM] All clients disconnected while armed — local alarm triggered.")
-		triggerLocalAlarm()
+		localAlarm.Start()
 	})
 	hub.SetClientChangeCallback(func(_ int, _ bool) {
 		sb.refresh()
@@ -217,7 +226,7 @@ func main() {
 	go hub.RunAlertDispatcher(ctx)
 	go hub.RunHeartbeat(ctx)
 	go runStatusTicker(ctx, sb)
-	go runConsole(hub, sb)
+	go runConsole(hub, sb, localAlarm)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -383,15 +392,22 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 // ── Background helpers ────────────────────────────────────────────────────────
 
-func runConsole(hub *ws.Hub, sb *statusBar) {
+func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		switch line := strings.TrimSpace(scanner.Text()); line {
 		case "test":
 			hub.PushAlert(ws.NewAlert("test", "warning", "Test alert from console"))
 			sb.writeLine("  %s[TEST]%s Alert sent to %d client(s)", cYellow, cReset, hub.ClientCount())
+		case "stop", "silence":
+			if localAlarm.IsPlaying() {
+				localAlarm.Stop()
+				sb.writeLine("  %s[ALARM]%s Alarm dismissed from console", cYellow, cReset)
+			} else {
+				sb.writeLine("  No alarm is currently active")
+			}
 		case "help":
-			sb.writeLine("  Commands: test, help")
+			sb.writeLine("  Commands: test, stop, help")
 		case "":
 			// ignore empty input
 		default:
@@ -435,11 +451,3 @@ func registerSensors(mgr *monitor.Manager) {
 	log.Printf("[INFO] %d/%d sensors available", available, len(sensors))
 }
 
-// ── Alarm ─────────────────────────────────────────────────────────────────────
-
-func triggerLocalAlarm() {
-	for range 10 {
-		fmt.Print("\a")
-		time.Sleep(500 * time.Millisecond)
-	}
-}

@@ -27,6 +27,8 @@ type Hub struct {
 	armed           bool
 	onAllDisconnect func()
 	onClientChange  func(count int, armed bool)
+	onAlarmTrigger  func()
+	onAlarmDismiss  func()
 	alertChan       chan ServerMessage
 }
 
@@ -55,6 +57,22 @@ func (h *Hub) SetClientChangeCallback(fn func(count int, armed bool)) {
 	h.onClientChange = fn
 }
 
+// SetAlarmTriggerCallback sets the function called when a sensor alert fires
+// while the system is armed (triggers the local laptop alarm).
+func (h *Hub) SetAlarmTriggerCallback(fn func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.onAlarmTrigger = fn
+}
+
+// SetAlarmDismissCallback sets the function called when the alarm should stop
+// (from phone dismiss, disarm, or other sources).
+func (h *Hub) SetAlarmDismissCallback(fn func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.onAlarmDismiss = fn
+}
+
 // ClientCount returns the number of connected authenticated clients.
 func (h *Hub) ClientCount() int {
 	h.mu.RLock()
@@ -78,12 +96,16 @@ func (h *Hub) Arm() {
 	h.broadcastStatus()
 }
 
-// Disarm deactivates monitoring.
+// Disarm deactivates monitoring and stops any active alarm.
 func (h *Hub) Disarm() {
 	h.mu.Lock()
 	h.armed = false
+	dismissCb := h.onAlarmDismiss
 	h.mu.Unlock()
 	h.sensorMgr.StopAll()
+	if dismissCb != nil {
+		dismissCb()
+	}
 	h.broadcastStatus()
 }
 
@@ -141,6 +163,18 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 			log.Printf("[ALERT] %s — %s", strings.ToUpper(alert.Sensor), alert.Message)
 			msg := NewAlert(alert.Sensor, string(alert.Level), alert.Message)
 			h.PushAlert(msg)
+
+			// Trigger local alarm on the laptop
+			h.mu.RLock()
+			triggerCb := h.onAlarmTrigger
+			h.mu.RUnlock()
+			if triggerCb != nil {
+				triggerCb()
+			}
+
+			// Notify all phone clients that the laptop alarm is active
+			alarmMsg := NewAlarmActive(alert.Sensor, alert.Message)
+			h.PushAlert(alarmMsg)
 		}
 	}
 }
@@ -197,6 +231,14 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 			msg := NewAlert("test", "warning", "Test alert triggered")
 			h.PushAlert(msg)
 			log.Println("[TEST] Test alert triggered from client")
+		case MsgTypeDismissAlarm:
+			h.mu.RLock()
+			dismissCb := h.onAlarmDismiss
+			h.mu.RUnlock()
+			if dismissCb != nil {
+				dismissCb()
+			}
+			log.Println("[ALARM] Alarm dismissed from client")
 		}
 	}
 }
