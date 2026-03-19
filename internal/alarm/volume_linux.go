@@ -52,45 +52,47 @@ func init() {
 	sndMixerSelemSetPlaybackSwitchAll, _ = purego.Dlsym(lib, "snd_mixer_selem_set_playback_switch_all")
 }
 
-// maxVolume saves the current volume level and sets it to 100% via ALSA.
-func maxVolume() (float64, error) {
+// openMasterMixer opens ALSA, finds the Master element, and returns it with a cleanup function.
+func openMasterMixer() (elem uintptr, cleanup func(), err error) {
 	if !alsaAvailable {
-		return 0, fmt.Errorf("ALSA not available")
+		return 0, nil, fmt.Errorf("ALSA not available")
 	}
 
 	var mixer uintptr
 	ret, _, _ := purego.SyscallN(sndMixerOpen, uintptr(unsafe.Pointer(&mixer)), 0)
 	if int32(ret) < 0 {
-		return 0, fmt.Errorf("snd_mixer_open failed: %d", int32(ret))
+		return 0, nil, fmt.Errorf("snd_mixer_open failed: %d", int32(ret))
 	}
-	defer purego.SyscallN(sndMixerClose, mixer)
 
 	card := []byte("default\x00")
 	ret, _, _ = purego.SyscallN(sndMixerAttach, mixer, uintptr(unsafe.Pointer(&card[0])))
 	if int32(ret) < 0 {
-		return 0, fmt.Errorf("snd_mixer_attach failed: %d", int32(ret))
+		purego.SyscallN(sndMixerClose, mixer)
+		return 0, nil, fmt.Errorf("snd_mixer_attach failed: %d", int32(ret))
 	}
 
-	ret, _, _ = purego.SyscallN(sndMixerSelemRegister, mixer, 0, 0)
-	if int32(ret) < 0 {
-		return 0, fmt.Errorf("snd_mixer_selem_register failed: %d", int32(ret))
+	purego.SyscallN(sndMixerSelemRegister, mixer, 0, 0)
+	purego.SyscallN(sndMixerLoad, mixer)
+
+	e := findMasterElem(mixer)
+	if e == 0 {
+		purego.SyscallN(sndMixerClose, mixer)
+		return 0, nil, fmt.Errorf("Master mixer element not found")
 	}
 
-	ret, _, _ = purego.SyscallN(sndMixerLoad, mixer)
-	if int32(ret) < 0 {
-		return 0, fmt.Errorf("snd_mixer_load failed: %d", int32(ret))
-	}
+	return e, func() { purego.SyscallN(sndMixerClose, mixer) }, nil
+}
 
-	elem := findMasterElem(mixer)
-	if elem == 0 {
-		return 0, fmt.Errorf("Master mixer element not found")
+func maxVolume() (float64, error) {
+	elem, cleanup, err := openMasterMixer()
+	if err != nil {
+		return 0, err
 	}
+	defer cleanup()
 
 	var minVol, maxVol int64
 	purego.SyscallN(sndMixerSelemGetPlaybackVolumeRange, elem,
-		uintptr(unsafe.Pointer(&minVol)),
-		uintptr(unsafe.Pointer(&maxVol)),
-	)
+		uintptr(unsafe.Pointer(&minVol)), uintptr(unsafe.Pointer(&maxVol)))
 	if maxVol <= minVol {
 		return 0, fmt.Errorf("invalid volume range")
 	}
@@ -105,42 +107,19 @@ func maxVolume() (float64, error) {
 	return prevLevel, nil
 }
 
-// restoreVolume sets the system volume back to the saved level.
 func restoreVolume(level float64) error {
-	if !alsaAvailable {
-		return fmt.Errorf("ALSA not available")
+	elem, cleanup, err := openMasterMixer()
+	if err != nil {
+		return err
 	}
-
-	var mixer uintptr
-	ret, _, _ := purego.SyscallN(sndMixerOpen, uintptr(unsafe.Pointer(&mixer)), 0)
-	if int32(ret) < 0 {
-		return fmt.Errorf("snd_mixer_open failed: %d", int32(ret))
-	}
-	defer purego.SyscallN(sndMixerClose, mixer)
-
-	card := []byte("default\x00")
-	ret, _, _ = purego.SyscallN(sndMixerAttach, mixer, uintptr(unsafe.Pointer(&card[0])))
-	if int32(ret) < 0 {
-		return fmt.Errorf("snd_mixer_attach failed")
-	}
-
-	purego.SyscallN(sndMixerSelemRegister, mixer, 0, 0)
-	purego.SyscallN(sndMixerLoad, mixer)
-
-	elem := findMasterElem(mixer)
-	if elem == 0 {
-		return fmt.Errorf("Master mixer element not found")
-	}
+	defer cleanup()
 
 	var minVol, maxVol int64
 	purego.SyscallN(sndMixerSelemGetPlaybackVolumeRange, elem,
-		uintptr(unsafe.Pointer(&minVol)),
-		uintptr(unsafe.Pointer(&maxVol)),
-	)
+		uintptr(unsafe.Pointer(&minVol)), uintptr(unsafe.Pointer(&maxVol)))
 
 	targetVol := int64(level*float64(maxVol-minVol)) + minVol
 	purego.SyscallN(sndMixerSelemSetPlaybackVolumeAll, elem, uintptr(targetVol))
-
 	return nil
 }
 
@@ -164,7 +143,6 @@ func findMasterElem(mixer uintptr) uintptr {
 		}
 		elem, _, _ = purego.SyscallN(sndMixerElemNext, elem)
 	}
-
 	return fallback
 }
 
@@ -184,7 +162,7 @@ func goString(ptr uintptr) string {
 		}
 	}
 	buf := make([]byte, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		buf[i] = *(*byte)(unsafe.Pointer(ptr + uintptr(i)))
 	}
 	return string(buf)

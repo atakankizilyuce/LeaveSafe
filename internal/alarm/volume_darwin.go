@@ -40,55 +40,54 @@ const (
 	kAudioObjectSystemObject                             = 1
 )
 
-// maxVolume saves the current volume level and sets it to 100%.
-func maxVolume() (float64, error) {
-	if audioObjectGetPropertyData == 0 || audioObjectSetPropertyData == 0 {
+func getDefaultOutputDevice() (uint32, error) {
+	if audioObjectGetPropertyData == 0 {
 		return 0, fmt.Errorf("CoreAudio not available")
 	}
-
-	deviceAddr := audioObjectPropertyAddress{
+	addr := audioObjectPropertyAddress{
 		Selector: kAudioHardwarePropertyDefaultOutputDevice,
 		Scope:    kAudioObjectPropertyScopeOutput,
 		Element:  kAudioObjectPropertyElementMain,
 	}
-
 	var deviceID uint32
 	dataSize := uint32(unsafe.Sizeof(deviceID))
 	ret, _, _ := purego.SyscallN(audioObjectGetPropertyData,
 		uintptr(kAudioObjectSystemObject),
-		uintptr(unsafe.Pointer(&deviceAddr)),
-		0, 0,
+		uintptr(unsafe.Pointer(&addr)), 0, 0,
 		uintptr(unsafe.Pointer(&dataSize)),
 		uintptr(unsafe.Pointer(&deviceID)),
 	)
 	if ret != 0 {
 		return 0, fmt.Errorf("get default output device failed: %d", ret)
 	}
+	return deviceID, nil
+}
 
-	volumeAddr := audioObjectPropertyAddress{
-		Selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-		Scope:    kAudioObjectPropertyScopeOutput,
-		Element:  kAudioObjectPropertyElementMain,
+var volumeAddr = audioObjectPropertyAddress{
+	Selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+	Scope:    kAudioObjectPropertyScopeOutput,
+	Element:  kAudioObjectPropertyElementMain,
+}
+
+func maxVolume() (float64, error) {
+	deviceID, err := getDefaultOutputDevice()
+	if err != nil {
+		return 0, err
 	}
 
 	var currentVolume float32
-	dataSize = uint32(unsafe.Sizeof(currentVolume))
+	dataSize := uint32(unsafe.Sizeof(currentVolume))
 	purego.SyscallN(audioObjectGetPropertyData,
-		uintptr(deviceID),
-		uintptr(unsafe.Pointer(&volumeAddr)),
-		0, 0,
+		uintptr(deviceID), uintptr(unsafe.Pointer(&volumeAddr)), 0, 0,
 		uintptr(unsafe.Pointer(&dataSize)),
 		uintptr(unsafe.Pointer(&currentVolume)),
 	)
 
 	maxVol := float32(1.0)
 	dataSize = uint32(unsafe.Sizeof(maxVol))
-	ret, _, _ = purego.SyscallN(audioObjectSetPropertyData,
-		uintptr(deviceID),
-		uintptr(unsafe.Pointer(&volumeAddr)),
-		0, 0,
-		uintptr(dataSize),
-		uintptr(unsafe.Pointer(&maxVol)),
+	ret, _, _ := purego.SyscallN(audioObjectSetPropertyData,
+		uintptr(deviceID), uintptr(unsafe.Pointer(&volumeAddr)), 0, 0,
+		uintptr(dataSize), uintptr(unsafe.Pointer(&maxVol)),
 	)
 	if ret != 0 {
 		return float64(currentVolume), fmt.Errorf("set volume failed: %d", ret)
@@ -97,47 +96,20 @@ func maxVolume() (float64, error) {
 	return float64(currentVolume), nil
 }
 
-// restoreVolume sets the system volume back to the saved level.
 func restoreVolume(level float64) error {
-	if audioObjectGetPropertyData == 0 || audioObjectSetPropertyData == 0 {
-		return fmt.Errorf("CoreAudio not available")
+	deviceID, err := getDefaultOutputDevice()
+	if err != nil {
+		return err
 	}
 
-	deviceAddr := audioObjectPropertyAddress{
-		Selector: kAudioHardwarePropertyDefaultOutputDevice,
-		Scope:    kAudioObjectPropertyScopeOutput,
-		Element:  kAudioObjectPropertyElementMain,
-	}
-	var deviceID uint32
-	dataSize := uint32(unsafe.Sizeof(deviceID))
-	ret, _, _ := purego.SyscallN(audioObjectGetPropertyData,
-		uintptr(kAudioObjectSystemObject),
-		uintptr(unsafe.Pointer(&deviceAddr)),
-		0, 0,
-		uintptr(unsafe.Pointer(&dataSize)),
-		uintptr(unsafe.Pointer(&deviceID)),
-	)
-	if ret != 0 {
-		return fmt.Errorf("get default output device failed: %d", ret)
-	}
-
-	volumeAddr := audioObjectPropertyAddress{
-		Selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-		Scope:    kAudioObjectPropertyScopeOutput,
-		Element:  kAudioObjectPropertyElementMain,
-	}
 	vol := float32(math.Min(level, 1.0))
-	dataSize = uint32(unsafe.Sizeof(vol))
-	ret, _, _ = purego.SyscallN(audioObjectSetPropertyData,
-		uintptr(deviceID),
-		uintptr(unsafe.Pointer(&volumeAddr)),
-		0, 0,
-		uintptr(dataSize),
-		uintptr(unsafe.Pointer(&vol)),
+	dataSize := uint32(unsafe.Sizeof(vol))
+	ret, _, _ := purego.SyscallN(audioObjectSetPropertyData,
+		uintptr(deviceID), uintptr(unsafe.Pointer(&volumeAddr)), 0, 0,
+		uintptr(dataSize), uintptr(unsafe.Pointer(&vol)),
 	)
 	if ret != 0 {
 		return fmt.Errorf("set volume failed: %d", ret)
 	}
-
 	return nil
 }

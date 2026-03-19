@@ -369,18 +369,27 @@
     }
 
     var vibrateInterval = null;
+    var titleFlashInterval = null;
+    var titleFlashTimeout = null;
 
     function triggerAlarm(message) {
+        dismissAlarmIntervals();
+
         alertOverlayText.textContent = message;
         alertOverlay.classList.remove('hidden');
 
         var flash = true;
         var originalTitle = document.title;
-        var titleFlash = setInterval(function() {
+        titleFlashInterval = setInterval(function() {
             document.title = flash ? 'ALERT! ' + message : originalTitle;
             flash = !flash;
         }, 500);
-        setTimeout(function() { clearInterval(titleFlash); document.title = originalTitle; }, 30000);
+        titleFlashTimeout = setTimeout(function() {
+            clearInterval(titleFlashInterval);
+            titleFlashInterval = null;
+            titleFlashTimeout = null;
+            document.title = originalTitle;
+        }, 30000);
 
         startAlarmSound();
 
@@ -408,18 +417,32 @@
         }
     }
 
-    function dismissAlert() {
-        alertOverlay.classList.add('hidden');
-        stopAlarmSound();
+    function dismissAlarmIntervals() {
         if (vibrateInterval) {
             clearInterval(vibrateInterval);
             vibrateInterval = null;
         }
+        if (titleFlashInterval) {
+            clearInterval(titleFlashInterval);
+            titleFlashInterval = null;
+        }
+        if (titleFlashTimeout) {
+            clearTimeout(titleFlashTimeout);
+            titleFlashTimeout = null;
+        }
+        document.title = 'LeaveSafe';
         if (navigator.vibrate) navigator.vibrate(0);
+    }
+
+    function dismissAlert() {
+        alertOverlay.classList.add('hidden');
+        stopAlarmSound();
+        dismissAlarmIntervals();
         sendMsg({ type: 'dismiss_alarm' });
     }
 
     var alarmHarmonicOsc = null;
+    var modulateInterval = null;
 
     function startAlarmSound() {
         try {
@@ -446,8 +469,8 @@
             alarmHarmonicOsc.start();
 
             var high = true;
-            var modulate = setInterval(function() {
-                if (!alarmOscillator) { clearInterval(modulate); return; }
+            modulateInterval = setInterval(function() {
+                if (!alarmOscillator) { clearInterval(modulateInterval); modulateInterval = null; return; }
                 alarmOscillator.frequency.value = high ? 880 : 660;
                 alarmHarmonicOsc.frequency.value = high ? 1760 : 1320;
                 high = !high;
@@ -456,6 +479,10 @@
     }
 
     function stopAlarmSound() {
+        if (modulateInterval) {
+            clearInterval(modulateInterval);
+            modulateInterval = null;
+        }
         if (alarmOscillator) {
             try { alarmOscillator.stop(); } catch(e) {}
             alarmOscillator = null;
