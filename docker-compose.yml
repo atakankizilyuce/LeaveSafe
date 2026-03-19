@@ -2,9 +2,8 @@ services:
   leavesafe:
     build: .
     ports:
-      - "8443:8443"
-    privileged: true
-    volumes:
-      - /sys:/sys:ro
-      - /proc:/proc:ro
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      - PORT=${PORT:-8080}
+      - CONTAINER=1
     restart: unless-stopped

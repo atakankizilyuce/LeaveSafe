@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/leavesafe/leavesafe/internal/ws"
@@ -50,6 +51,10 @@ func New(cfg Config) *Server {
 // Call this before URLs() or Start().
 func (s *Server) Listen() error {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	if err != nil && s.port != 0 {
+		log.Printf("[WARN] Port %d busy, picking a free port", s.port)
+		ln, err = net.Listen("tcp", ":0")
+	}
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -72,11 +77,23 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // URLs returns the HTTP URLs clients can connect to.
 func (s *Server) URLs() []string {
 	ips := getLocalIPs()
-	urls := make([]string, 0, len(ips))
+	urls := make([]string, 0, len(ips)+1)
+
+	// In container environments, localhost is the primary access point
+	// because Docker port mapping forwards host:PORT -> container:PORT.
+	if isContainer() {
+		urls = append(urls, fmt.Sprintf("http://localhost:%d", s.port))
+	}
+
 	for _, ip := range ips {
 		urls = append(urls, fmt.Sprintf("http://%s:%d", ip.String(), s.port))
 	}
 	return urls
+}
+
+// Port returns the bound port number.
+func (s *Server) Port() int {
+	return s.port
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +106,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.hub.HandleConnection(r.Context(), conn)
+}
+
+func isContainer() bool {
+	return os.Getenv("CONTAINER") == "1"
 }
 
 // getLocalIPs returns all non-loopback IPv4 addresses.
