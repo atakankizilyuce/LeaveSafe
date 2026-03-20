@@ -427,3 +427,5 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
     cursor: pointer;
 }
 .alert-popup button:active { background: rgba(255, 255, 255, 0.25); }
+.alert-dismiss-options { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 280px; margin: 0 auto; }
+.btn-dismiss-secondary { background: rgba(255, 255, 255, 0.06) !important; border-color: rgba(255, 255, 255, 0.18) !important; font-size: 0.82rem !important; }

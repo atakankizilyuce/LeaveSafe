@@ -374,6 +374,54 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 			h.mu.Unlock()
 			h.fireAlarmDismiss()
 			log.Info("Alarm dismissed from client")
+
+		case MsgTypeDismissAlarmPause:
+			h.mu.Lock()
+			triggeredSensor := h.alarmSensor
+			h.alarmActive = false
+			h.alarmSensor = ""
+			h.mu.Unlock()
+			h.fireAlarmDismiss()
+
+			sensor := msg.Sensor
+			if sensor == "" {
+				sensor = triggeredSensor
+			}
+			duration := msg.Duration
+			if duration <= 0 {
+				duration = 5
+			}
+			if sensor != "" {
+				h.sensorMgr.Disable(sensor)
+				go func(name string, d int) {
+					time.Sleep(time.Duration(d) * time.Second)
+					h.sensorMgr.Enable(name)
+					if h.IsArmed() {
+						h.sensorMgr.StartEnabled()
+					}
+					h.broadcastStatus()
+				}(sensor, duration)
+			}
+			h.broadcastStatus()
+			log.WithField("sensor", sensor).Infof("Alarm dismissed, sensor paused for %ds", duration)
+
+		case MsgTypeDismissAlarmDisable:
+			h.mu.Lock()
+			triggeredSensor := h.alarmSensor
+			h.alarmActive = false
+			h.alarmSensor = ""
+			h.mu.Unlock()
+			h.fireAlarmDismiss()
+
+			sensor := msg.Sensor
+			if sensor == "" {
+				sensor = triggeredSensor
+			}
+			if sensor != "" {
+				h.sensorMgr.Disable(sensor)
+			}
+			h.broadcastStatus()
+			log.WithField("sensor", sensor).Info("Alarm dismissed, sensor permanently disabled")
 		}
 	}
 }
