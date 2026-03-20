@@ -38,6 +38,7 @@ type Config struct {
 	InputThreshold         int            `json:"input_threshold"`
 	Alarm                  AlarmConfig    `json:"alarm"`
 	PinProtection          PinProtection  `json:"pin_protection"`
+	ConnectionMode         string          `json:"connection_mode,omitempty"`
 	EnabledSensors         map[string]bool `json:"enabled_sensors,omitempty"`
 }
 

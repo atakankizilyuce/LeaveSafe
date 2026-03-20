@@ -439,3 +439,13 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
 .setting-hint { font-size: 0.7rem; color: var(--text-secondary); }
 .btn-save { width: 100%; padding: 10px; margin-top: 12px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
 .btn-save:active { opacity: 0.85; }
+.setting-group select { padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.85rem; }
+
+/* ── Bluetooth ── */
+.auth-divider { text-align: center; margin: 12px 0; color: var(--text-secondary); font-size: 0.8rem; position: relative; }
+.auth-divider::before, .auth-divider::after { content: ''; position: absolute; top: 50%; width: 38%; height: 1px; background: var(--border); }
+.auth-divider::before { left: 0; }
+.auth-divider::after { right: 0; }
+.btn-bluetooth { width: 100%; padding: 12px; background: #1565c0; border: none; border-radius: 8px; color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+.btn-bluetooth:active { opacity: 0.85; }
+.btn-bluetooth:disabled { opacity: 0.5; cursor: default; }

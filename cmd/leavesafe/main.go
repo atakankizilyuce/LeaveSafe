@@ -22,6 +22,7 @@ import (
 
 	"github.com/leavesafe/leavesafe/internal/alarm"
 	"github.com/leavesafe/leavesafe/internal/auth"
+	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
@@ -249,6 +250,16 @@ func main() {
 	go hub.RunHeartbeat(ctx)
 	go runStatusTicker(ctx, sb)
 	go runConsole(hub, sb, localAlarm, authMgr)
+
+	connMode := cfg.ConnectionMode
+	if connMode == "bluetooth" || connMode == "both" {
+		bleServer := ble.NewServer(hub)
+		go func() {
+			if err := bleServer.Start(ctx); err != nil {
+				log.Errorf("BLE server error: %v", err)
+			}
+		}()
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

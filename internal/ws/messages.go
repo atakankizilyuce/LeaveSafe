@@ -71,6 +71,7 @@ type ConfigPayload struct {
 	DisconnectGraceSeconds int                  `json:"disconnect_grace_seconds"`
 	AutoArmOnLock          bool                 `json:"auto_arm_on_lock"`
 	InputThreshold         int                  `json:"input_threshold"`
+	ConnectionMode         string               `json:"connection_mode,omitempty"`
 	Alarm                  config.AlarmConfig   `json:"alarm"`
 	PinProtection          PinProtectionPayload `json:"pin_protection"`
 	EnabledSensors         map[string]bool      `json:"enabled_sensors,omitempty"`
