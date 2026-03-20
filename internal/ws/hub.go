@@ -37,16 +37,22 @@ type Hub struct {
 	pinCode         string
 	alertChan       chan ServerMessage
 	eventLog        *eventlog.Logger
+
+	// Alarm state tracking to prevent re-trigger loops
+	alarmActive       bool
+	alarmSensor       string
+	suppressedSensors map[string]time.Time
 }
 
 // NewHub creates a new WebSocket hub.
 func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *Hub {
 	return &Hub{
-		clients:     make(map[*Client]bool),
-		authManager: authMgr,
-		sensorMgr:   sensorMgr,
-		version:     version,
-		alertChan:   make(chan ServerMessage, 100),
+		clients:           make(map[*Client]bool),
+		authManager:       authMgr,
+		sensorMgr:         sensorMgr,
+		version:           version,
+		alertChan:         make(chan ServerMessage, 100),
+		suppressedSensors: make(map[string]time.Time),
 	}
 }
 
@@ -139,6 +145,8 @@ func (h *Hub) Arm() {
 func (h *Hub) Disarm() {
 	h.mu.Lock()
 	h.armed = false
+	h.alarmActive = false
+	h.alarmSensor = ""
 	h.mu.Unlock()
 	h.sensorMgr.StopAll()
 	h.fireAlarmDismiss()
@@ -239,6 +247,25 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 			if !h.IsArmed() {
 				continue
 			}
+
+			// Skip alerts from suppressed sensors (grace period after dismiss)
+			h.mu.Lock()
+			if until, ok := h.suppressedSensors[alert.Sensor]; ok {
+				if time.Now().Before(until) {
+					h.mu.Unlock()
+					continue
+				}
+				delete(h.suppressedSensors, alert.Sensor)
+			}
+			// Skip if alarm is already active (prevent re-trigger loop)
+			if h.alarmActive {
+				h.mu.Unlock()
+				continue
+			}
+			h.alarmActive = true
+			h.alarmSensor = alert.Sensor
+			h.mu.Unlock()
+
 			log.WithFields(log.Fields{"sensor": strings.ToUpper(alert.Sensor)}).Warn(alert.Message)
 			h.PushAlert(NewAlert(alert.Sensor, string(alert.Level), alert.Message))
 			h.fireAlarmTrigger()
@@ -337,6 +364,14 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 				h.TriggerSensorTest(msg.Sensor)
 			}
 		case MsgTypeDismissAlarm:
+			h.mu.Lock()
+			triggeredSensor := h.alarmSensor
+			h.alarmActive = false
+			h.alarmSensor = ""
+			if triggeredSensor == "input" {
+				h.suppressedSensors["input"] = time.Now().Add(5 * time.Second)
+			}
+			h.mu.Unlock()
 			h.fireAlarmDismiss()
 			log.Info("Alarm dismissed from client")
 		}
