@@ -24,6 +24,8 @@
                 <label for="pairing-key">Pairing Key</label>
                 <input type="text" id="pairing-key" placeholder="0000-0000-0000-0000" maxlength="19" autocomplete="off" inputmode="numeric">
                 <button id="connect-btn" type="button">Connect</button>
+                <div class="auth-divider"><span>or</span></div>
+                <button id="bluetooth-btn" type="button" class="btn-bluetooth">Connect via Bluetooth</button>
                 <p id="auth-error" class="error hidden"></p>
             </div>
         </div>
@@ -116,6 +118,14 @@
                 <div id="pin-config-group" class="setting-group hidden">
                     <label>PIN Code</label>
                     <input type="password" id="cfg-pin" placeholder="Enter new PIN" maxlength="8" inputmode="numeric">
+                </div>
+                <div class="setting-group">
+                    <label>Connection Mode <span class="setting-hint">(restart required)</span></label>
+                    <select id="cfg-connection-mode">
+                        <option value="wifi">WiFi Only</option>
+                        <option value="bluetooth">Bluetooth Only</option>
+                        <option value="both">WiFi + Bluetooth</option>
+                    </select>
                 </div>
                 <div class="setting-group">
                     <label>Alarm Escalation</label>

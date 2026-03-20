@@ -15,6 +15,9 @@
     var disconnectShown = false;
     var serverVersion = null;
     var alarmTriggerSensor = null;
+    var bleDevice = null;
+    var bleRxChar = null;
+    var bleTxChar = null;
 
     var authScreen = document.getElementById('auth-screen');
     var dashScreen = document.getElementById('dashboard-screen');
@@ -724,6 +727,7 @@
         document.getElementById('cfg-auto-arm').checked = !!cfg.auto_arm_on_lock;
         document.getElementById('cfg-pin-enabled').checked = cfg.pin_protection && cfg.pin_protection.enabled;
         document.getElementById('cfg-escalation').checked = cfg.alarm && cfg.alarm.escalation_enabled;
+        document.getElementById('cfg-connection-mode').value = cfg.connection_mode || 'wifi';
         var pinGroup = document.getElementById('pin-config-group');
         if (cfg.pin_protection && cfg.pin_protection.enabled) {
             pinGroup.classList.remove('hidden');
@@ -742,6 +746,7 @@
             disconnect_grace_seconds: parseInt(document.getElementById('cfg-disconnect-grace').value) || 30,
             input_threshold: parseInt(document.getElementById('cfg-input-threshold').value) || 3,
             auto_arm_on_lock: document.getElementById('cfg-auto-arm').checked,
+            connection_mode: document.getElementById('cfg-connection-mode').value,
             alarm: {
                 escalation_enabled: document.getElementById('cfg-escalation').checked
             },
@@ -753,8 +758,83 @@
         sendMsg({ type: 'update_config', config: cfg });
     }
 
+    var BLE_SERVICE_UUID = '4c454156-4553-4146-452d-424c45000001';
+    var BLE_TX_UUID = '4c454156-4553-4146-452d-424c45000002';
+    var BLE_RX_UUID = '4c454156-4553-4146-452d-424c45000003';
+
+    function connectBluetooth() {
+        if (!navigator.bluetooth) {
+            showAuthError('Bluetooth not supported in this browser. Use Chrome or Edge.');
+            return;
+        }
+        var btBtn = document.getElementById('bluetooth-btn');
+        btBtn.disabled = true;
+        btBtn.textContent = 'Connecting...';
+
+        navigator.bluetooth.requestDevice({
+            filters: [{ services: [BLE_SERVICE_UUID] }]
+        })
+        .then(function(device) {
+            bleDevice = device;
+            device.addEventListener('gattserverdisconnected', function() {
+                bleRxChar = null;
+                bleTxChar = null;
+                if (token) {
+                    setConnectionState('disconnected');
+                    showDisconnectWarning();
+                }
+            });
+            return device.gatt.connect();
+        })
+        .then(function(server) {
+            return server.getPrimaryService(BLE_SERVICE_UUID);
+        })
+        .then(function(service) {
+            return Promise.all([
+                service.getCharacteristic(BLE_TX_UUID),
+                service.getCharacteristic(BLE_RX_UUID)
+            ]);
+        })
+        .then(function(chars) {
+            bleTxChar = chars[0];
+            bleRxChar = chars[1];
+            return bleTxChar.startNotifications();
+        })
+        .then(function() {
+            bleTxChar.addEventListener('characteristicvaluechanged', function(event) {
+                var decoder = new TextDecoder();
+                var text = decoder.decode(event.target.value);
+                try {
+                    var msg = JSON.parse(text);
+                    handleMessage(msg);
+                } catch(e) {}
+            });
+            var key = keyInput.value.replace(/-/g, '');
+            sendBLE({ type: 'auth', key: key });
+            btBtn.disabled = false;
+            btBtn.textContent = 'Connect via Bluetooth';
+        })
+        .catch(function(err) {
+            showAuthError('Bluetooth: ' + err.message);
+            btBtn.disabled = false;
+            btBtn.textContent = 'Connect via Bluetooth';
+        });
+    }
+
+    function sendBLE(msg) {
+        if (!bleRxChar) return;
+        if (token) msg.token = token;
+        var encoder = new TextEncoder();
+        var data = encoder.encode(JSON.stringify(msg));
+        bleRxChar.writeValue(data).catch(function(err) {
+            console.warn('BLE write error:', err);
+        });
+    }
+
     function sendMsg(msg) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (bleRxChar) {
+            sendBLE(msg);
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
             if (token) msg.token = token;
             ws.send(JSON.stringify(msg));
         }
@@ -781,6 +861,7 @@
     }, 15000);
 
     connectBtn.addEventListener('click', authenticate);
+    document.getElementById('bluetooth-btn').addEventListener('click', connectBluetooth);
     document.getElementById('refresh-btn').addEventListener('click', refreshConnection);
     document.getElementById('test-alert-btn').addEventListener('click', sendTestAlert);
     document.getElementById('clear-alerts-btn').addEventListener('click', clearAlertHistory);

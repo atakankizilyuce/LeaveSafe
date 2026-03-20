@@ -164,6 +164,24 @@ func (h *Hub) Disarm() {
 	h.logEvent(eventlog.Event{Type: eventlog.EventDisarm, Message: "System disarmed"})
 }
 
+// RegisterExternalClient creates and registers a client using a non-WebSocket transport.
+func (h *Hub) RegisterExternalClient(transport Transport) *Client {
+	return &Client{
+		hub:       h,
+		transport: transport,
+	}
+}
+
+// HandleExternalMessage processes a message from an external (non-WebSocket) client.
+func (h *Hub) HandleExternalMessage(client *Client, msg ClientMessage) {
+	h.handleMessage(context.Background(), client, msg)
+}
+
+// RemoveExternalClient removes a non-WebSocket client from the hub.
+func (h *Hub) RemoveExternalClient(client *Client) {
+	h.removeClient(client)
+}
+
 // HandleConnection handles a new WebSocket connection.
 func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn) {
 	client := &Client{
@@ -506,9 +524,12 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage) {
 	}
 
 	p := msg.Config
-	needsRestart := p.Port != cfg.Port
+	needsRestart := p.Port != cfg.Port || (p.ConnectionMode != "" && p.ConnectionMode != cfg.ConnectionMode)
 
 	cfg.Port = p.Port
+	if p.ConnectionMode != "" {
+		cfg.ConnectionMode = p.ConnectionMode
+	}
 	cfg.MaxSessions = p.MaxSessions
 	cfg.MaxAuthAttempts = p.MaxAuthAttempts
 	cfg.LockoutSeconds = p.LockoutSeconds
@@ -559,6 +580,7 @@ func configToPayload(cfg *config.Config) ConfigPayload {
 		DisconnectGraceSeconds: cfg.DisconnectGraceSeconds,
 		AutoArmOnLock:          cfg.AutoArmOnLock,
 		InputThreshold:         cfg.InputThreshold,
+		ConnectionMode:         cfg.ConnectionMode,
 		Alarm:                  cfg.Alarm,
 		PinProtection: PinProtectionPayload{
 			Enabled: cfg.PinProtection.Enabled,
