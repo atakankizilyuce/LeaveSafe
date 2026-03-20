@@ -196,6 +196,10 @@
                 triggerAlarm(msg.alert ? msg.alert.message : 'Security alarm triggered!');
                 break;
 
+            case 'config_data':
+                if (msg.config) populateSettings(msg.config);
+                break;
+
             case 'pin_required':
                 showPinDialog();
                 break;
@@ -705,6 +709,50 @@
         }, 1000);
     }
 
+    function requestConfig() {
+        sendMsg({ type: 'get_config' });
+    }
+
+    function populateSettings(cfg) {
+        document.getElementById('cfg-port').value = cfg.port || 0;
+        document.getElementById('cfg-max-sessions').value = cfg.max_sessions || 3;
+        document.getElementById('cfg-max-auth-attempts').value = cfg.max_auth_attempts || 5;
+        document.getElementById('cfg-lockout-seconds').value = cfg.lockout_seconds || 60;
+        document.getElementById('cfg-heartbeat-seconds').value = cfg.heartbeat_seconds || 15;
+        document.getElementById('cfg-disconnect-grace').value = cfg.disconnect_grace_seconds || 30;
+        document.getElementById('cfg-input-threshold').value = cfg.input_threshold || 3;
+        document.getElementById('cfg-auto-arm').checked = !!cfg.auto_arm_on_lock;
+        document.getElementById('cfg-pin-enabled').checked = cfg.pin_protection && cfg.pin_protection.enabled;
+        document.getElementById('cfg-escalation').checked = cfg.alarm && cfg.alarm.escalation_enabled;
+        var pinGroup = document.getElementById('pin-config-group');
+        if (cfg.pin_protection && cfg.pin_protection.enabled) {
+            pinGroup.classList.remove('hidden');
+        } else {
+            pinGroup.classList.add('hidden');
+        }
+    }
+
+    function saveSettings() {
+        var cfg = {
+            port: parseInt(document.getElementById('cfg-port').value) || 0,
+            max_sessions: parseInt(document.getElementById('cfg-max-sessions').value) || 3,
+            max_auth_attempts: parseInt(document.getElementById('cfg-max-auth-attempts').value) || 5,
+            lockout_seconds: parseInt(document.getElementById('cfg-lockout-seconds').value) || 60,
+            heartbeat_seconds: parseInt(document.getElementById('cfg-heartbeat-seconds').value) || 15,
+            disconnect_grace_seconds: parseInt(document.getElementById('cfg-disconnect-grace').value) || 30,
+            input_threshold: parseInt(document.getElementById('cfg-input-threshold').value) || 3,
+            auto_arm_on_lock: document.getElementById('cfg-auto-arm').checked,
+            alarm: {
+                escalation_enabled: document.getElementById('cfg-escalation').checked
+            },
+            pin_protection: {
+                enabled: document.getElementById('cfg-pin-enabled').checked,
+                pin: document.getElementById('cfg-pin').value || ''
+            }
+        };
+        sendMsg({ type: 'update_config', config: cfg });
+    }
+
     function sendMsg(msg) {
         if (ws && ws.readyState === WebSocket.OPEN) {
             if (token) msg.token = token;
@@ -756,6 +804,15 @@
     document.getElementById('pin-cancel-btn').addEventListener('click', cancelPin);
     document.getElementById('pin-input').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') submitPin();
+    });
+    document.getElementById('toggle-settings-btn').addEventListener('click', function() {
+        var panel = document.getElementById('settings-panel');
+        panel.classList.toggle('hidden');
+        if (!panel.classList.contains('hidden')) requestConfig();
+    });
+    document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
+    document.getElementById('cfg-pin-enabled').addEventListener('change', function() {
+        document.getElementById('pin-config-group').classList.toggle('hidden', !this.checked);
     });
     document.getElementById('dismiss-alert-btn').addEventListener('click', function(e) {
         e.stopPropagation();

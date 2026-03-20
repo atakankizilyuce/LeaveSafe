@@ -191,6 +191,7 @@ func main() {
 	registerSensors(sensorMgr, cfg)
 
 	hub := ws.NewHub(authMgr, sensorMgr, version)
+	hub.SetConfig(cfg)
 
 	evLogPath := filepath.Join(config.ConfigDir(), "events.jsonl")
 	if err := os.MkdirAll(config.ConfigDir(), 0o700); err != nil {

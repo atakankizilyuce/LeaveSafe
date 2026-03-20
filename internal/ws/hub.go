@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/leavesafe/leavesafe/internal/auth"
+	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"nhooyr.io/websocket"
@@ -37,6 +38,8 @@ type Hub struct {
 	pinCode         string
 	alertChan       chan ServerMessage
 	eventLog        *eventlog.Logger
+
+	cfg *config.Config
 
 	// Alarm state tracking to prevent re-trigger loops
 	alarmActive       bool
@@ -69,6 +72,13 @@ func (h *Hub) SetAutoArmOnLock(enabled bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.autoArmOnLock = enabled
+}
+
+// SetConfig stores the application config reference for web-based configuration.
+func (h *Hub) SetConfig(cfg *config.Config) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.cfg = cfg
 }
 
 // SetEventLogger sets the event logger for recording security events.
@@ -363,6 +373,10 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 			if msg.Sensor != "" {
 				h.TriggerSensorTest(msg.Sensor)
 			}
+		case MsgTypeGetConfig:
+			h.handleGetConfig(client)
+		case MsgTypeUpdateConfig:
+			h.handleUpdateConfig(msg)
 		case MsgTypeDismissAlarm:
 			h.mu.Lock()
 			triggeredSensor := h.alarmSensor
@@ -464,6 +478,94 @@ func (h *Hub) handleConfigure(msg ClientMessage) {
 		}
 	}
 	h.broadcastStatus()
+}
+
+func (h *Hub) handleGetConfig(client *Client) {
+	h.mu.RLock()
+	cfg := h.cfg
+	h.mu.RUnlock()
+	if cfg == nil {
+		return
+	}
+	payload := configToPayload(cfg)
+	client.send(ServerMessage{
+		Type:   MsgTypeConfigData,
+		Config: &payload,
+	})
+}
+
+func (h *Hub) handleUpdateConfig(msg ClientMessage) {
+	if msg.Config == nil {
+		return
+	}
+	h.mu.Lock()
+	cfg := h.cfg
+	h.mu.Unlock()
+	if cfg == nil {
+		return
+	}
+
+	p := msg.Config
+	needsRestart := p.Port != cfg.Port
+
+	cfg.Port = p.Port
+	cfg.MaxSessions = p.MaxSessions
+	cfg.MaxAuthAttempts = p.MaxAuthAttempts
+	cfg.LockoutSeconds = p.LockoutSeconds
+	cfg.HeartbeatSeconds = p.HeartbeatSeconds
+	cfg.DisconnectGraceSeconds = p.DisconnectGraceSeconds
+	cfg.AutoArmOnLock = p.AutoArmOnLock
+	cfg.InputThreshold = p.InputThreshold
+	cfg.Alarm = p.Alarm
+
+	if p.PinProtection.Pin != "" {
+		cfg.PinProtection.Pin = p.PinProtection.Pin
+	}
+	cfg.PinProtection.Enabled = p.PinProtection.Enabled
+	h.SetPinProtection(cfg.PinProtection.Enabled, cfg.PinProtection.Pin)
+	h.SetAutoArmOnLock(cfg.AutoArmOnLock)
+
+	if p.EnabledSensors != nil {
+		cfg.EnabledSensors = p.EnabledSensors
+		for name, enabled := range p.EnabledSensors {
+			if enabled {
+				h.sensorMgr.Enable(name)
+			} else {
+				h.sensorMgr.Disable(name)
+			}
+		}
+	}
+
+	if err := config.Save(cfg); err != nil {
+		log.Errorf("Failed to save config: %v", err)
+	}
+
+	h.broadcastStatus()
+
+	if needsRestart {
+		h.PushAlert(NewAlert("system", "warning", "Port changed — restart required to take effect"))
+	}
+
+	log.Info("Configuration updated from client")
+}
+
+func configToPayload(cfg *config.Config) ConfigPayload {
+	return ConfigPayload{
+		Port:                   cfg.Port,
+		MaxSessions:            cfg.MaxSessions,
+		MaxAuthAttempts:        cfg.MaxAuthAttempts,
+		LockoutSeconds:         cfg.LockoutSeconds,
+		HeartbeatSeconds:       cfg.HeartbeatSeconds,
+		DisconnectGraceSeconds: cfg.DisconnectGraceSeconds,
+		AutoArmOnLock:          cfg.AutoArmOnLock,
+		InputThreshold:         cfg.InputThreshold,
+		Alarm:                  cfg.Alarm,
+		PinProtection: PinProtectionPayload{
+			Enabled: cfg.PinProtection.Enabled,
+			HasPin:  cfg.PinProtection.Pin != "",
+		},
+		EnabledSensors: cfg.EnabledSensors,
+	}
 }
 
 func (h *Hub) removeClient(client *Client) {
