@@ -144,6 +144,7 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
     margin-bottom: 12px;
 }
 .card-header h2 { margin-bottom: 0; }
+.card-header-actions { display: flex; gap: 8px; align-items: center; }
 .card h2 {
     font-size: 0.72rem;
     color: var(--text-secondary);
@@ -198,13 +199,24 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
 
 /* ── Sensors ── */
 .sensor-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     padding: 10px 0;
     border-bottom: 1px solid var(--border);
 }
 .sensor-item:last-child { border-bottom: none; }
+.sensor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+.sensor-detail {
+    padding: 8px 0 4px 16px;
+}
+.sensor-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
 .sensor-info {
     display: flex;
     align-items: center;
@@ -313,6 +325,10 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
     background: var(--danger);
     color: #fff;
 }
+.btn-arm:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 
 /* ── Footer ── */
 .app-footer {
@@ -354,6 +370,40 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
     cursor: pointer;
 }
 .disconnect-popup button:active { background: var(--border); }
+
+/* ── PIN Dialog ── */
+#pin-overlay { z-index: 900; }
+#pin-input {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 1.1rem;
+    text-align: center;
+    letter-spacing: 4px;
+}
+.pin-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.pin-actions button {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.btn-secondary {
+    background: transparent !important;
+    color: var(--text-secondary) !important;
+}
 
 #alert-overlay { z-index: 1000; }
 .alert-backdrop { background: rgba(180, 20, 20, 0.92) !important; }
