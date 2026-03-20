@@ -14,6 +14,7 @@
     var lastPongTime = null;
     var disconnectShown = false;
     var serverVersion = null;
+    var alarmTriggerSensor = null;
 
     var authScreen = document.getElementById('auth-screen');
     var dashScreen = document.getElementById('dashboard-screen');
@@ -184,12 +185,14 @@
 
             case 'alert':
                 if (msg.alert) {
+                    alarmTriggerSensor = msg.alert.sensor || null;
                     addAlert(msg.alert, msg.ts);
                     triggerAlarm(msg.alert.message);
                 }
                 break;
 
             case 'alarm_active':
+                if (msg.alert && msg.alert.sensor) alarmTriggerSensor = msg.alert.sensor;
                 triggerAlarm(msg.alert ? msg.alert.message : 'Security alarm triggered!');
                 break;
 
@@ -600,6 +603,23 @@
         stopAlarmSound();
         dismissAlarmIntervals();
         sendMsg({ type: 'dismiss_alarm' });
+        alarmTriggerSensor = null;
+    }
+
+    function dismissAlertPause() {
+        alertOverlay.classList.add('hidden');
+        stopAlarmSound();
+        dismissAlarmIntervals();
+        sendMsg({ type: 'dismiss_alarm_pause', sensor: alarmTriggerSensor, duration: 5 });
+        alarmTriggerSensor = null;
+    }
+
+    function dismissAlertDisable() {
+        alertOverlay.classList.add('hidden');
+        stopAlarmSound();
+        dismissAlarmIntervals();
+        sendMsg({ type: 'dismiss_alarm_disable', sensor: alarmTriggerSensor });
+        alarmTriggerSensor = null;
     }
 
     var alarmHarmonicOsc = null;
@@ -737,9 +757,16 @@
     document.getElementById('pin-input').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') submitPin();
     });
-    alertOverlay.addEventListener('click', dismissAlert);
     document.getElementById('dismiss-alert-btn').addEventListener('click', function(e) {
         e.stopPropagation();
         dismissAlert();
+    });
+    document.getElementById('dismiss-pause-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        dismissAlertPause();
+    });
+    document.getElementById('dismiss-disable-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        dismissAlertDisable();
     });
 })();

@@ -10,8 +10,10 @@ const (
 	MsgTypeConfigure    = "configure"
 	MsgTypePing         = "ping"
 	MsgTypeTestAlert    = "test_alert"
-	MsgTypeDismissAlarm  = "dismiss_alarm"
-	MsgTypeTriggerSensor = "trigger_sensor"
+	MsgTypeDismissAlarm         = "dismiss_alarm"
+	MsgTypeDismissAlarmPause    = "dismiss_alarm_pause"
+	MsgTypeDismissAlarmDisable  = "dismiss_alarm_disable"
+	MsgTypeTriggerSensor        = "trigger_sensor"
 )
 
 const (
@@ -27,12 +29,13 @@ const (
 
 // ClientMessage represents a message from the phone to the laptop.
 type ClientMessage struct {
-	Type    string            `json:"type"`
-	Key     string            `json:"key,omitempty"`
-	Token   string            `json:"token,omitempty"`
-	Pin     string            `json:"pin,omitempty"`
-	Sensors map[string]bool   `json:"sensors,omitempty"`
-	Sensor  string            `json:"sensor,omitempty"`
+	Type     string          `json:"type"`
+	Key      string          `json:"key,omitempty"`
+	Token    string          `json:"token,omitempty"`
+	Pin      string          `json:"pin,omitempty"`
+	Sensors  map[string]bool `json:"sensors,omitempty"`
+	Sensor   string          `json:"sensor,omitempty"`
+	Duration int             `json:"duration,omitempty"`
 }
 
 // ServerMessage represents a message from the laptop to the phone.
