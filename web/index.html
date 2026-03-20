@@ -65,6 +65,69 @@
             <div id="sensor-list"></div>
         </div>
 
+        <div class="card card-settings">
+            <div class="card-header">
+                <h2>Settings</h2>
+                <button id="toggle-settings-btn" class="btn-icon" type="button">Edit</button>
+            </div>
+            <div id="settings-panel" class="hidden">
+                <div class="setting-group">
+                    <label>Port <span class="setting-hint">(restart required)</span></label>
+                    <input type="number" id="cfg-port" min="0" max="65535">
+                </div>
+                <div class="setting-group">
+                    <label>Max Sessions</label>
+                    <input type="number" id="cfg-max-sessions" min="1" max="10">
+                </div>
+                <div class="setting-group">
+                    <label>Max Auth Attempts</label>
+                    <input type="number" id="cfg-max-auth-attempts" min="1" max="20">
+                </div>
+                <div class="setting-group">
+                    <label>Lockout (seconds)</label>
+                    <input type="number" id="cfg-lockout-seconds" min="10" max="600">
+                </div>
+                <div class="setting-group">
+                    <label>Heartbeat (seconds)</label>
+                    <input type="number" id="cfg-heartbeat-seconds" min="5" max="60">
+                </div>
+                <div class="setting-group">
+                    <label>Disconnect Grace (seconds)</label>
+                    <input type="number" id="cfg-disconnect-grace" min="5" max="120">
+                </div>
+                <div class="setting-group">
+                    <label>Input Sensitivity (seconds)</label>
+                    <input type="number" id="cfg-input-threshold" min="1" max="10">
+                </div>
+                <div class="setting-group">
+                    <label>Auto-arm on Screen Lock</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="cfg-auto-arm">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="setting-group">
+                    <label>PIN Protection</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="cfg-pin-enabled">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="pin-config-group" class="setting-group hidden">
+                    <label>PIN Code</label>
+                    <input type="password" id="cfg-pin" placeholder="Enter new PIN" maxlength="8" inputmode="numeric">
+                </div>
+                <div class="setting-group">
+                    <label>Alarm Escalation</label>
+                    <label class="toggle">
+                        <input type="checkbox" id="cfg-escalation">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <button id="save-settings-btn" type="button" class="btn-save">Save Settings</button>
+            </div>
+        </div>
+
         <div class="card card-alerts">
             <div class="card-header">
                 <h2>Alerts</h2>

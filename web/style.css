@@ -429,3 +429,13 @@ header h1 { font-size: 1.1rem; font-weight: 600; }
 .alert-popup button:active { background: rgba(255, 255, 255, 0.25); }
 .alert-dismiss-options { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 280px; margin: 0 auto; }
 .btn-dismiss-secondary { background: rgba(255, 255, 255, 0.06) !important; border-color: rgba(255, 255, 255, 0.18) !important; font-size: 0.82rem !important; }
+
+/* ── Settings ── */
+.setting-group { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.setting-group:last-of-type { border-bottom: none; }
+.setting-group label { font-size: 0.85rem; }
+.setting-group input[type="number"],
+.setting-group input[type="password"] { width: 90px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.85rem; text-align: right; }
+.setting-hint { font-size: 0.7rem; color: var(--text-secondary); }
+.btn-save { width: 100%; padding: 10px; margin-top: 12px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+.btn-save:active { opacity: 0.85; }

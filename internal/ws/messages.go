@@ -1,6 +1,10 @@
 package ws
 
-import "time"
+import (
+	"time"
+
+	"github.com/leavesafe/leavesafe/internal/config"
+)
 
 const (
 	MsgTypeAuth         = "auth"
@@ -14,6 +18,8 @@ const (
 	MsgTypeDismissAlarmPause    = "dismiss_alarm_pause"
 	MsgTypeDismissAlarmDisable  = "dismiss_alarm_disable"
 	MsgTypeTriggerSensor        = "trigger_sensor"
+	MsgTypeGetConfig            = "get_config"
+	MsgTypeUpdateConfig         = "update_config"
 )
 
 const (
@@ -25,6 +31,7 @@ const (
 	MsgTypeDisconnectWarning = "disconnect_warning"
 	MsgTypeAlarmActive       = "alarm_active"
 	MsgTypePinRequired       = "pin_required"
+	MsgTypeConfigData        = "config_data"
 )
 
 // ClientMessage represents a message from the phone to the laptop.
@@ -36,6 +43,7 @@ type ClientMessage struct {
 	Sensors  map[string]bool `json:"sensors,omitempty"`
 	Sensor   string          `json:"sensor,omitempty"`
 	Duration int             `json:"duration,omitempty"`
+	Config   *ConfigPayload  `json:"config,omitempty"`
 }
 
 // ServerMessage represents a message from the laptop to the phone.
@@ -50,6 +58,29 @@ type ServerMessage struct {
 	Armed             *bool                   `json:"armed,omitempty"`
 	Alert             *AlertData              `json:"alert,omitempty"`
 	Timestamp         int64                   `json:"ts,omitempty"`
+	Config            *ConfigPayload          `json:"config,omitempty"`
+}
+
+// ConfigPayload is a sanitized configuration for client exchange.
+type ConfigPayload struct {
+	Port                   int                  `json:"port"`
+	MaxSessions            int                  `json:"max_sessions"`
+	MaxAuthAttempts        int                  `json:"max_auth_attempts"`
+	LockoutSeconds         int                  `json:"lockout_seconds"`
+	HeartbeatSeconds       int                  `json:"heartbeat_seconds"`
+	DisconnectGraceSeconds int                  `json:"disconnect_grace_seconds"`
+	AutoArmOnLock          bool                 `json:"auto_arm_on_lock"`
+	InputThreshold         int                  `json:"input_threshold"`
+	Alarm                  config.AlarmConfig   `json:"alarm"`
+	PinProtection          PinProtectionPayload `json:"pin_protection"`
+	EnabledSensors         map[string]bool      `json:"enabled_sensors,omitempty"`
+}
+
+// PinProtectionPayload is the PIN config for client exchange.
+type PinProtectionPayload struct {
+	Enabled bool   `json:"enabled"`
+	HasPin  bool   `json:"has_pin,omitempty"`
+	Pin     string `json:"pin,omitempty"`
 }
 
 // SensorInfo describes an available sensor.
