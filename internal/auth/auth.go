@@ -103,6 +103,25 @@ func (m *Manager) RemoveSession(token string) {
 	delete(m.sessions, token)
 }
 
+// Regenerate creates a new pairing key and invalidates all sessions.
+// Returns the new formatted key.
+func (m *Manager) Regenerate() (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key, err := generatePairingKey()
+	if err != nil {
+		return "", fmt.Errorf("generate pairing key: %w", err)
+	}
+	m.pairingKey = key
+	m.sessions = make(map[string]bool)
+	m.attempts = 0
+	m.lockedUntil = time.Time{}
+
+	k := m.pairingKey
+	return fmt.Sprintf("%s-%s-%s-%s", k[0:4], k[4:8], k[8:12], k[12:16]), nil
+}
+
 // SessionCount returns the number of active sessions.
 func (m *Manager) SessionCount() int {
 	m.mu.Lock()

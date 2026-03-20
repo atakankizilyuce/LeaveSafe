@@ -96,6 +96,33 @@ func maxVolume() (float64, error) {
 	return float64(currentVolume), nil
 }
 
+func setVolume(level float64) (float64, error) {
+	deviceID, err := getDefaultOutputDevice()
+	if err != nil {
+		return 0, err
+	}
+
+	var currentVolume float32
+	dataSize := uint32(unsafe.Sizeof(currentVolume))
+	purego.SyscallN(audioObjectGetPropertyData,
+		uintptr(deviceID), uintptr(unsafe.Pointer(&volumeAddr)), 0, 0,
+		uintptr(unsafe.Pointer(&dataSize)),
+		uintptr(unsafe.Pointer(&currentVolume)),
+	)
+
+	vol := float32(math.Min(level, 1.0))
+	dataSize = uint32(unsafe.Sizeof(vol))
+	ret, _, _ := purego.SyscallN(audioObjectSetPropertyData,
+		uintptr(deviceID), uintptr(unsafe.Pointer(&volumeAddr)), 0, 0,
+		uintptr(dataSize), uintptr(unsafe.Pointer(&vol)),
+	)
+	if ret != 0 {
+		return float64(currentVolume), fmt.Errorf("set volume failed: %d", ret)
+	}
+
+	return float64(currentVolume), nil
+}
+
 func restoreVolume(level float64) error {
 	deviceID, err := getDefaultOutputDevice()
 	if err != nil {

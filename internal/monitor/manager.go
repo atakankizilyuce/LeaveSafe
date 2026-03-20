@@ -2,8 +2,9 @@ package monitor
 
 import (
 	"context"
-	"log"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Manager handles sensor registration, lifecycle, and alert routing.
@@ -29,8 +30,8 @@ func (m *Manager) Register(s Sensor) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sensors = append(m.sensors, s)
-	// Enable available sensors by default (except network which is opt-in)
-	if s.Available() && s.Name() != "network" {
+	// Enable available sensors by default (except network and input which are opt-in)
+	if s.Available() && s.Name() != "network" && s.Name() != "input" {
 		m.enabled[s.Name()] = true
 	}
 }
@@ -94,13 +95,13 @@ func (m *Manager) StartEnabled() {
 		alertCh := m.alertCh
 
 		go func(sensor Sensor) {
-			log.Printf("[INFO] Sensor started: %s", sensor.Name())
+			log.WithField("sensor", sensor.Name()).Info("Sensor started")
 			if err := sensor.Start(ctx, alertCh); err != nil {
 				if ctx.Err() == nil {
-					log.Printf("[ERROR] Sensor %s error: %v", sensor.Name(), err)
+					log.WithField("sensor", sensor.Name()).Errorf("Sensor error: %v", err)
 				}
 			}
-			log.Printf("[INFO] Sensor stopped: %s", sensor.Name())
+			log.WithField("sensor", sensor.Name()).Info("Sensor stopped")
 		}(s)
 	}
 }
