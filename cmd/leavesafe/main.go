@@ -188,7 +188,7 @@ func main() {
 	}
 
 	sensorMgr := monitor.NewManager()
-	registerSensors(sensorMgr)
+	registerSensors(sensorMgr, cfg)
 
 	hub := ws.NewHub(authMgr, sensorMgr, version)
 
@@ -463,13 +463,13 @@ func runStatusTicker(ctx context.Context, sb *statusBar) {
 	}
 }
 
-func registerSensors(mgr *monitor.Manager) {
+func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
 	mgr.Register(monitor.NewPowerSensor())
 	mgr.Register(monitor.NewLidSensor())
 	mgr.Register(monitor.NewUSBSensor())
 	mgr.Register(monitor.NewScreenSensor())
 	mgr.Register(monitor.NewNetworkSensor())
-	mgr.Register(monitor.NewInputSensor())
+	mgr.Register(monitor.NewInputSensorWithThreshold(cfg.InputThreshold))
 
 	sensors := mgr.Sensors()
 	available := 0

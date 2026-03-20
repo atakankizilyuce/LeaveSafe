@@ -35,6 +35,7 @@ type Config struct {
 	HeartbeatSeconds       int            `json:"heartbeat_seconds"`
 	DisconnectGraceSeconds int            `json:"disconnect_grace_seconds"`
 	AutoArmOnLock          bool           `json:"auto_arm_on_lock"`
+	InputThreshold         int            `json:"input_threshold"`
 	Alarm                  AlarmConfig    `json:"alarm"`
 	PinProtection          PinProtection  `json:"pin_protection"`
 	EnabledSensors         map[string]bool `json:"enabled_sensors,omitempty"`
@@ -50,6 +51,7 @@ func Default() *Config {
 		HeartbeatSeconds:       15,
 		DisconnectGraceSeconds: 30,
 		AutoArmOnLock:          false,
+		InputThreshold:         3,
 		Alarm: AlarmConfig{
 			EscalationEnabled: false,
 			Levels: []AlarmLevel{

@@ -20,22 +20,30 @@ type lastInputInfoT struct {
 }
 
 // InputSensor detects mouse/keyboard activity on Windows.
-type InputSensor struct{}
+type InputSensor struct {
+	threshold int // consecutive detections needed before alerting
+}
 
-func NewInputSensor() *InputSensor { return &InputSensor{} }
+func NewInputSensor() *InputSensor { return &InputSensor{threshold: 3} }
 
-func (s *InputSensor) Name() string        { return "input" }
-func (s *InputSensor) DisplayName() string  { return "Mouse/Keyboard" }
+func NewInputSensorWithThreshold(n int) *InputSensor {
+	if n < 1 {
+		n = 1
+	}
+	return &InputSensor{threshold: n}
+}
+
+func (s *InputSensor) Name() string       { return "input" }
+func (s *InputSensor) DisplayName() string { return "Mouse/Keyboard" }
 
 func (s *InputSensor) Available() bool {
 	return getLastInputInfo.Find() == nil
 }
 
 func (s *InputSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	// Record the last input time at arm-time so we only detect NEW input
 	baseline := getLastInput()
 
-	// Ignore input during the first 5 seconds (grace period after arming)
+	// Grace period after arming
 	select {
 	case <-ctx.Done():
 		return nil
@@ -45,25 +53,37 @@ func (s *InputSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	consecutiveCount := 0
 	alerted := false
+	idleCount := 0
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
 			current := getLastInput()
-			if current != baseline && !alerted {
-				alerted = true
-				alerts <- Alert{
-					Sensor:  "input",
-					Level:   AlertCritical,
-					Message: "Mouse or keyboard activity detected!",
-				}
-			}
-			// Update baseline so we can detect subsequent activity after dismissal
-			if alerted && current != baseline {
+			if current != baseline {
 				baseline = current
-				alerted = false
+				idleCount = 0
+				if !alerted {
+					consecutiveCount++
+					if consecutiveCount >= s.threshold {
+						alerted = true
+						consecutiveCount = 0
+						alerts <- Alert{
+							Sensor:  "input",
+							Level:   AlertCritical,
+							Message: "Sustained mouse or keyboard activity detected!",
+						}
+					}
+				}
+			} else {
+				consecutiveCount = 0
+				idleCount++
+				if alerted && idleCount >= 5 {
+					alerted = false
+				}
 			}
 		}
 	}
