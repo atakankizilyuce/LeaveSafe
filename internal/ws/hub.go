@@ -3,12 +3,14 @@ package ws
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 
 	"github.com/leavesafe/leavesafe/internal/auth"
+	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"nhooyr.io/websocket"
 )
@@ -25,20 +27,57 @@ type Hub struct {
 	authManager     *auth.Manager
 	sensorMgr       *monitor.Manager
 	armed           bool
+	version         string
 	onAllDisconnect func()
 	onClientChange  func(count int, armed bool)
 	onAlarmTrigger  func()
 	onAlarmDismiss  func()
+	autoArmOnLock   bool
+	pinEnabled      bool
+	pinCode         string
 	alertChan       chan ServerMessage
+	eventLog        *eventlog.Logger
 }
 
 // NewHub creates a new WebSocket hub.
-func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager) *Hub {
+func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *Hub {
 	return &Hub{
 		clients:     make(map[*Client]bool),
 		authManager: authMgr,
 		sensorMgr:   sensorMgr,
+		version:     version,
 		alertChan:   make(chan ServerMessage, 100),
+	}
+}
+
+// SetPinProtection configures optional PIN-based disarm protection.
+func (h *Hub) SetPinProtection(enabled bool, pin string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.pinEnabled = enabled
+	h.pinCode = pin
+}
+
+// SetAutoArmOnLock enables automatic arm/disarm on screen lock/unlock.
+func (h *Hub) SetAutoArmOnLock(enabled bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.autoArmOnLock = enabled
+}
+
+// SetEventLogger sets the event logger for recording security events.
+func (h *Hub) SetEventLogger(el *eventlog.Logger) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.eventLog = el
+}
+
+func (h *Hub) logEvent(evt eventlog.Event) {
+	h.mu.RLock()
+	el := h.eventLog
+	h.mu.RUnlock()
+	if el != nil {
+		el.Log(evt)
 	}
 }
 
@@ -93,6 +132,7 @@ func (h *Hub) Arm() {
 	h.mu.Unlock()
 	h.sensorMgr.StartEnabled()
 	h.broadcastStatus()
+	h.logEvent(eventlog.Event{Type: eventlog.EventArm, Message: "System armed"})
 }
 
 // Disarm deactivates monitoring and stops any active alarm.
@@ -103,6 +143,7 @@ func (h *Hub) Disarm() {
 	h.sensorMgr.StopAll()
 	h.fireAlarmDismiss()
 	h.broadcastStatus()
+	h.logEvent(eventlog.Event{Type: eventlog.EventDisarm, Message: "System disarmed"})
 }
 
 // HandleConnection handles a new WebSocket connection.
@@ -165,7 +206,7 @@ func (h *Hub) TriggerSensorTest(sensorName string) bool {
 		h.PushAlert(NewAlarmActive(sensorName, message))
 	}
 
-	log.Printf("[TEST] Manual sensor trigger: %s", sensorName)
+	log.WithField("sensor", sensorName).Info("Manual sensor trigger")
 	return true
 }
 
@@ -177,13 +218,32 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case alert := <-alertCh:
+			// Handle auto-arm on screen lock/unlock
+			h.mu.RLock()
+			autoArm := h.autoArmOnLock
+			h.mu.RUnlock()
+
+			if autoArm && alert.Sensor == "screen" {
+				if strings.Contains(alert.Message, "off") && !h.IsArmed() && h.ClientCount() > 0 {
+					log.Info("Auto-arming: screen locked")
+					h.Arm()
+					continue
+				}
+				if strings.Contains(alert.Message, "on") && h.IsArmed() && h.ClientCount() > 0 {
+					log.Info("Auto-disarming: screen unlocked")
+					h.Disarm()
+					continue
+				}
+			}
+
 			if !h.IsArmed() {
 				continue
 			}
-			log.Printf("[ALERT] %s — %s", strings.ToUpper(alert.Sensor), alert.Message)
+			log.WithFields(log.Fields{"sensor": strings.ToUpper(alert.Sensor)}).Warn(alert.Message)
 			h.PushAlert(NewAlert(alert.Sensor, string(alert.Level), alert.Message))
 			h.fireAlarmTrigger()
 			h.PushAlert(NewAlarmActive(alert.Sensor, alert.Message))
+			h.logEvent(eventlog.Event{Type: eventlog.EventAlert, Sensor: alert.Sensor, Message: alert.Message})
 		}
 	}
 }
@@ -250,19 +310,35 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 		case MsgTypeArm:
 			h.Arm()
 		case MsgTypeDisarm:
+			h.mu.RLock()
+			pinRequired := h.pinEnabled && h.pinCode != ""
+			h.mu.RUnlock()
+			if pinRequired {
+				client.send(ServerMessage{Type: MsgTypePinRequired})
+				return
+			}
+			h.Disarm()
+		case MsgTypeDisarmPin:
+			h.mu.RLock()
+			pinOK := !h.pinEnabled || h.pinCode == "" || msg.Pin == h.pinCode
+			h.mu.RUnlock()
+			if !pinOK {
+				client.send(ServerMessage{Type: MsgTypeAuthFail, Reason: "invalid PIN"})
+				return
+			}
 			h.Disarm()
 		case MsgTypeConfigure:
 			h.handleConfigure(msg)
 		case MsgTypeTestAlert:
 			h.PushAlert(NewAlert("test", "warning", "Test alert triggered"))
-			log.Println("[TEST] Test alert triggered from client")
+			log.Info("Test alert triggered from client")
 		case MsgTypeTriggerSensor:
 			if msg.Sensor != "" {
 				h.TriggerSensorTest(msg.Sensor)
 			}
 		case MsgTypeDismissAlarm:
 			h.fireAlarmDismiss()
-			log.Println("[ALARM] Alarm dismissed from client")
+			log.Info("Alarm dismissed from client")
 		}
 	}
 }
@@ -289,7 +365,8 @@ func (h *Hub) handleAuth(ctx context.Context, client *Client, msg ClientMessage)
 	}
 
 	infos := h.GetSensorInfos()
-	client.send(NewAuthOK(token, infos))
+	client.send(NewAuthOK(token, infos, h.version))
+	h.logEvent(eventlog.Event{Type: eventlog.EventConnect, Message: "Client authenticated"})
 }
 
 func (h *Hub) handleConfigure(msg ClientMessage) {
@@ -324,8 +401,10 @@ func (h *Hub) removeClient(client *Client) {
 		changeCb(clientCount, armed)
 	}
 
+	h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Client disconnected"})
+
 	if armed && clientCount == 0 && disconnectCb != nil {
-		log.Println("[WARN] All clients disconnected while armed - triggering alarm")
+		log.Warn("All clients disconnected while armed - triggering alarm")
 		go func() {
 			time.Sleep(disconnectGracePeriod)
 			h.mu.RLock()

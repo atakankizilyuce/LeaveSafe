@@ -6,6 +6,7 @@ const (
 	MsgTypeAuth         = "auth"
 	MsgTypeArm          = "arm"
 	MsgTypeDisarm       = "disarm"
+	MsgTypeDisarmPin    = "disarm_with_pin"
 	MsgTypeConfigure    = "configure"
 	MsgTypePing         = "ping"
 	MsgTypeTestAlert    = "test_alert"
@@ -21,6 +22,7 @@ const (
 	MsgTypePong              = "pong"
 	MsgTypeDisconnectWarning = "disconnect_warning"
 	MsgTypeAlarmActive       = "alarm_active"
+	MsgTypePinRequired       = "pin_required"
 )
 
 // ClientMessage represents a message from the phone to the laptop.
@@ -28,6 +30,7 @@ type ClientMessage struct {
 	Type    string            `json:"type"`
 	Key     string            `json:"key,omitempty"`
 	Token   string            `json:"token,omitempty"`
+	Pin     string            `json:"pin,omitempty"`
 	Sensors map[string]bool   `json:"sensors,omitempty"`
 	Sensor  string            `json:"sensor,omitempty"`
 }
@@ -36,6 +39,7 @@ type ClientMessage struct {
 type ServerMessage struct {
 	Type              string                  `json:"type"`
 	Token             string                  `json:"token,omitempty"`
+	Version           string                  `json:"version,omitempty"`
 	Reason            string                  `json:"reason,omitempty"`
 	RemainingAttempts int                     `json:"remaining_attempts,omitempty"`
 	Sensors           []SensorInfo            `json:"sensors,omitempty"`
@@ -80,10 +84,11 @@ func NewAlert(sensor, level, message string) ServerMessage {
 }
 
 // NewAuthOK creates an auth success response.
-func NewAuthOK(token string, sensors []SensorInfo) ServerMessage {
+func NewAuthOK(token string, sensors []SensorInfo, version string) ServerMessage {
 	return ServerMessage{
 		Type:    MsgTypeAuthOK,
 		Token:   token,
+		Version: version,
 		Sensors: sensors,
 	}
 }

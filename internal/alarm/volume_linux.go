@@ -107,6 +107,31 @@ func maxVolume() (float64, error) {
 	return prevLevel, nil
 }
 
+func setVolume(level float64) (float64, error) {
+	elem, cleanup, err := openMasterMixer()
+	if err != nil {
+		return 0, err
+	}
+	defer cleanup()
+
+	var minVol, maxVol int64
+	purego.SyscallN(sndMixerSelemGetPlaybackVolumeRange, elem,
+		uintptr(unsafe.Pointer(&minVol)), uintptr(unsafe.Pointer(&maxVol)))
+	if maxVol <= minVol {
+		return 0, fmt.Errorf("invalid volume range")
+	}
+
+	var currentVol int64
+	purego.SyscallN(sndMixerSelemGetPlaybackVolume, elem, 0, uintptr(unsafe.Pointer(&currentVol)))
+	prevLevel := float64(currentVol-minVol) / float64(maxVol-minVol)
+
+	targetVol := int64(level*float64(maxVol-minVol)) + minVol
+	purego.SyscallN(sndMixerSelemSetPlaybackVolumeAll, elem, uintptr(targetVol))
+	purego.SyscallN(sndMixerSelemSetPlaybackSwitchAll, elem, 1)
+
+	return prevLevel, nil
+}
+
 func restoreVolume(level float64) error {
 	elem, cleanup, err := openMasterMixer()
 	if err != nil {

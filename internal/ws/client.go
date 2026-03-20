@@ -3,9 +3,9 @@ package ws
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"nhooyr.io/websocket"
 )
 
@@ -23,7 +23,7 @@ type Client struct {
 func (c *Client) send(msg ServerMessage) {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("[ERROR] marshal message: %v", err)
+		log.Errorf("marshal message: %v", err)
 		return
 	}
 
@@ -31,6 +31,6 @@ func (c *Client) send(msg ServerMessage) {
 	defer cancel()
 
 	if err := c.conn.Write(ctx, websocket.MessageText, data); err != nil {
-		log.Printf("[WARN] write to client: %v", err)
+		log.Warnf("write to client: %v", err)
 	}
 }

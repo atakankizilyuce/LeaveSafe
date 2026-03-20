@@ -3,11 +3,14 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+
+	log "github.com/sirupsen/logrus"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,11 +22,15 @@ import (
 
 	"github.com/leavesafe/leavesafe/internal/alarm"
 	"github.com/leavesafe/leavesafe/internal/auth"
+	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/qr"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/ws"
 )
+
+var version = "dev"
 
 const (
 	cReset  = "\033[0m"
@@ -159,10 +166,21 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 }
 
 func main() {
-	log.SetFlags(log.Ltime | log.Lshortfile)
+	devMode := flag.Bool("dev", false, "serve web assets from filesystem for live reload")
+	flag.Parse()
+
+	log.SetFormatter(&log.TextFormatter{
+		TimestampFormat: "15:04:05",
+		FullTimestamp:   true,
+	})
 
 	maximizeConsole()
 	time.Sleep(200 * time.Millisecond)
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Warnf("Failed to load config, using defaults: %v", err)
+	}
 
 	authMgr, err := auth.NewManager()
 	if err != nil {
@@ -172,14 +190,25 @@ func main() {
 	sensorMgr := monitor.NewManager()
 	registerSensors(sensorMgr)
 
-	hub := ws.NewHub(authMgr, sensorMgr)
+	hub := ws.NewHub(authMgr, sensorMgr, version)
 
-	port := 0
+	evLogPath := filepath.Join(config.ConfigDir(), "events.jsonl")
+	if err := os.MkdirAll(config.ConfigDir(), 0o700); err != nil {
+		log.Warnf("Failed to create config dir: %v", err)
+	}
+	if evLog, err := eventlog.New(evLogPath); err != nil {
+		log.Warnf("Failed to open event log: %v", err)
+	} else {
+		hub.SetEventLogger(evLog)
+		defer evLog.Close()
+	}
+
+	port := cfg.Port
 	if v := os.Getenv("PORT"); v != "" {
 		port, _ = strconv.Atoi(v)
 	}
 
-	srv := server.New(server.Config{Hub: hub, Port: port})
+	srv := server.New(server.Config{Hub: hub, Port: port, DevMode: *devMode})
 	if err := srv.Listen(); err != nil {
 		log.Fatalf("Failed to bind port: %v", err)
 	}
@@ -188,7 +217,15 @@ func main() {
 
 	log.SetOutput(&logWriter{sb: sb})
 
-	localAlarm := alarm.New()
+	localAlarm := alarm.New(cfg.Alarm)
+
+	hub.SetPinProtection(cfg.PinProtection.Enabled, cfg.PinProtection.Pin)
+	hub.SetAutoArmOnLock(cfg.AutoArmOnLock)
+	if cfg.AutoArmOnLock {
+		sensorMgr.Enable("screen")
+		sensorMgr.StartEnabled()
+		log.Info("Auto-arm on screen lock enabled — screen sensor started")
+	}
 
 	hub.SetAlarmTriggerCallback(func() {
 		localAlarm.Start()
@@ -197,7 +234,7 @@ func main() {
 		localAlarm.Stop()
 	})
 	hub.SetDisconnectCallback(func() {
-		log.Println("[ALARM] All clients disconnected while armed — local alarm triggered.")
+		log.Warn("All clients disconnected while armed — local alarm triggered")
 		localAlarm.Start()
 	})
 	hub.SetClientChangeCallback(func(_ int, _ bool) {
@@ -210,7 +247,7 @@ func main() {
 	go hub.RunAlertDispatcher(ctx)
 	go hub.RunHeartbeat(ctx)
 	go runStatusTicker(ctx, sb)
-	go runConsole(hub, sb, localAlarm)
+	go runConsole(hub, sb, localAlarm, authMgr)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -255,7 +292,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		fmt.Fprintf(out, "%s%s%s\n", cCyan, line, cReset)
 		row++
 	}
-	fmt.Fprintf(out, "  %sv1.0%s  %sDevice Security Monitor%s\n", cBold, cReset, cDim, cReset)
+	fmt.Fprintf(out, "  %s%s%s  %sDevice Security Monitor%s\n", cBold, version, cReset, cDim, cReset)
 	row++
 
 	sep := "  " + strings.Repeat("─", termW-4)
@@ -340,7 +377,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s test, trigger <sensor>, stop, help  %s│%s  %sCtrl+C to quit%s\n",
+	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s test, trigger <sensor>, stop, history, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
@@ -356,7 +393,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	return sb
 }
 
-func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm) {
+func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *auth.Manager) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -378,8 +415,34 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm) {
 			} else {
 				sb.writeLine("  No alarm is currently active")
 			}
+		case line == "history":
+			evts, err := eventlog.ReadLast(filepath.Join(config.ConfigDir(), "events.jsonl"), 20)
+			if err != nil {
+				sb.writeLine("  No event history available")
+			} else if len(evts) == 0 {
+				sb.writeLine("  No events recorded yet")
+			} else {
+				for _, ev := range evts {
+					ts := ev.Timestamp.Format("15:04:05")
+					if ev.Sensor != "" {
+						sb.writeLine("  %s [%s] %s — %s", ts, ev.Type, ev.Sensor, ev.Message)
+					} else {
+						sb.writeLine("  %s [%s] %s", ts, ev.Type, ev.Message)
+					}
+				}
+			}
+		case line == "rotate-key":
+			newKey, err := authMgr.Regenerate()
+			if err != nil {
+				sb.writeLine("  %s[ERROR]%s Failed to rotate key: %v", cRed, cReset, err)
+			} else {
+				sb.key = newKey
+				sb.refresh()
+				sb.writeLine("  %s[KEY]%s Pairing key rotated. New key: %s%s%s", cGreen, cReset, cBold, newKey, cReset)
+				sb.writeLine("  %s[KEY]%s All existing sessions invalidated.", cYellow, cReset)
+			}
 		case line == "help":
-			sb.writeLine("  Commands: test, trigger <sensor>, stop, help")
+			sb.writeLine("  Commands: test, trigger <sensor>, stop, history, rotate-key, help")
 		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)
@@ -406,17 +469,18 @@ func registerSensors(mgr *monitor.Manager) {
 	mgr.Register(monitor.NewUSBSensor())
 	mgr.Register(monitor.NewScreenSensor())
 	mgr.Register(monitor.NewNetworkSensor())
+	mgr.Register(monitor.NewInputSensor())
 
 	sensors := mgr.Sensors()
 	available := 0
 	for _, s := range sensors {
 		if s.Available() {
 			available++
-			log.Printf("[INFO] Sensor available: %s (%s)", s.Name(), s.DisplayName())
+			log.WithFields(log.Fields{"sensor": s.Name(), "display": s.DisplayName()}).Info("Sensor available")
 		} else {
-			log.Printf("[INFO] Sensor unavailable: %s (%s)", s.Name(), s.DisplayName())
+			log.WithFields(log.Fields{"sensor": s.Name(), "display": s.DisplayName()}).Info("Sensor unavailable")
 		}
 	}
-	log.Printf("[INFO] %d/%d sensors available", available, len(sensors))
+	log.Infof("%d/%d sensors available", available, len(sensors))
 }
 

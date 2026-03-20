@@ -137,6 +137,34 @@ func maxVolume() (float64, error) {
 	return float64(prevLevel), nil
 }
 
+func setVolume(level float64) (float64, error) {
+	volume, cleanup, err := acquireEndpointVolume()
+	if err != nil {
+		return 0, err
+	}
+	defer cleanup()
+
+	var prevLevel float32
+	hr, _, _ := syscall.SyscallN(comVtableMethod(volume, 9),
+		uintptr(volume), uintptr(unsafe.Pointer(&prevLevel)))
+	if hr != 0 {
+		prevLevel = 0
+	}
+
+	target := float32(level)
+	var emptyGUID comGUID
+	hr, _, _ = syscall.SyscallN(comVtableMethod(volume, 7),
+		uintptr(volume),
+		uintptr(math.Float32bits(target)),
+		uintptr(unsafe.Pointer(&emptyGUID)),
+	)
+	if hr != 0 {
+		return float64(prevLevel), fmt.Errorf("SetMasterVolumeLevelScalar failed: 0x%x", hr)
+	}
+
+	return float64(prevLevel), nil
+}
+
 func restoreVolume(level float64) error {
 	volume, cleanup, err := acquireEndpointVolume()
 	if err != nil {

@@ -35,13 +35,16 @@ func TestNewAuthOK(t *testing.T) {
 		{Name: "power", DisplayName: "Power/Charger", Available: true, Enabled: true},
 		{Name: "network", DisplayName: "IP Address Change", Available: true, Enabled: false},
 	}
-	msg := NewAuthOK("mytoken123", sensors)
+	msg := NewAuthOK("mytoken123", sensors, "1.0.0")
 
 	if msg.Type != MsgTypeAuthOK {
 		t.Errorf("Type = %q, want %q", msg.Type, MsgTypeAuthOK)
 	}
 	if msg.Token != "mytoken123" {
 		t.Errorf("Token = %q, want %q", msg.Token, "mytoken123")
+	}
+	if msg.Version != "1.0.0" {
+		t.Errorf("Version = %q, want %q", msg.Version, "1.0.0")
 	}
 	if len(msg.Sensors) != 2 {
 		t.Errorf("Sensors length = %d, want 2", len(msg.Sensors))
@@ -52,7 +55,7 @@ func TestNewAuthOK(t *testing.T) {
 }
 
 func TestNewAuthOK_EmptySensors(t *testing.T) {
-	msg := NewAuthOK("tok", nil)
+	msg := NewAuthOK("tok", nil, "")
 	if msg.Type != MsgTypeAuthOK {
 		t.Errorf("Type = %q, want %q", msg.Type, MsgTypeAuthOK)
 	}

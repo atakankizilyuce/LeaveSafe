@@ -3,11 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/leavesafe/leavesafe/internal/ws"
 	"github.com/leavesafe/leavesafe/web"
@@ -16,8 +17,9 @@ import (
 
 // Config holds server configuration.
 type Config struct {
-	Hub  *ws.Hub
-	Port int // 0 means pick a free port automatically
+	Hub     *ws.Hub
+	Port    int  // 0 means pick a free port automatically
+	DevMode bool // serve web assets from filesystem instead of embedded
 }
 
 // Server is the HTTP server that serves the web UI and handles WebSocket connections.
@@ -36,7 +38,12 @@ func New(cfg Config) *Server {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(web.StaticFiles())))
+	if cfg.DevMode {
+		log.Info("Dev mode: serving web assets from filesystem (web/)")
+		mux.Handle("/", http.FileServer(http.Dir("web")))
+	} else {
+		mux.Handle("/", http.FileServer(http.FS(web.StaticFiles())))
+	}
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	s.httpServer = &http.Server{
@@ -52,7 +59,7 @@ func New(cfg Config) *Server {
 func (s *Server) Listen() error {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil && s.port != 0 {
-		log.Printf("[WARN] Port %d busy, picking a free port", s.port)
+		log.Warnf("Port %d busy, picking a free port", s.port)
 		ln, err = net.Listen("tcp", ":0")
 	}
 	if err != nil {
@@ -60,7 +67,7 @@ func (s *Server) Listen() error {
 	}
 	s.port = ln.Addr().(*net.TCPAddr).Port
 	s.listener = ln
-	log.Printf("[INFO] HTTP server bound to port %d", s.port)
+	log.Infof("HTTP server bound to port %d", s.port)
 	return nil
 }
 
@@ -101,7 +108,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		InsecureSkipVerify: true, // Allow connections from any origin (same LAN)
 	})
 	if err != nil {
-		log.Printf("[ERROR] WebSocket accept: %v", err)
+		log.Errorf("WebSocket accept: %v", err)
 		return
 	}
 
