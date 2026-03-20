@@ -13,6 +13,7 @@
     var sensors = {};
     var lastPongTime = null;
     var disconnectShown = false;
+    var serverVersion = null;
 
     var authScreen = document.getElementById('auth-screen');
     var dashScreen = document.getElementById('dashboard-screen');
@@ -148,6 +149,7 @@
         switch (msg.type) {
             case 'auth_ok':
                 token = msg.token;
+                serverVersion = msg.version || null;
                 sensors = {};
                 if (msg.sensors) {
                     msg.sensors.forEach(function(s) {
@@ -189,6 +191,10 @@
 
             case 'alarm_active':
                 triggerAlarm(msg.alert ? msg.alert.message : 'Security alarm triggered!');
+                break;
+
+            case 'pin_required':
+                showPinDialog();
                 break;
 
             case 'pong':
@@ -264,10 +270,15 @@
     function showDashboard() {
         authScreen.classList.add('hidden');
         dashScreen.classList.remove('hidden');
+        if (serverVersion) {
+            var footer = document.querySelector('.app-footer span');
+            if (footer) footer.textContent = 'LeaveSafe ' + serverVersion;
+        }
         connectedAt = Date.now();
         lastPongTime = Date.now();
         setConnectionState('connected');
         renderSensors();
+        loadAlertHistory();
         startUptime();
         updateLastCheck();
         if (window.history.replaceState) {
@@ -298,24 +309,37 @@
             else if (s.status === 'alert') dotClass += 'alert';
             else dotClass += 'ok';
 
+            var desc = sensorDescriptions[name] || '';
             div.innerHTML =
-                '<div class="sensor-info">' +
-                    '<span class="' + dotClass + '"></span>' +
-                    '<div>' +
-                        '<div class="sensor-name">' + escapeHtml(s.display_name || s.name) + '</div>' +
-                        '<div class="sensor-status">' + (s.status || (s.available === false ? 'Unavailable' : 'OK')) + '</div>' +
+                '<div class="sensor-header" data-sensor="' + escapeHtml(name) + '">' +
+                    '<div class="sensor-info">' +
+                        '<span class="' + dotClass + '"></span>' +
+                        '<div>' +
+                            '<div class="sensor-name">' + escapeHtml(s.display_name || s.name) + '</div>' +
+                            '<div class="sensor-status">' + (s.status || (s.available === false ? 'Unavailable' : 'OK')) + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="sensor-actions">' +
+                        '<button class="btn-trigger-sensor" data-sensor="' + escapeHtml(name) + '" ' +
+                            (s.available === false ? 'disabled' : '') + '>Test</button>' +
+                        '<label class="toggle">' +
+                            '<input type="checkbox" ' + (s.enabled ? 'checked' : '') + ' ' + (s.available === false ? 'disabled' : '') + ' data-sensor="' + escapeHtml(name) + '">' +
+                            '<span class="slider"></span>' +
+                        '</label>' +
                     '</div>' +
                 '</div>' +
-                '<div class="sensor-actions">' +
-                    '<button class="btn-trigger-sensor" data-sensor="' + escapeHtml(name) + '" ' +
-                        (s.available === false ? 'disabled' : '') + '>Test</button>' +
-                    '<label class="toggle">' +
-                        '<input type="checkbox" ' + (s.enabled ? 'checked' : '') + ' ' + (s.available === false ? 'disabled' : '') + ' data-sensor="' + escapeHtml(name) + '">' +
-                        '<span class="slider"></span>' +
-                    '</label>' +
-                '</div>';
+                (desc ? '<div class="sensor-detail hidden" id="detail-' + escapeHtml(name) + '">' +
+                    '<p class="sensor-desc">' + escapeHtml(desc) + '</p>' +
+                '</div>' : '');
             sensorList.appendChild(div);
         }
+        sensorList.querySelectorAll('.sensor-header').forEach(function(header) {
+            header.addEventListener('click', function(e) {
+                if (e.target.closest('.sensor-actions')) return;
+                var detail = document.getElementById('detail-' + this.dataset.sensor);
+                if (detail) detail.classList.toggle('hidden');
+            });
+        });
         sensorList.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
             cb.addEventListener('change', function() {
                 var cfg = {};
@@ -330,28 +354,165 @@
         });
     }
 
+    var sensorDescriptions = {
+        'power': 'Monitors AC power/charger connection. Alerts when charger is disconnected or reconnected.',
+        'lid': 'Monitors laptop lid state. Alerts when the lid is opened or closed.',
+        'usb': 'Monitors USB port activity. Alerts when a USB device is plugged in or removed.',
+        'screen': 'Monitors screen/display state. Alerts when screen is turned on or off.',
+        'network': 'Monitors network interfaces. Alerts when IP address changes (opt-in).',
+        'input': 'Monitors mouse and keyboard activity. Alerts when input is detected while armed (opt-in).'
+    };
+
+    var ALERT_STORAGE_KEY = 'leavesafe_alerts';
+    var MAX_STORED_ALERTS = 200;
+
+    function loadAlertHistory() {
+        try {
+            var data = localStorage.getItem(ALERT_STORAGE_KEY);
+            if (!data) return;
+            var alerts = JSON.parse(data);
+            if (!Array.isArray(alerts)) return;
+            var placeholder = alertFeed.querySelector('.muted');
+            if (placeholder && alerts.length > 0) placeholder.remove();
+            for (var i = alerts.length - 1; i >= 0; i--) {
+                var a = alerts[i];
+                renderAlertItem(a.message, a.level, a.time);
+            }
+        } catch(e) {}
+    }
+
+    function saveAlertToHistory(alert, timeStr) {
+        try {
+            var data = localStorage.getItem(ALERT_STORAGE_KEY);
+            var alerts = data ? JSON.parse(data) : [];
+            if (!Array.isArray(alerts)) alerts = [];
+            alerts.unshift({ message: alert.message, level: alert.level, sensor: alert.sensor, time: timeStr });
+            if (alerts.length > MAX_STORED_ALERTS) alerts = alerts.slice(0, MAX_STORED_ALERTS);
+            localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(alerts));
+        } catch(e) {}
+    }
+
+    function clearAlertHistory() {
+        try { localStorage.removeItem(ALERT_STORAGE_KEY); } catch(e) {}
+        alertFeed.innerHTML = '<p class="muted">No alerts yet</p>';
+    }
+
+    function renderAlertItem(message, level, timeStr) {
+        var div = document.createElement('div');
+        div.className = 'alert-item';
+        div.innerHTML =
+            '<div class="alert-msg">' +
+                '<span class="alert-dot ' + escapeHtml(level) + '"></span>' +
+                '<span class="alert-' + escapeHtml(level) + '">' + escapeHtml(message) + '</span>' +
+            '</div>' +
+            '<span class="alert-time">' + escapeHtml(timeStr) + '</span>';
+        alertFeed.appendChild(div);
+    }
+
     function addAlert(alert, ts) {
         var placeholder = alertFeed.querySelector('.muted');
         if (placeholder) placeholder.remove();
 
+        var timeStr = ts ? new Date(ts * 1000).toLocaleTimeString() : new Date().toLocaleTimeString();
         var div = document.createElement('div');
         div.className = 'alert-item';
-        var time = ts ? new Date(ts * 1000).toLocaleTimeString() : new Date().toLocaleTimeString();
         div.innerHTML =
             '<div class="alert-msg">' +
-                '<span class="alert-dot ' + alert.level + '"></span>' +
-                '<span class="alert-' + alert.level + '">' + escapeHtml(alert.message) + '</span>' +
+                '<span class="alert-dot ' + escapeHtml(alert.level) + '"></span>' +
+                '<span class="alert-' + escapeHtml(alert.level) + '">' + escapeHtml(alert.message) + '</span>' +
             '</div>' +
-            '<span class="alert-time">' + time + '</span>';
+            '<span class="alert-time">' + escapeHtml(timeStr) + '</span>';
         alertFeed.insertBefore(div, alertFeed.firstChild);
 
         while (alertFeed.children.length > 50) {
             alertFeed.removeChild(alertFeed.lastChild);
         }
+
+        saveAlertToHistory(alert, timeStr);
     }
 
+    var armCountdownInterval = null;
+    var disarmPressTimer = null;
+    var DISARM_HOLD_MS = 1000;
+    var ARM_COUNTDOWN_SECS = 3;
+
     function toggleArm() {
-        sendMsg({ type: armed ? 'disarm' : 'arm' });
+        if (!armed) {
+            startArmCountdown();
+        }
+    }
+
+    function startArmCountdown() {
+        if (armCountdownInterval) return;
+        var remaining = ARM_COUNTDOWN_SECS;
+        armBtn.textContent = 'ARMING... ' + remaining;
+        armBtn.disabled = true;
+        armCountdownInterval = setInterval(function() {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(armCountdownInterval);
+                armCountdownInterval = null;
+                armBtn.disabled = false;
+                sendMsg({ type: 'arm' });
+            } else {
+                armBtn.textContent = 'ARMING... ' + remaining;
+            }
+        }, 1000);
+    }
+
+    function cancelArmCountdown() {
+        if (armCountdownInterval) {
+            clearInterval(armCountdownInterval);
+            armCountdownInterval = null;
+            armBtn.disabled = false;
+            updateArmState();
+        }
+    }
+
+    function startDisarmHold() {
+        if (!armed) return;
+        disarmPressTimer = setTimeout(function() {
+            disarmPressTimer = null;
+            sendMsg({ type: 'disarm' });
+        }, DISARM_HOLD_MS);
+        armBtn.textContent = 'HOLD...';
+    }
+
+    function showPinDialog() {
+        var overlay = document.getElementById('pin-overlay');
+        var input = document.getElementById('pin-input');
+        if (overlay && input) {
+            input.value = '';
+            overlay.classList.remove('hidden');
+            input.focus();
+        }
+    }
+
+    function submitPin() {
+        var input = document.getElementById('pin-input');
+        var pinError = document.getElementById('pin-error');
+        if (!input) return;
+        var pin = input.value.trim();
+        if (!pin) {
+            if (pinError) { pinError.textContent = 'Please enter PIN'; pinError.classList.remove('hidden'); }
+            return;
+        }
+        sendMsg({ type: 'disarm_with_pin', pin: pin });
+        document.getElementById('pin-overlay').classList.add('hidden');
+        if (pinError) pinError.classList.add('hidden');
+    }
+
+    function cancelPin() {
+        var overlay = document.getElementById('pin-overlay');
+        if (overlay) overlay.classList.add('hidden');
+    }
+
+    function cancelDisarmHold() {
+        if (disarmPressTimer) {
+            clearTimeout(disarmPressTimer);
+            disarmPressTimer = null;
+            updateArmState();
+        }
     }
 
     function updateArmState() {
@@ -554,8 +715,28 @@
     connectBtn.addEventListener('click', authenticate);
     document.getElementById('refresh-btn').addEventListener('click', refreshConnection);
     document.getElementById('test-alert-btn').addEventListener('click', sendTestAlert);
-    armBtn.addEventListener('click', toggleArm);
+    document.getElementById('clear-alerts-btn').addEventListener('click', clearAlertHistory);
+    armBtn.addEventListener('click', function() {
+        if (!armed) toggleArm();
+    });
+    armBtn.addEventListener('mousedown', function(e) {
+        if (armed) startDisarmHold();
+    });
+    armBtn.addEventListener('mouseup', cancelDisarmHold);
+    armBtn.addEventListener('mouseleave', cancelDisarmHold);
+    armBtn.addEventListener('touchstart', function(e) {
+        if (armed) { e.preventDefault(); startDisarmHold(); }
+    }, { passive: false });
+    armBtn.addEventListener('touchend', function(e) {
+        if (armed) { e.preventDefault(); cancelDisarmHold(); }
+    });
+    armBtn.addEventListener('touchcancel', cancelDisarmHold);
     document.getElementById('dismiss-disconnect-btn').addEventListener('click', dismissDisconnect);
+    document.getElementById('pin-submit-btn').addEventListener('click', submitPin);
+    document.getElementById('pin-cancel-btn').addEventListener('click', cancelPin);
+    document.getElementById('pin-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') submitPin();
+    });
     alertOverlay.addEventListener('click', dismissAlert);
     document.getElementById('dismiss-alert-btn').addEventListener('click', function(e) {
         e.stopPropagation();

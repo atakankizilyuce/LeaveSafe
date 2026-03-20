@@ -68,7 +68,10 @@
         <div class="card card-alerts">
             <div class="card-header">
                 <h2>Alerts</h2>
-                <button id="test-alert-btn" class="btn-icon" type="button">Test</button>
+                <div class="card-header-actions">
+                    <button id="clear-alerts-btn" class="btn-icon" type="button">Clear</button>
+                    <button id="test-alert-btn" class="btn-icon" type="button">Test</button>
+                </div>
             </div>
             <div id="alert-feed">
                 <p class="muted">No alerts yet</p>
@@ -80,7 +83,7 @@
         </div>
 
         <footer class="app-footer">
-            <span>LeaveSafe v1.0</span>
+            <span>LeaveSafe</span>
         </footer>
     </div>
 
@@ -97,6 +100,20 @@
             <div id="disconnect-text">Connection Lost</div>
             <p class="disconnect-sub">Attempting to reconnect...</p>
             <button id="dismiss-disconnect-btn" type="button">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- PIN Overlay -->
+    <div id="pin-overlay" class="overlay hidden">
+        <div class="overlay-backdrop"></div>
+        <div class="disconnect-popup">
+            <h3>Enter PIN to Disarm</h3>
+            <input type="password" id="pin-input" placeholder="PIN" maxlength="8" inputmode="numeric" autocomplete="off">
+            <p id="pin-error" class="error hidden"></p>
+            <div class="pin-actions">
+                <button id="pin-cancel-btn" type="button" class="btn-secondary">Cancel</button>
+                <button id="pin-submit-btn" type="button">Disarm</button>
+            </div>
         </div>
     </div>
 
