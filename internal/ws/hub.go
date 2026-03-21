@@ -394,30 +394,23 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 		case MsgTypeGetConfig:
 			h.handleGetConfig(client)
 		case MsgTypeUpdateConfig:
-			h.handleUpdateConfig(msg)
+			h.handleUpdateConfig(msg, client)
+		case MsgTypeResetConfig:
+			h.handleResetConfig(msg, client)
 		case MsgTypeDismissAlarm:
-			h.mu.Lock()
-			triggeredSensor := h.alarmSensor
-			h.alarmActive = false
-			h.alarmSensor = ""
-			if triggeredSensor == "input" {
+			triggered := h.clearAlarm()
+			if triggered == "input" {
+				h.mu.Lock()
 				h.suppressedSensors["input"] = time.Now().Add(5 * time.Second)
+				h.mu.Unlock()
 			}
-			h.mu.Unlock()
-			h.fireAlarmDismiss()
 			log.Info("Alarm dismissed from client")
 
 		case MsgTypeDismissAlarmPause:
-			h.mu.Lock()
-			triggeredSensor := h.alarmSensor
-			h.alarmActive = false
-			h.alarmSensor = ""
-			h.mu.Unlock()
-			h.fireAlarmDismiss()
-
+			triggered := h.clearAlarm()
 			sensor := msg.Sensor
 			if sensor == "" {
-				sensor = triggeredSensor
+				sensor = triggered
 			}
 			duration := msg.Duration
 			if duration <= 0 {
@@ -438,16 +431,10 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 			log.WithField("sensor", sensor).Infof("Alarm dismissed, sensor paused for %ds", duration)
 
 		case MsgTypeDismissAlarmDisable:
-			h.mu.Lock()
-			triggeredSensor := h.alarmSensor
-			h.alarmActive = false
-			h.alarmSensor = ""
-			h.mu.Unlock()
-			h.fireAlarmDismiss()
-
+			triggered := h.clearAlarm()
 			sensor := msg.Sensor
 			if sensor == "" {
-				sensor = triggeredSensor
+				sensor = triggered
 			}
 			if sensor != "" {
 				h.sensorMgr.Disable(sensor)
@@ -456,6 +443,18 @@ func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessa
 			log.WithField("sensor", sensor).Info("Alarm dismissed, sensor permanently disabled")
 		}
 	}
+}
+
+// clearAlarm resets the alarm state and fires the dismiss callback.
+// Returns the sensor that triggered the alarm.
+func (h *Hub) clearAlarm() string {
+	h.mu.Lock()
+	sensor := h.alarmSensor
+	h.alarmActive = false
+	h.alarmSensor = ""
+	h.mu.Unlock()
+	h.fireAlarmDismiss()
+	return sensor
 }
 
 func (h *Hub) handleAuth(ctx context.Context, client *Client, msg ClientMessage) {
@@ -488,6 +487,10 @@ func (h *Hub) handleConfigure(msg ClientMessage) {
 	if msg.Sensors == nil {
 		return
 	}
+	if h.IsArmed() {
+		h.PushAlert(NewAlert("system", "warning", "Cannot change sensors while armed — disarm first"))
+		return
+	}
 	for name, enabled := range msg.Sensors {
 		if enabled {
 			h.sensorMgr.Enable(name)
@@ -495,6 +498,26 @@ func (h *Hub) handleConfigure(msg ClientMessage) {
 			h.sensorMgr.Disable(name)
 		}
 	}
+
+	// Persist sensor preferences to config.
+	h.mu.Lock()
+	cfg := h.cfg
+	if cfg != nil {
+		if cfg.EnabledSensors == nil {
+			cfg.EnabledSensors = make(map[string]bool)
+		}
+		for name, enabled := range msg.Sensors {
+			cfg.EnabledSensors[name] = enabled
+		}
+		snapshot := *cfg
+		h.mu.Unlock()
+		if err := config.Save(&snapshot); err != nil {
+			log.Errorf("Failed to save sensor config: %v", err)
+		}
+	} else {
+		h.mu.Unlock()
+	}
+
 	h.broadcastStatus()
 }
 
@@ -512,18 +535,31 @@ func (h *Hub) handleGetConfig(client *Client) {
 	})
 }
 
-func (h *Hub) handleUpdateConfig(msg ClientMessage) {
+func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	if msg.Config == nil {
 		return
 	}
+	p := msg.Config
+
 	h.mu.Lock()
 	cfg := h.cfg
-	h.mu.Unlock()
 	if cfg == nil {
+		h.mu.Unlock()
 		return
 	}
 
-	p := msg.Config
+	// If PIN protection is currently enabled, require the current PIN
+	// to modify PIN settings (disable, change PIN).
+	pinActive := cfg.PinProtection.Enabled && cfg.PinProtection.Pin != ""
+	changingPin := !p.PinProtection.Enabled != !cfg.PinProtection.Enabled || p.PinProtection.Pin != ""
+	if pinActive && changingPin {
+		if msg.Pin != cfg.PinProtection.Pin {
+			h.mu.Unlock()
+			client.send(ServerMessage{Type: MsgTypePinRequired})
+			return
+		}
+	}
+
 	needsRestart := p.Port != cfg.Port || (p.ConnectionMode != "" && p.ConnectionMode != cfg.ConnectionMode)
 
 	cfg.Port = p.Port
@@ -543,11 +579,25 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage) {
 		cfg.PinProtection.Pin = p.PinProtection.Pin
 	}
 	cfg.PinProtection.Enabled = p.PinProtection.Enabled
-	h.SetPinProtection(cfg.PinProtection.Enabled, cfg.PinProtection.Pin)
-	h.SetAutoArmOnLock(cfg.AutoArmOnLock)
+	pinEnabled := cfg.PinProtection.Enabled
+	pinCode := cfg.PinProtection.Pin
+	autoArm := cfg.AutoArmOnLock
 
 	if p.EnabledSensors != nil {
 		cfg.EnabledSensors = p.EnabledSensors
+	}
+
+	snapshot := *cfg
+	h.mu.Unlock()
+
+	if err := config.Save(&snapshot); err != nil {
+		log.Errorf("Failed to save config: %v", err)
+	}
+
+	h.SetPinProtection(pinEnabled, pinCode)
+	h.SetAutoArmOnLock(autoArm)
+
+	if p.EnabledSensors != nil {
 		for name, enabled := range p.EnabledSensors {
 			if enabled {
 				h.sensorMgr.Enable(name)
@@ -557,10 +607,6 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage) {
 		}
 	}
 
-	if err := config.Save(cfg); err != nil {
-		log.Errorf("Failed to save config: %v", err)
-	}
-
 	h.broadcastStatus()
 
 	if needsRestart {
@@ -568,6 +614,55 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage) {
 	}
 
 	log.Info("Configuration updated from client")
+}
+
+func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
+	defaults := config.Default()
+
+	h.mu.Lock()
+	cfg := h.cfg
+	if cfg == nil {
+		h.mu.Unlock()
+		return
+	}
+
+	// Require current PIN to reset config when PIN protection is active.
+	if cfg.PinProtection.Enabled && cfg.PinProtection.Pin != "" {
+		if msg.Pin != cfg.PinProtection.Pin {
+			h.mu.Unlock()
+			client.send(ServerMessage{Type: MsgTypePinRequired})
+			return
+		}
+	}
+
+	oldPort := cfg.Port
+	oldMode := cfg.ConnectionMode
+
+	*cfg = *defaults
+	cfg.EnabledSensors = nil
+
+	snapshot := *cfg
+	h.mu.Unlock()
+
+	if err := config.Save(&snapshot); err != nil {
+		log.Errorf("Failed to save config: %v", err)
+	}
+
+	h.SetPinProtection(defaults.PinProtection.Enabled, defaults.PinProtection.Pin)
+	h.SetAutoArmOnLock(defaults.AutoArmOnLock)
+
+	payload := configToPayload(cfg)
+	client.send(ServerMessage{
+		Type:   MsgTypeConfigData,
+		Config: &payload,
+	})
+	h.broadcastStatus()
+
+	if oldPort != cfg.Port || oldMode != cfg.ConnectionMode {
+		h.PushAlert(NewAlert("system", "warning", "Port changed — restart required to take effect"))
+	}
+
+	log.Info("Configuration reset to defaults")
 }
 
 func configToPayload(cfg *config.Config) ConfigPayload {

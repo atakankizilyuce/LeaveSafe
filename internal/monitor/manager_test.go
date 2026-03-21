@@ -47,36 +47,21 @@ func TestNewManager(t *testing.T) {
 	}
 }
 
-// TestRegister_AvailableNonNetwork checks that available non-network sensors are auto-enabled.
-func TestRegister_AvailableNonNetwork(t *testing.T) {
+// TestRegister_SensorsDisabledByDefault checks that all sensors start disabled.
+func TestRegister_SensorsDisabledByDefault(t *testing.T) {
 	mgr := NewManager()
-	s := newMock("power", true)
-	mgr.Register(s)
+	mgr.Register(newMock("power", true))
+	mgr.Register(newMock("network", true))
+	mgr.Register(newMock("lid", false))
 
-	if !mgr.IsEnabled("power") {
-		t.Error("available non-network sensor should be auto-enabled on register")
+	if mgr.IsEnabled("power") {
+		t.Error("power sensor should be disabled by default")
 	}
-}
-
-// TestRegister_NetworkOptIn checks that the "network" sensor is not auto-enabled.
-func TestRegister_NetworkOptIn(t *testing.T) {
-	mgr := NewManager()
-	s := newMock("network", true)
-	mgr.Register(s)
-
 	if mgr.IsEnabled("network") {
-		t.Error("network sensor should NOT be auto-enabled; it is opt-in")
+		t.Error("network sensor should be disabled by default")
 	}
-}
-
-// TestRegister_Unavailable checks that unavailable sensors are not auto-enabled.
-func TestRegister_Unavailable(t *testing.T) {
-	mgr := NewManager()
-	s := newMock("lid", false)
-	mgr.Register(s)
-
 	if mgr.IsEnabled("lid") {
-		t.Error("unavailable sensor should not be auto-enabled")
+		t.Error("lid sensor should be disabled by default")
 	}
 }
 
@@ -110,9 +95,10 @@ func TestEnable(t *testing.T) {
 func TestDisable(t *testing.T) {
 	mgr := NewManager()
 	mgr.Register(newMock("power", true))
+	mgr.Enable("power")
 
 	if !mgr.IsEnabled("power") {
-		t.Fatal("power should be enabled initially")
+		t.Fatal("power should be enabled after Enable()")
 	}
 	mgr.Disable("power")
 	if mgr.IsEnabled("power") {
@@ -141,7 +127,8 @@ func TestAlertChannel(t *testing.T) {
 func TestStartEnabled_StopAll(t *testing.T) {
 	mgr := NewManager()
 	s := newMock("power", true)
-	mgr.Register(s) // auto-enabled because available + not network
+	mgr.Register(s)
+	mgr.Enable("power")
 
 	mgr.StartEnabled()
 
@@ -181,6 +168,7 @@ func TestStartEnabled_Idempotent(t *testing.T) {
 	mgr := NewManager()
 	s := newMock("power", true)
 	mgr.Register(s)
+	mgr.Enable("power")
 
 	mgr.StartEnabled()
 	// Wait for first start
@@ -202,6 +190,7 @@ func TestDisable_StopsRunning(t *testing.T) {
 	mgr := NewManager()
 	s := newMock("power", true)
 	mgr.Register(s)
+	mgr.Enable("power")
 	mgr.StartEnabled()
 
 	select {

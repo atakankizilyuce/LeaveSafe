@@ -20,6 +20,7 @@ const (
 	MsgTypeTriggerSensor        = "trigger_sensor"
 	MsgTypeGetConfig            = "get_config"
 	MsgTypeUpdateConfig         = "update_config"
+	MsgTypeResetConfig          = "reset_config"
 )
 
 const (

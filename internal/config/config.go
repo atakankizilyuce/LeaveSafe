@@ -52,7 +52,7 @@ func Default() *Config {
 		HeartbeatSeconds:       15,
 		DisconnectGraceSeconds: 30,
 		AutoArmOnLock:          false,
-		InputThreshold:         3,
+		InputThreshold:         1,
 		Alarm: AlarmConfig{
 			EscalationEnabled: false,
 			Levels: []AlarmLevel{
@@ -61,6 +61,7 @@ func Default() *Config {
 				{DelaySeconds: 30, Action: "full_volume", VolumePercent: 100},
 			},
 		},
+		ConnectionMode: "wifi",
 		PinProtection: PinProtection{
 			Enabled: false,
 		},
