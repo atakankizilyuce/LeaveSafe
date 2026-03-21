@@ -44,14 +44,14 @@ jobs:
             cgo: "0"
           - goos: darwin
             goarch: amd64
-            runner: ubuntu-latest
+            runner: macos-latest
             ext: ""
-            cgo: "0"
+            cgo: "1"
           - goos: darwin
             goarch: arm64
-            runner: ubuntu-latest
+            runner: macos-latest
             ext: ""
-            cgo: "0"
+            cgo: "1"
     steps:
       - uses: actions/checkout@v4
 

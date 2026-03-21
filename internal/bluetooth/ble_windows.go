@@ -4,6 +4,7 @@ package bluetooth
 
 import (
 	"context"
+	"fmt"
 
 	log "github.com/sirupsen/logrus"
 	"tinygo.org/x/bluetooth"
@@ -37,20 +38,23 @@ func (s *Server) Start(ctx context.Context) error {
 		UUID: serviceUUID,
 		Characteristics: []bluetooth.CharacteristicConfig{
 			{
-				UUID:  txCharUUID,
-				Flags: bluetooth.CharacteristicNotifyPermission | bluetooth.CharacteristicReadPermission,
+				UUID:   txCharUUID,
+				Flags:  bluetooth.CharacteristicNotifyPermission | bluetooth.CharacteristicReadPermission,
 				Handle: &txChar,
 			},
 			{
 				UUID:  rxCharUUID,
 				Flags: bluetooth.CharacteristicWritePermission | bluetooth.CharacteristicWriteWithoutResponsePermission,
-				WriteEvent: func(client bluetooth.Connection, offset int, value []byte) {
+				WriteEvent: func(conn bluetooth.Connection, offset int, value []byte) {
 					if len(value) == 0 {
 						return
 					}
 					data := make([]byte, len(value))
 					copy(data, value)
-					s.handleIncoming(data)
+					connID := fmt.Sprintf("ble-%d", conn)
+					s.handleIncoming(connID, data, func() *BLETransport {
+						return newTinygoTransport(&txChar)
+					})
 				},
 			},
 		},
@@ -58,29 +62,6 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	// Register the transport that uses txChar notifications
-	transport := &BLETransport{
-		sendFunc: func(data []byte) error {
-			// BLE has MTU limits; fragment if needed
-			const maxChunk = 512
-			for len(data) > 0 {
-				chunk := data
-				if len(chunk) > maxChunk {
-					chunk = data[:maxChunk]
-				}
-				if _, err := txChar.Write(chunk); err != nil {
-					return err
-				}
-				data = data[len(chunk):]
-			}
-			return nil
-		},
-	}
-
-	s.mu.Lock()
-	s.client = s.hub.RegisterExternalClient(transport)
-	s.mu.Unlock()
 
 	adv := adapter.DefaultAdvertisement()
 	if err := adv.Configure(bluetooth.AdvertisementOptions{
@@ -96,9 +77,28 @@ func (s *Server) Start(ctx context.Context) error {
 
 	<-ctx.Done()
 	_ = adv.Stop()
-	s.disconnect()
+	s.disconnectAll()
 	log.Info("BLE: server stopped")
 	return nil
+}
+
+func newTinygoTransport(txChar *bluetooth.Characteristic) *BLETransport {
+	return &BLETransport{
+		sendFunc: func(data []byte) error {
+			const maxChunk = 512
+			for len(data) > 0 {
+				chunk := data
+				if len(chunk) > maxChunk {
+					chunk = data[:maxChunk]
+				}
+				if _, err := txChar.Write(chunk); err != nil {
+					return err
+				}
+				data = data[len(chunk):]
+			}
+			return nil
+		},
+	}
 }
 
 // Available checks if BLE is available on this system.
