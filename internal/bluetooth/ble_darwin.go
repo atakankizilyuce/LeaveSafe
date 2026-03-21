@@ -3,6 +3,7 @@
 package bluetooth
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -84,7 +85,7 @@ func (d *darwinDelegate) DidReceiveReadRequest(pm cbgo.PeripheralManager, req cb
 
 func (d *darwinDelegate) DidReceiveWriteRequests(pm cbgo.PeripheralManager, reqs []cbgo.ATTRequest) {
 	for _, req := range reqs {
-		if req.Characteristic().UUID() == rxCharUUID {
+		if bytes.Equal(req.Characteristic().UUID(), rxCharUUID) {
 			value := req.Value()
 			if len(value) > 0 {
 				data := make([]byte, len(value))
@@ -152,7 +153,7 @@ func (s *Server) Start(ctx context.Context) error {
 		txCharUUID,
 		cbgo.CharacteristicPropertyNotify|cbgo.CharacteristicPropertyRead,
 		nil,
-		cbgo.AttributePermissionReadable,
+		cbgo.AttributePermissionsReadable,
 	)
 	dlg.txChar = txChar
 
@@ -161,7 +162,7 @@ func (s *Server) Start(ctx context.Context) error {
 		rxCharUUID,
 		cbgo.CharacteristicPropertyWrite|cbgo.CharacteristicPropertyWriteWithoutResponse,
 		nil,
-		cbgo.AttributePermissionWriteable,
+		cbgo.AttributePermissionsWriteable,
 	)
 
 	// Create and add service.
