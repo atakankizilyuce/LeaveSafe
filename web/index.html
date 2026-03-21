@@ -38,121 +38,179 @@
             <div id="status-badge" class="badge disarmed">DISARMED</div>
         </header>
 
-        <div class="card card-connection">
-            <div class="card-header">
-                <h2>Connection</h2>
-                <button id="refresh-btn" class="btn-icon" type="button">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="conn-indicator">
-                <span class="conn-dot" id="conn-dot"></span>
-                <span id="conn-status" class="status-ok">Connected</span>
-            </div>
-            <div class="info-row">
-                <span>Uptime</span>
-                <span id="conn-uptime">0s</span>
-            </div>
-            <div class="info-row">
-                <span>Last check</span>
-                <span id="conn-last-check">just now</span>
-            </div>
-        </div>
+        <div class="dashboard-grid">
+            <div class="grid-col">
+                <div class="card card-connection">
+                    <div class="card-header">
+                        <h2>Connection</h2>
+                        <button id="refresh-btn" class="btn-icon" type="button">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="conn-indicator">
+                        <span class="conn-dot" id="conn-dot"></span>
+                        <span id="conn-status" class="status-ok">Connected</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Uptime</span>
+                        <span id="conn-uptime">0s</span>
+                    </div>
+                    <div class="info-row">
+                        <span>Last check</span>
+                        <span id="conn-last-check">just now</span>
+                    </div>
+                </div>
 
-        <div class="card card-sensors">
-            <h2>Sensors</h2>
-            <div id="sensor-list"></div>
-        </div>
+                <div class="card card-sensors">
+                    <h2>Sensors</h2>
+                    <div id="sensor-list"></div>
+                </div>
 
-        <div class="card card-settings">
-            <div class="card-header">
-                <h2>Settings</h2>
-                <button id="toggle-settings-btn" class="btn-icon" type="button">Edit</button>
+                <div class="card card-alerts">
+                    <div class="card-header">
+                        <h2>Alerts</h2>
+                        <div class="card-header-actions">
+                            <button id="clear-alerts-btn" class="btn-icon" type="button">Clear</button>
+                            <button id="test-alert-btn" class="btn-icon" type="button">Test</button>
+                        </div>
+                    </div>
+                    <div class="alert-controls">
+                        <div class="alert-filters">
+                            <button class="alert-filter-btn active" data-filter="all">All</button>
+                            <button class="alert-filter-btn" data-filter="critical">Critical</button>
+                            <button class="alert-filter-btn" data-filter="warning">Warning</button>
+                        </div>
+                        <button id="alert-sort-btn" class="btn-icon" type="button" title="Toggle sort order">Newest</button>
+                    </div>
+                    <div id="alert-feed">
+                        <p class="muted">No alerts yet</p>
+                    </div>
+                </div>
             </div>
-            <div id="settings-panel" class="hidden">
-                <div class="setting-group">
-                    <label>Port <span class="setting-hint">(restart required)</span></label>
-                    <input type="number" id="cfg-port" min="0" max="65535">
-                </div>
-                <div class="setting-group">
-                    <label>Max Sessions</label>
-                    <input type="number" id="cfg-max-sessions" min="1" max="10">
-                </div>
-                <div class="setting-group">
-                    <label>Max Auth Attempts</label>
-                    <input type="number" id="cfg-max-auth-attempts" min="1" max="20">
-                </div>
-                <div class="setting-group">
-                    <label>Lockout (seconds)</label>
-                    <input type="number" id="cfg-lockout-seconds" min="10" max="600">
-                </div>
-                <div class="setting-group">
-                    <label>Heartbeat (seconds)</label>
-                    <input type="number" id="cfg-heartbeat-seconds" min="5" max="60">
-                </div>
-                <div class="setting-group">
-                    <label>Disconnect Grace (seconds)</label>
-                    <input type="number" id="cfg-disconnect-grace" min="5" max="120">
-                </div>
-                <div class="setting-group">
-                    <label>Input Sensitivity (seconds)</label>
-                    <input type="number" id="cfg-input-threshold" min="1" max="10">
-                </div>
-                <div class="setting-group">
-                    <label>Auto-arm on Screen Lock</label>
-                    <label class="toggle">
-                        <input type="checkbox" id="cfg-auto-arm">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div class="setting-group">
-                    <label>PIN Protection</label>
-                    <label class="toggle">
-                        <input type="checkbox" id="cfg-pin-enabled">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div id="pin-config-group" class="setting-group hidden">
-                    <label>PIN Code</label>
-                    <input type="password" id="cfg-pin" placeholder="Enter new PIN" maxlength="8" inputmode="numeric">
-                </div>
-                <div class="setting-group">
-                    <label>Connection Mode <span class="setting-hint">(restart required)</span></label>
-                    <select id="cfg-connection-mode">
-                        <option value="wifi">WiFi Only</option>
-                        <option value="bluetooth">Bluetooth Only</option>
-                        <option value="both">WiFi + Bluetooth</option>
-                    </select>
-                </div>
-                <div class="setting-group">
-                    <label>Alarm Escalation</label>
-                    <label class="toggle">
-                        <input type="checkbox" id="cfg-escalation">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <button id="save-settings-btn" type="button" class="btn-save">Save Settings</button>
-            </div>
-        </div>
 
-        <div class="card card-alerts">
-            <div class="card-header">
-                <h2>Alerts</h2>
-                <div class="card-header-actions">
-                    <button id="clear-alerts-btn" class="btn-icon" type="button">Clear</button>
-                    <button id="test-alert-btn" class="btn-icon" type="button">Test</button>
+            <div class="grid-col">
+                <div class="card card-settings">
+                    <div class="card-header">
+                        <h2>Settings</h2>
+                        <button id="toggle-settings-btn" class="btn-icon" type="button">Edit</button>
+                    </div>
+                    <div id="settings-panel" class="hidden">
+                        <div class="settings-section" data-section="network">
+                            <div class="section-header">
+                                <h3>Network</h3>
+                                <span class="section-info-btn" title="Toggle info">i</span>
+                            </div>
+                            <div class="section-desc">Server port and connection mode. Changes require a restart to take effect.</div>
+                            <div class="section-body collapsed">
+                                <div class="setting-group">
+                                    <label>Port <span class="setting-hint">(restart required)</span></label>
+                                    <input type="number" id="cfg-port" min="0" max="65535">
+                                </div>
+                                <div class="setting-group">
+                                    <label>Connection Mode <span class="setting-hint">(restart required)</span></label>
+                                    <select id="cfg-connection-mode">
+                                        <option value="wifi">WiFi Only</option>
+                                        <option value="bluetooth">Bluetooth Only</option>
+                                        <option value="both">WiFi + Bluetooth</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" data-section="security">
+                            <div class="section-header">
+                                <h3>Security</h3>
+                                <span class="section-info-btn" title="Toggle info">i</span>
+                            </div>
+                            <div class="section-desc">Session limits, brute-force protection, and PIN-based disarm security.</div>
+                            <div class="section-body collapsed">
+                                <div class="setting-group">
+                                    <label>Max Sessions</label>
+                                    <input type="number" id="cfg-max-sessions" min="1" max="10">
+                                </div>
+                                <div class="setting-group">
+                                    <label>Max Auth Attempts</label>
+                                    <input type="number" id="cfg-max-auth-attempts" min="1" max="20">
+                                </div>
+                                <div class="setting-group">
+                                    <label>Lockout (seconds)</label>
+                                    <input type="number" id="cfg-lockout-seconds" min="10" max="600">
+                                </div>
+                                <div class="setting-group">
+                                    <label>PIN Protection</label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="cfg-pin-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div id="pin-config-group" class="setting-group hidden">
+                                    <label>PIN Code</label>
+                                    <input type="password" id="cfg-pin" placeholder="Enter new PIN" maxlength="8" inputmode="numeric">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" data-section="monitoring">
+                            <div class="section-header">
+                                <h3>Monitoring</h3>
+                                <span class="section-info-btn" title="Toggle info">i</span>
+                            </div>
+                            <div class="section-desc">Heartbeat interval, disconnect grace period, input detection sensitivity, and automatic arming behavior.</div>
+                            <div class="section-body collapsed">
+                                <div class="setting-group">
+                                    <label>Heartbeat (seconds)</label>
+                                    <input type="number" id="cfg-heartbeat-seconds" min="5" max="60">
+                                </div>
+                                <div class="setting-group">
+                                    <label>Disconnect Grace (seconds)</label>
+                                    <input type="number" id="cfg-disconnect-grace" min="5" max="120">
+                                </div>
+                                <div class="setting-group">
+                                    <label>Input Sensitivity (seconds)</label>
+                                    <input type="number" id="cfg-input-threshold" min="1" max="10">
+                                </div>
+                                <div class="setting-group">
+                                    <label>Auto-arm on Screen Lock</label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="cfg-auto-arm">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" data-section="alarm">
+                            <div class="section-header">
+                                <h3>Alarm</h3>
+                                <span class="section-info-btn" title="Toggle info">i</span>
+                            </div>
+                            <div class="section-desc">Enable gradual alarm escalation: phone notification first, then medium volume, then full volume siren.</div>
+                            <div class="section-body collapsed">
+                                <div class="setting-group">
+                                    <label>Alarm Escalation</label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="cfg-escalation">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="save-settings-btn" type="button" class="btn-save">Save Settings</button>
+                        <button id="reset-settings-btn" type="button" class="btn-reset">Reset to Defaults</button>
+                    </div>
                 </div>
-            </div>
-            <div id="alert-feed">
-                <p class="muted">No alerts yet</p>
             </div>
         </div>
 
         <div class="actions">
-            <button id="arm-btn" class="btn-arm" type="button">ARM</button>
+            <button id="arm-btn" class="btn-arm" type="button">
+                <span class="arm-label">ARM</span>
+                <div class="hold-progress"></div>
+            </button>
         </div>
 
         <footer class="app-footer">

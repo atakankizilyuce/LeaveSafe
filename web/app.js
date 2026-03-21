@@ -18,6 +18,11 @@
     var bleDevice = null;
     var bleRxChar = null;
     var bleTxChar = null;
+    var pingInterval = null;
+    var disarmJustFired = false;
+    var alertSortAsc = false;
+    var alertFilterLevel = 'all';
+    var lastPinEnabled = false;
 
     var authScreen = document.getElementById('auth-screen');
     var dashScreen = document.getElementById('dashboard-screen');
@@ -35,6 +40,8 @@
     var alertOverlay = document.getElementById('alert-overlay');
     var alertOverlayText = document.getElementById('alert-overlay-text');
     var disconnectOverlay = document.getElementById('disconnect-overlay');
+    var armLabel = armLabel;
+    var holdProgressBar = holdProgressBar;
 
     keyInput.addEventListener('input', function(e) {
         var v = e.target.value.replace(/[^0-9]/g, '');
@@ -117,6 +124,7 @@
 
         ws.onclose = function() {
             clearTimeout(connTimeout);
+            if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
             if (token) {
                 setConnectionState('disconnected');
                 showDisconnectWarning();
@@ -291,6 +299,7 @@
         loadAlertHistory();
         startUptime();
         updateLastCheck();
+        startPingInterval();
         if (window.history.replaceState) {
             window.history.replaceState({}, document.title, '/');
         }
@@ -307,6 +316,16 @@
         authError.classList.remove('hidden');
     }
 
+    function showSensorToast(msg) {
+        var existing = document.querySelector('.sensor-toast');
+        if (existing) existing.remove();
+        var toast = document.createElement('div');
+        toast.className = 'sensor-toast';
+        toast.textContent = msg;
+        sensorList.parentNode.insertBefore(toast, sensorList);
+        setTimeout(function() { toast.remove(); }, 2500);
+    }
+
     function renderSensors() {
         sensorList.innerHTML = '';
         for (var name in sensors) {
@@ -320,12 +339,14 @@
             else dotClass += 'ok';
 
             var desc = sensorDescriptions[name] || '';
+            var infoBtn = desc ? '<span class="sensor-info-btn" data-sensor="' + escapeHtml(name) + '" title="Info">i</span>' : '';
+
             div.innerHTML =
                 '<div class="sensor-header" data-sensor="' + escapeHtml(name) + '">' +
                     '<div class="sensor-info">' +
                         '<span class="' + dotClass + '"></span>' +
                         '<div>' +
-                            '<div class="sensor-name">' + escapeHtml(s.display_name || s.name) + '</div>' +
+                            '<div class="sensor-name">' + escapeHtml(s.display_name || s.name) + ' ' + infoBtn + '</div>' +
                             '<div class="sensor-status">' + (s.status || (s.available === false ? 'Unavailable' : 'OK')) + '</div>' +
                         '</div>' +
                     '</div>' +
@@ -343,15 +364,20 @@
                 '</div>' : '');
             sensorList.appendChild(div);
         }
-        sensorList.querySelectorAll('.sensor-header').forEach(function(header) {
-            header.addEventListener('click', function(e) {
-                if (e.target.closest('.sensor-actions')) return;
+        sensorList.querySelectorAll('.sensor-info-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
                 var detail = document.getElementById('detail-' + this.dataset.sensor);
                 if (detail) detail.classList.toggle('hidden');
             });
         });
         sensorList.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
             cb.addEventListener('change', function() {
+                if (armed) {
+                    this.checked = !this.checked;
+                    showSensorToast('Disarm first to change sensors');
+                    return;
+                }
                 var cfg = {};
                 cfg[this.dataset.sensor] = this.checked;
                 sendMsg({ type: 'configure', sensors: cfg });
@@ -407,16 +433,24 @@
         alertFeed.innerHTML = '<p class="muted">No alerts yet</p>';
     }
 
-    function renderAlertItem(message, level, timeStr) {
+    function createAlertElement(message, level, timeStr) {
         var div = document.createElement('div');
         div.className = 'alert-item';
+        div.dataset.level = level;
         div.innerHTML =
             '<div class="alert-msg">' +
                 '<span class="alert-dot ' + escapeHtml(level) + '"></span>' +
                 '<span class="alert-' + escapeHtml(level) + '">' + escapeHtml(message) + '</span>' +
             '</div>' +
             '<span class="alert-time">' + escapeHtml(timeStr) + '</span>';
-        alertFeed.appendChild(div);
+        if (alertFilterLevel !== 'all' && level !== alertFilterLevel) {
+            div.style.display = 'none';
+        }
+        return div;
+    }
+
+    function renderAlertItem(message, level, timeStr) {
+        alertFeed.appendChild(createAlertElement(message, level, timeStr));
     }
 
     function addAlert(alert, ts) {
@@ -424,15 +458,12 @@
         if (placeholder) placeholder.remove();
 
         var timeStr = ts ? new Date(ts * 1000).toLocaleTimeString() : new Date().toLocaleTimeString();
-        var div = document.createElement('div');
-        div.className = 'alert-item';
-        div.innerHTML =
-            '<div class="alert-msg">' +
-                '<span class="alert-dot ' + escapeHtml(alert.level) + '"></span>' +
-                '<span class="alert-' + escapeHtml(alert.level) + '">' + escapeHtml(alert.message) + '</span>' +
-            '</div>' +
-            '<span class="alert-time">' + escapeHtml(timeStr) + '</span>';
-        alertFeed.insertBefore(div, alertFeed.firstChild);
+        var div = createAlertElement(alert.message, alert.level, timeStr);
+        if (alertSortAsc) {
+            alertFeed.appendChild(div);
+        } else {
+            alertFeed.insertBefore(div, alertFeed.firstChild);
+        }
 
         while (alertFeed.children.length > 50) {
             alertFeed.removeChild(alertFeed.lastChild);
@@ -443,8 +474,10 @@
 
     var armCountdownInterval = null;
     var disarmPressTimer = null;
-    var DISARM_HOLD_MS = 1000;
+    var DISARM_HOLD_MS = 1500;
     var ARM_COUNTDOWN_SECS = 3;
+    var holdAnimFrame = null;
+    var holdStartTime = 0;
 
     function toggleArm() {
         if (!armed) {
@@ -455,7 +488,8 @@
     function startArmCountdown() {
         if (armCountdownInterval) return;
         var remaining = ARM_COUNTDOWN_SECS;
-        armBtn.textContent = 'ARMING... ' + remaining;
+        var label = armLabel;
+        label.textContent = 'ARMING... ' + remaining;
         armBtn.disabled = true;
         armCountdownInterval = setInterval(function() {
             remaining--;
@@ -465,7 +499,7 @@
                 armBtn.disabled = false;
                 sendMsg({ type: 'arm' });
             } else {
-                armBtn.textContent = 'ARMING... ' + remaining;
+                label.textContent = 'ARMING... ' + remaining;
             }
         }, 1000);
     }
@@ -481,11 +515,37 @@
 
     function startDisarmHold() {
         if (!armed) return;
+        var bar = holdProgressBar;
+        var label = armLabel;
+
+        armBtn.classList.add('holding');
+        label.textContent = 'HOLD';
+        bar.style.width = '0%';
+        holdStartTime = Date.now();
+
+        function animateBar() {
+            var elapsed = Date.now() - holdStartTime;
+            var progress = Math.min(elapsed / DISARM_HOLD_MS, 1);
+            bar.style.width = (progress * 100) + '%';
+            if (progress < 1) {
+                holdAnimFrame = requestAnimationFrame(animateBar);
+            }
+        }
+        holdAnimFrame = requestAnimationFrame(animateBar);
+
         disarmPressTimer = setTimeout(function() {
             disarmPressTimer = null;
+            disarmJustFired = true;
+            cancelHoldAnim();
             sendMsg({ type: 'disarm' });
         }, DISARM_HOLD_MS);
-        armBtn.textContent = 'HOLD...';
+    }
+
+    function cancelHoldAnim() {
+        if (holdAnimFrame) { cancelAnimationFrame(holdAnimFrame); holdAnimFrame = null; }
+        var bar = holdProgressBar;
+        if (bar) bar.style.width = '0%';
+        armBtn.classList.remove('holding');
     }
 
     function showPinDialog() {
@@ -521,22 +581,25 @@
         if (disarmPressTimer) {
             clearTimeout(disarmPressTimer);
             disarmPressTimer = null;
+            cancelHoldAnim();
             updateArmState();
         }
     }
 
     function updateArmState() {
+        var label = armLabel;
         if (armed) {
             statusBadge.textContent = 'ARMED';
             statusBadge.className = 'badge armed';
-            armBtn.textContent = 'DISARM';
+            label.textContent = 'DISARM';
             armBtn.classList.add('armed');
         } else {
             statusBadge.textContent = 'DISARMED';
             statusBadge.className = 'badge disarmed';
-            armBtn.textContent = 'ARM';
+            label.textContent = 'ARM';
             armBtn.classList.remove('armed');
         }
+        cancelHoldAnim();
     }
 
     var vibrateInterval = null;
@@ -725,9 +788,10 @@
         document.getElementById('cfg-disconnect-grace').value = cfg.disconnect_grace_seconds || 30;
         document.getElementById('cfg-input-threshold').value = cfg.input_threshold || 3;
         document.getElementById('cfg-auto-arm').checked = !!cfg.auto_arm_on_lock;
-        document.getElementById('cfg-pin-enabled').checked = cfg.pin_protection && cfg.pin_protection.enabled;
+        lastPinEnabled = cfg.pin_protection && cfg.pin_protection.enabled;
+        document.getElementById('cfg-pin-enabled').checked = lastPinEnabled;
         document.getElementById('cfg-escalation').checked = cfg.alarm && cfg.alarm.escalation_enabled;
-        document.getElementById('cfg-connection-mode').value = cfg.connection_mode || 'wifi';
+        document.getElementById('cfg-connection-mode').value = cfg.connection_mode;
         var pinGroup = document.getElementById('pin-config-group');
         if (cfg.pin_protection && cfg.pin_protection.enabled) {
             pinGroup.classList.remove('hidden');
@@ -737,6 +801,9 @@
     }
 
     function saveSettings() {
+        var btn = document.getElementById('save-settings-btn');
+        btn.disabled = true;
+
         var cfg = {
             port: parseInt(document.getElementById('cfg-port').value) || 0,
             max_sessions: parseInt(document.getElementById('cfg-max-sessions').value) || 3,
@@ -755,7 +822,35 @@
                 pin: document.getElementById('cfg-pin').value || ''
             }
         };
-        sendMsg({ type: 'update_config', config: cfg });
+        var msg = { type: 'update_config', config: cfg };
+        var pinWasEnabled = lastPinEnabled;
+        var pinChanging = pinWasEnabled && (!cfg.pin_protection.enabled || cfg.pin_protection.pin !== '');
+        if (pinChanging) {
+            var currentPin = prompt('Enter current PIN to confirm changes:');
+            if (!currentPin) { btn.disabled = false; return; }
+            msg.pin = currentPin;
+        }
+        sendMsg(msg);
+
+        btn.textContent = 'Saved!';
+        btn.classList.add('saved');
+        setTimeout(function() {
+            btn.textContent = 'Save Settings';
+            btn.classList.remove('saved');
+            btn.disabled = false;
+        }, 2000);
+    }
+
+    function resetSettings() {
+        if (!confirm('Are you sure you want to reset all settings to their default values?')) return;
+        var pinEnabled = document.getElementById('cfg-pin-enabled').checked;
+        if (pinEnabled) {
+            var pin = prompt('Enter current PIN to confirm reset:');
+            if (!pin) return;
+            sendMsg({ type: 'reset_config', pin: pin });
+        } else {
+            sendMsg({ type: 'reset_config' });
+        }
     }
 
     var BLE_SERVICE_UUID = '4c454156-4553-4146-452d-424c45000001';
@@ -856,9 +951,12 @@
         return div.innerHTML;
     }
 
-    setInterval(function() {
-        sendMsg({ type: 'ping' });
-    }, 15000);
+    function startPingInterval() {
+        if (pingInterval) clearInterval(pingInterval);
+        pingInterval = setInterval(function() {
+            sendMsg({ type: 'ping' });
+        }, 15000);
+    }
 
     connectBtn.addEventListener('click', authenticate);
     document.getElementById('bluetooth-btn').addEventListener('click', connectBluetooth);
@@ -866,6 +964,7 @@
     document.getElementById('test-alert-btn').addEventListener('click', sendTestAlert);
     document.getElementById('clear-alerts-btn').addEventListener('click', clearAlertHistory);
     armBtn.addEventListener('click', function() {
+        if (disarmJustFired) { disarmJustFired = false; return; }
         if (!armed) toggleArm();
     });
     armBtn.addEventListener('mousedown', function(e) {
@@ -892,8 +991,45 @@
         if (!panel.classList.contains('hidden')) requestConfig();
     });
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
+    document.getElementById('reset-settings-btn').addEventListener('click', resetSettings);
     document.getElementById('cfg-pin-enabled').addEventListener('change', function() {
         document.getElementById('pin-config-group').classList.toggle('hidden', !this.checked);
+    });
+    document.querySelectorAll('.section-header').forEach(function(hdr) {
+        hdr.addEventListener('click', function() {
+            var section = this.closest('.settings-section');
+            var body = section.querySelector('.section-body');
+            body.classList.toggle('collapsed');
+        });
+    });
+    document.querySelectorAll('.section-info-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var section = this.closest('.settings-section');
+            var desc = section.querySelector('.section-desc');
+            desc.classList.toggle('hidden');
+        });
+    });
+    document.querySelectorAll('.alert-filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            alertFilterLevel = this.dataset.filter;
+            document.querySelectorAll('.alert-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            alertFeed.querySelectorAll('.alert-item').forEach(function(item) {
+                if (alertFilterLevel === 'all' || item.dataset.level === alertFilterLevel) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+    });
+    document.getElementById('alert-sort-btn').addEventListener('click', function() {
+        alertSortAsc = !alertSortAsc;
+        this.textContent = alertSortAsc ? 'Oldest' : 'Newest';
+        var items = Array.from(alertFeed.querySelectorAll('.alert-item'));
+        items.reverse();
+        items.forEach(function(item) { alertFeed.appendChild(item); });
     });
     document.getElementById('dismiss-alert-btn').addEventListener('click', function(e) {
         e.stopPropagation();

@@ -483,12 +483,21 @@ func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
 	mgr.Register(monitor.NewNetworkSensor())
 	mgr.Register(monitor.NewInputSensorWithThreshold(cfg.InputThreshold))
 
+	// Apply saved sensor preferences from config
+	if cfg.EnabledSensors != nil {
+		for name, enabled := range cfg.EnabledSensors {
+			if enabled {
+				mgr.Enable(name)
+			}
+		}
+	}
+
 	sensors := mgr.Sensors()
 	available := 0
 	for _, s := range sensors {
 		if s.Available() {
 			available++
-			log.WithFields(log.Fields{"sensor": s.Name(), "display": s.DisplayName()}).Info("Sensor available")
+			log.WithFields(log.Fields{"sensor": s.Name(), "display": s.DisplayName(), "enabled": mgr.IsEnabled(s.Name())}).Info("Sensor registered")
 		} else {
 			log.WithFields(log.Fields{"sensor": s.Name(), "display": s.DisplayName()}).Info("Sensor unavailable")
 		}

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -119,20 +120,54 @@ func isContainer() bool {
 	return os.Getenv("CONTAINER") == "1"
 }
 
-// getLocalIPs returns all non-loopback IPv4 addresses.
+// getLocalIPs returns non-loopback IPv4 addresses, skipping virtual
+// interfaces commonly created by Docker, WSL, and similar tools.
 func getLocalIPs() []net.IP {
 	var ips []net.IP
-	addrs, err := net.InterfaceAddrs()
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return []net.IP{net.ParseIP("127.0.0.1")}
 	}
-	for _, addr := range addrs {
-		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
-			ips = append(ips, ipNet.IP)
+	for _, iface := range ifaces {
+		// Skip down, loopback, and virtual/container interfaces.
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if isVirtualInterface(iface.Name) {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok && ipNet.IP.To4() != nil {
+				ips = append(ips, ipNet.IP)
+			}
 		}
 	}
 	if len(ips) == 0 {
 		ips = append(ips, net.ParseIP("127.0.0.1"))
 	}
 	return ips
+}
+
+// isVirtualInterface returns true for interfaces created by Docker,
+// WSL, Hyper-V, VirtualBox, and similar virtualization tools.
+func isVirtualInterface(name string) bool {
+	prefixes := []string{
+		"docker", "br-", "veth",    // Docker
+		"vEthernet",                 // Hyper-V / WSL
+		"virbr",                     // libvirt
+		"VirtualBox", "vboxnet",     // VirtualBox
+		"vmnet",                     // VMware
+		"ham",                       // Hamachi
+	}
+	lower := strings.ToLower(name)
+	for _, p := range prefixes {
+		if strings.HasPrefix(lower, strings.ToLower(p)) {
+			return true
+		}
+	}
+	return false
 }

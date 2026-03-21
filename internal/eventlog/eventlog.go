@@ -5,6 +5,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // EventType represents the kind of event being logged.
@@ -52,9 +54,12 @@ func (l *Logger) Log(event Event) {
 
 	data, err := json.Marshal(event)
 	if err != nil {
+		log.Warnf("Failed to marshal event: %v", err)
 		return
 	}
-	l.file.Write(append(data, '\n'))
+	if _, err := l.file.Write(append(data, '\n')); err != nil {
+		log.Warnf("Failed to write event log: %v", err)
+	}
 }
 
 // Close closes the underlying file.

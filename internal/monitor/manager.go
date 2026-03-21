@@ -25,15 +25,11 @@ func NewManager() *Manager {
 	}
 }
 
-// Register adds a sensor to the manager. Only available sensors are registered.
+// Register adds a sensor to the manager. Sensors start disabled by default.
 func (m *Manager) Register(s Sensor) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sensors = append(m.sensors, s)
-	// Enable available sensors by default (except network and input which are opt-in)
-	if s.Available() && s.Name() != "network" && s.Name() != "input" {
-		m.enabled[s.Name()] = true
-	}
 }
 
 // Sensors returns all registered sensors.
