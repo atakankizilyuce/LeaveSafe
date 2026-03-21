@@ -22,7 +22,7 @@ jobs:
 
   release:
     name: Release (${{ matrix.goos }}/${{ matrix.goarch }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     needs: test
     permissions:
       contents: write
@@ -31,16 +31,29 @@ jobs:
         include:
           - goos: windows
             goarch: amd64
+            runner: ubuntu-latest
             ext: .exe
+            cgo: "0"
           - goos: linux
             goarch: amd64
+            runner: ubuntu-latest
             ext: ""
+            cgo: "0"
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+            ext: ""
+            cgo: "0"
           - goos: darwin
             goarch: amd64
+            runner: ubuntu-latest
             ext: ""
+            cgo: "0"
           - goos: darwin
             goarch: arm64
+            runner: ubuntu-latest
             ext: ""
+            cgo: "0"
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +66,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
         run: |
           mkdir -p dist
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
