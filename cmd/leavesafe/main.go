@@ -261,17 +261,25 @@ func main() {
 		}()
 	}
 
+	cleanup := func() {
+		fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
+		fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
+		cancel()
+		localAlarm.Stop()
+		sensorMgr.StopAll()
+		if el := hub.EventLogger(); el != nil {
+			el.Close()
+		}
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		srv.Shutdown(shutdownCtx)
+	}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
-		fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
-		cancel()
-		sensorMgr.StopAll()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		cleanup()
 		os.Exit(0)
 	}()
 

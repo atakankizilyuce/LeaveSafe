@@ -88,6 +88,13 @@ func (h *Hub) SetEventLogger(el *eventlog.Logger) {
 	h.eventLog = el
 }
 
+// EventLogger returns the event logger, or nil if not set.
+func (h *Hub) EventLogger() *eventlog.Logger {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.eventLog
+}
+
 func (h *Hub) logEvent(evt eventlog.Event) {
 	h.mu.RLock()
 	el := h.eventLog
