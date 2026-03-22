@@ -40,8 +40,8 @@
     var alertOverlay = document.getElementById('alert-overlay');
     var alertOverlayText = document.getElementById('alert-overlay-text');
     var disconnectOverlay = document.getElementById('disconnect-overlay');
-    var armLabel = armLabel;
-    var holdProgressBar = holdProgressBar;
+    var armLabel = document.querySelector('#arm-btn .arm-label');
+    var holdProgressBar = document.querySelector('#arm-btn .hold-progress');
 
     keyInput.addEventListener('input', function(e) {
         var v = e.target.value.replace(/[^0-9]/g, '');
