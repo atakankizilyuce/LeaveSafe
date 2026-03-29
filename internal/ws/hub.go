@@ -567,7 +567,12 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		}
 	}
 
-	needsRestart := p.Port != cfg.Port || (p.ConnectionMode != "" && p.ConnectionMode != cfg.ConnectionMode)
+	oldRemote := false
+	if cfg.RemoteAccess != nil {
+		oldRemote = *cfg.RemoteAccess
+	}
+	needsRestart := p.Port != cfg.Port || (p.ConnectionMode != "" && p.ConnectionMode != cfg.ConnectionMode) ||
+		p.RemoteAccess != oldRemote || (p.RemotePort != 0 && p.RemotePort != cfg.RemotePort)
 
 	cfg.Port = p.Port
 	if p.ConnectionMode != "" {
@@ -589,6 +594,12 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	pinEnabled := cfg.PinProtection.Enabled
 	pinCode := cfg.PinProtection.Pin
 	autoArm := cfg.AutoArmOnLock
+
+	ra := p.RemoteAccess
+	cfg.RemoteAccess = &ra
+	if p.RemotePort > 0 {
+		cfg.RemotePort = p.RemotePort
+	}
 
 	if p.EnabledSensors != nil {
 		cfg.EnabledSensors = p.EnabledSensors
@@ -673,6 +684,10 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 }
 
 func configToPayload(cfg *config.Config) ConfigPayload {
+	remoteAccess := false
+	if cfg.RemoteAccess != nil {
+		remoteAccess = *cfg.RemoteAccess
+	}
 	return ConfigPayload{
 		Port:                   cfg.Port,
 		MaxSessions:            cfg.MaxSessions,
@@ -689,6 +704,8 @@ func configToPayload(cfg *config.Config) ConfigPayload {
 			HasPin:  cfg.PinProtection.Pin != "",
 		},
 		EnabledSensors: cfg.EnabledSensors,
+		RemoteAccess:   remoteAccess,
+		RemotePort:     cfg.RemotePort,
 	}
 }
 

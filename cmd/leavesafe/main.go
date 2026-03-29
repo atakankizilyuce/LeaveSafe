@@ -26,6 +26,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
+	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/qr"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/ws"
@@ -53,8 +54,9 @@ type statusBar struct {
 	gridCol   int
 	gridWidth int
 
-	key  string
-	urls []string
+	key          string
+	urls         []string
+	remoteStatus string // e.g. "ACTIVE — 85.1.2.3:9443" or "" if not remote
 }
 
 func visLen(s string) int {
@@ -116,9 +118,14 @@ func (sb *statusBar) gridLines() []string {
 		sb.boxLine(fmt.Sprintf("  %s  State    %s", armedDot, armedLabel)),
 		sb.boxLine(fmt.Sprintf("  %s●%s  Clients  %s%d%s connected", cGreen, cReset, cBold, clients, cReset)),
 		sb.boxLine(fmt.Sprintf("  %s●%s  Sensors  %s%d / %d%s active", cCyan, cReset, cBold, active, total, cReset)),
-		midSep,
-		sb.boxLine(fmt.Sprintf("  %s●%s  Key      %s%s%s", cYellow, cReset, cBold, sb.key, cReset)),
 	}
+
+	if sb.remoteStatus != "" {
+		lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Remote   %s%s%s", cGreen, cReset, cGreen, sb.remoteStatus, cReset)))
+	}
+
+	lines = append(lines, midSep)
+	lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Key      %s%s%s", cYellow, cReset, cBold, sb.key, cReset)))
 
 	maxURLVis := w - 2 - visLen("  ●  URL      ")
 	for _, url := range sb.urls {
@@ -183,6 +190,13 @@ func main() {
 		log.Warnf("Failed to load config, using defaults: %v", err)
 	}
 
+	// First-run: ask connection mode if not yet configured
+	if cfg.RemoteAccess == nil {
+		promptRemoteAccess(cfg)
+	}
+
+	remoteEnabled := cfg.RemoteAccess != nil && *cfg.RemoteAccess
+
 	authMgr, err := auth.NewManager()
 	if err != nil {
 		log.Fatalf("Failed to initialize auth: %v", err)
@@ -210,12 +224,51 @@ func main() {
 		port, _ = strconv.Atoi(v)
 	}
 
-	srv := server.New(server.Config{Hub: hub, Port: port, DevMode: *devMode})
+	// Remote access: set up TLS, UPnP, and public IP
+	var portMapping *network.PortMapping
+	var publicIP string
+	srvCfg := server.Config{Hub: hub, Port: port, DevMode: *devMode}
+
+	if remoteEnabled {
+		if port == 0 {
+			port = cfg.RemotePort
+			srvCfg.Port = port
+		}
+
+		cert, fp, err := server.GenerateOrLoadCert(config.ConfigDir())
+		if err != nil {
+			log.Warnf("TLS certificate error: %v — falling back to HTTP", err)
+		} else {
+			srvCfg.TLSCert = &cert
+			srvCfg.CertFP = fp
+		}
+	}
+
+	srv := server.New(srvCfg)
 	if err := srv.Listen(); err != nil {
 		log.Fatalf("Failed to bind port: %v", err)
 	}
 
-	sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr)
+	if remoteEnabled {
+		pm, err := network.OpenPort(srv.Port())
+		if err != nil {
+			log.Warnf("UPnP failed: %v — manual port forwarding required (port %d)", err, srv.Port())
+		} else {
+			portMapping = pm
+			if ip, err := pm.ExternalIP(); err == nil {
+				publicIP = ip
+			}
+		}
+		if publicIP == "" {
+			if ip, err := network.GetPublicIP(); err == nil {
+				publicIP = ip
+			} else {
+				log.Warnf("Could not determine public IP: %v", err)
+			}
+		}
+	}
+
+	sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, publicIP)
 
 	log.SetOutput(&logWriter{sb: sb})
 
@@ -251,6 +304,10 @@ func main() {
 	go runStatusTicker(ctx, sb)
 	go runConsole(hub, sb, localAlarm, authMgr)
 
+	if portMapping != nil {
+		go portMapping.KeepAlive(ctx)
+	}
+
 	connMode := cfg.ConnectionMode
 	if connMode == "bluetooth" || connMode == "both" {
 		bleServer := ble.NewServer(hub)
@@ -267,6 +324,9 @@ func main() {
 		cancel()
 		localAlarm.Stop()
 		sensorMgr.StopAll()
+		if portMapping != nil {
+			portMapping.Close()
+		}
 		if el := hub.EventLogger(); el != nil {
 			el.Close()
 		}
@@ -289,7 +349,7 @@ func main() {
 }
 
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
-	hub *ws.Hub, sensorMgr *monitor.Manager) *statusBar {
+	hub *ws.Hub, sensorMgr *monitor.Manager, publicIP string) *statusBar {
 
 	termW, termH, err := term.GetSize(int(out.Fd()))
 	if err != nil || termW < 80 || termH < 20 {
@@ -323,6 +383,17 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	row++
 
 	urls := srv.URLs()
+
+	// If remote access is active, prepend the public URL
+	if publicIP != "" {
+		scheme := "http"
+		if srv.IsTLS() {
+			scheme = "https"
+		}
+		remoteURL := fmt.Sprintf("%s://%s:%d", scheme, publicIP, srv.Port())
+		urls = append([]string{remoteURL}, urls...)
+	}
+
 	qrURL := ""
 	if len(urls) > 0 {
 		qrURL = urls[0] + "?key=" + authMgr.RawPairingKey()
@@ -351,15 +422,21 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	qrStartRow := row
 
+	remoteStatus := ""
+	if publicIP != "" {
+		remoteStatus = fmt.Sprintf("ACTIVE — %s:%d", publicIP, srv.Port())
+	}
+
 	sb := &statusBar{
-		out:       out,
-		hub:       hub,
-		sensorMgr: sensorMgr,
-		gridRow:   qrStartRow,
-		gridCol:   statusCol,
-		gridWidth: statusW,
-		key:       authMgr.PairingKey(),
-		urls:      urls,
+		out:          out,
+		hub:          hub,
+		sensorMgr:    sensorMgr,
+		gridRow:      qrStartRow,
+		gridCol:      statusCol,
+		gridWidth:    statusW,
+		key:          authMgr.PairingKey(),
+		urls:         urls,
+		remoteStatus: remoteStatus,
 	}
 
 	statusLines := sb.gridLines()
@@ -411,6 +488,35 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)
 
 	return sb
+}
+
+func promptRemoteAccess(cfg *config.Config) {
+	fmt.Printf("\n  %s%sBağlantı modu seçin / Select connection mode:%s\n\n", cBold, cCyan, cReset)
+	fmt.Printf("  %s[1]%s WiFi (aynı ağ / same network)\n", cBold, cReset)
+	fmt.Printf("      %sYalnızca aynı WiFi ağından bağlantı%s\n\n", cDim, cReset)
+	fmt.Printf("  %s[2]%s Uzaktan Erişim / Remote Access\n", cBold, cReset)
+	fmt.Printf("      %sMobil veri veya farklı ağdan bağlantı (UPnP gerekir)%s\n\n", cDim, cReset)
+	fmt.Printf("  Seçiminiz / Your choice (1/2): ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	remote := false
+	if scanner.Scan() {
+		choice := strings.TrimSpace(scanner.Text())
+		if choice == "2" {
+			remote = true
+		}
+	}
+	cfg.RemoteAccess = &remote
+
+	if err := config.Save(cfg); err != nil {
+		log.Warnf("Failed to save config: %v", err)
+	}
+
+	if remote {
+		fmt.Printf("\n  %s✓ Uzaktan erişim aktif — Remote access enabled%s\n\n", cGreen, cReset)
+	} else {
+		fmt.Printf("\n  %s✓ WiFi modu seçildi — WiFi mode selected%s\n\n", cGreen, cReset)
+	}
 }
 
 func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *auth.Manager) {

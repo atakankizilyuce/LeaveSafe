@@ -98,7 +98,7 @@
         try {
             ws = new WebSocket(wsUrl);
         } catch(e) {
-            showAuthError('Connection failed. Check that your device is on the same network.');
+            showAuthError('Connection failed. Check your network connection and try again.');
             resetConnectBtn();
             return;
         }
@@ -106,7 +106,7 @@
         var connTimeout = setTimeout(function() {
             if (ws && ws.readyState !== WebSocket.OPEN) {
                 ws.close();
-                showAuthError('Connection timed out. Make sure you are on the same Wi-Fi network.');
+                showAuthError('Connection timed out. Check your network connection and try again.');
                 resetConnectBtn();
             }
         }, 8000);
@@ -792,6 +792,8 @@
         document.getElementById('cfg-pin-enabled').checked = lastPinEnabled;
         document.getElementById('cfg-escalation').checked = cfg.alarm && cfg.alarm.escalation_enabled;
         document.getElementById('cfg-connection-mode').value = cfg.connection_mode;
+        document.getElementById('cfg-remote-access').checked = !!cfg.remote_access;
+        document.getElementById('cfg-remote-port').value = cfg.remote_port || 9443;
         var pinGroup = document.getElementById('pin-config-group');
         if (cfg.pin_protection && cfg.pin_protection.enabled) {
             pinGroup.classList.remove('hidden');
@@ -814,6 +816,8 @@
             input_threshold: parseInt(document.getElementById('cfg-input-threshold').value) || 3,
             auto_arm_on_lock: document.getElementById('cfg-auto-arm').checked,
             connection_mode: document.getElementById('cfg-connection-mode').value,
+            remote_access: document.getElementById('cfg-remote-access').checked,
+            remote_port: parseInt(document.getElementById('cfg-remote-port').value) || 9443,
             alarm: {
                 escalation_enabled: document.getElementById('cfg-escalation').checked
             },
