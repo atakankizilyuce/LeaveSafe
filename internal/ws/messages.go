@@ -76,6 +76,8 @@ type ConfigPayload struct {
 	Alarm                  config.AlarmConfig   `json:"alarm"`
 	PinProtection          PinProtectionPayload `json:"pin_protection"`
 	EnabledSensors         map[string]bool      `json:"enabled_sensors,omitempty"`
+	RemoteAccess           bool                 `json:"remote_access,omitempty"`
+	RemotePort             int                  `json:"remote_port,omitempty"`
 }
 
 // PinProtectionPayload is the PIN config for client exchange.

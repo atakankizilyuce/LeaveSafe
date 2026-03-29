@@ -40,6 +40,8 @@ type Config struct {
 	PinProtection          PinProtection  `json:"pin_protection"`
 	ConnectionMode         string          `json:"connection_mode,omitempty"`
 	EnabledSensors         map[string]bool `json:"enabled_sensors,omitempty"`
+	RemoteAccess           *bool           `json:"remote_access,omitempty"`
+	RemotePort             int             `json:"remote_port,omitempty"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -62,6 +64,7 @@ func Default() *Config {
 			},
 		},
 		ConnectionMode: "wifi",
+		RemotePort:     9443,
 		PinProtection: PinProtection{
 			Enabled: false,
 		},

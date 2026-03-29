@@ -117,6 +117,20 @@
                                         <option value="both">WiFi + Bluetooth</option>
                                     </select>
                                 </div>
+                                <div class="setting-group">
+                                    <label>Remote Access <span class="setting-hint">(restart required)</span></label>
+                                    <div class="toggle-row">
+                                        <span class="toggle-label">Allow connections from mobile data / other networks</span>
+                                        <label class="toggle">
+                                            <input type="checkbox" id="cfg-remote-access">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="setting-group">
+                                    <label>Remote Port <span class="setting-hint">(restart required)</span></label>
+                                    <input type="number" id="cfg-remote-port" min="1024" max="65535">
+                                </div>
                             </div>
                         </div>
 
