@@ -2,7 +2,7 @@ BINARY_NAME=leavesafe
 VERSION=1.0.0
 LDFLAGS=-ldflags="-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test test-e2e test-realtrigger test-sandbox fmt vet lint typos web-lint vuln check
+.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test test-e2e test-realtrigger test-sandbox fmt vet lint typos web-install web-build web-lint web-verify vuln check
 
 all: build-windows build-darwin build-darwin-arm build-linux
 
@@ -54,13 +54,27 @@ lint:
 typos:
 	typos
 
+# The phone UI. web/dist is committed and embedded in the binary, so it has to
+# be rebuilt and committed whenever web/src changes; CI fails if it drifts.
+web-install:
+	cd web && npm ci
+
+web-build:
+	cd web && npm run build
+
 web-lint:
-	npx --yes @biomejs/biome@2.5.6 ci web/ --error-on-warnings
+	npx --yes @biomejs/biome@2.5.6 ci . --error-on-warnings
+	cd web && npm run typecheck
+
+# Fails if the committed build output no longer matches web/src.
+web-verify: web-build
+	git diff --exit-code -- web/dist || \
+		(echo "web/dist is stale — commit the rebuilt output" && exit 1)
 
 vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-check: fmt vet lint web-lint vuln test
+check: fmt vet lint web-lint web-verify vuln test
 
 clean:
 	rm -rf dist/ $(BINARY_NAME) $(BINARY_NAME).exe
