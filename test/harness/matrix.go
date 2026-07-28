@@ -15,12 +15,19 @@ import (
 // all the way to the job summary.
 type Matrix struct {
 	mu      sync.Mutex
+	label   string
 	results map[string]string // sensor -> "triggered" or "skipped: <reason>"
 }
 
-// NewMatrix creates an empty matrix.
+// NewMatrix creates an empty matrix labelled with the current platform.
 func NewMatrix() *Matrix {
-	return &Matrix{results: make(map[string]string)}
+	return NewLabeledMatrix(runtime.GOOS)
+}
+
+// NewLabeledMatrix creates an empty matrix with an explicit label, so a run
+// inside the sandbox VM is not mistaken for one on a bare Linux runner.
+func NewLabeledMatrix(label string) *Matrix {
+	return &Matrix{label: label, results: make(map[string]string)}
 }
 
 const skipPrefix = "skipped: "
@@ -56,7 +63,7 @@ func (m *Matrix) WriteSummary() error {
 	sort.Strings(sensors)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n### Real-trigger coverage on %s\n\n", runtime.GOOS)
+	fmt.Fprintf(&b, "\n### Real-trigger coverage on %s\n\n", m.label)
 	b.WriteString("| Sensor | Result | Reason |\n|---|---|---|\n")
 	for _, name := range sensors {
 		result := m.results[name]

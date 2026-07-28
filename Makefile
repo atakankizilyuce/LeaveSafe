@@ -2,7 +2,7 @@ BINARY_NAME=leavesafe
 VERSION=1.0.0
 LDFLAGS=-ldflags="-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test test-e2e test-realtrigger fmt vet lint typos web-lint vuln check
+.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test test-e2e test-realtrigger test-sandbox fmt vet lint typos web-lint vuln check
 
 all: build-windows build-darwin build-darwin-arm build-linux
 
@@ -32,6 +32,11 @@ test-e2e:
 # a coverage matrix naming everything it could not.
 test-realtrigger:
 	go test -tags realtrigger ./test/realtrigger/... -v -count=1
+
+# Layer 1: boots a real Linux VM and creates real kernel-backed hardware.
+# Needs qemu, cloud-image-utils and /dev/kvm, so Linux hosts only.
+test-sandbox:
+	./test/sandbox/linuxvm/run.sh
 
 fmt:
 	go fmt ./...
