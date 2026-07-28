@@ -418,3 +418,7 @@ FodyWeavers.xsd
 *.msp
 *.exe
 *.claude
+# Linux VM sandbox working directory: the downloaded cloud image, the disk
+# overlay, a throwaway SSH private key and console logs. None of it belongs in
+# the repository, and the key must never be committed.
+test/sandbox/linuxvm/.work/
