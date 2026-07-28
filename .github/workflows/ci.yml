@@ -147,6 +147,31 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
+  # Layer 0: the real binary is started on every supported OS and driven through
+  # the whole user journey over a real WebSocket. This is what catches "the new
+  # version does not boot on macOS" before it reaches a user.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run end-to-end suite
+        shell: bash
+        run: go test -tags e2e ./test/e2e/... -v -count=1 -timeout 15m
+
+  # ---------------------------------------------------------------------------
   # Web assets: vanilla JS, checked with a single self-contained binary.
   # ---------------------------------------------------------------------------
   frontend:
@@ -250,7 +275,7 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [format, typos, lint, test, frontend, build, vulncheck]
+    needs: [format, typos, lint, test, e2e, frontend, build, vulncheck]
     if: always()
     steps:
       - name: Fail if any job did not succeed
