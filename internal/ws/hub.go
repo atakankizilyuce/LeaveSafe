@@ -12,6 +12,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
+	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"nhooyr.io/websocket"
 )
@@ -41,6 +42,9 @@ type Hub struct {
 
 	heartbeatInterval     time.Duration
 	disconnectGracePeriod time.Duration
+
+	tracker    *location.Tracker
+	trackerCtx context.Context //nolint:containedctx // scopes tracker goroutines to the app lifetime
 
 	cfg *config.Config
 
@@ -91,6 +95,34 @@ func (h *Hub) SetAutoArmOnLock(enabled bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.autoArmOnLock = enabled
+}
+
+// SetLocationTracker attaches a location tracker. ctx bounds the polling
+// goroutines the tracker starts when the system is armed. Passing a nil tracker
+// leaves the feature off, which is what happens when it is disabled in config.
+func (h *Hub) SetLocationTracker(ctx context.Context, tracker *location.Tracker) {
+	h.mu.Lock()
+	h.tracker = tracker
+	h.trackerCtx = ctx
+	h.mu.Unlock()
+
+	if tracker != nil {
+		tracker.SetUpdateCallback(func(snap location.Snapshot) {
+			h.PushAlert(NewLocation(locationPayload(true, snap)))
+		})
+	}
+}
+
+// LocationPayload returns the current position view for the phone.
+func (h *Hub) LocationPayload() LocationPayload {
+	h.mu.RLock()
+	tracker := h.tracker
+	h.mu.RUnlock()
+
+	if tracker == nil {
+		return LocationPayload{Enabled: false}
+	}
+	return locationPayload(true, tracker.Snapshot())
 }
 
 // SetConfig stores the application config reference for web-based configuration.
@@ -171,8 +203,19 @@ func (h *Hub) IsArmed() bool {
 func (h *Hub) Arm() {
 	h.mu.Lock()
 	h.armed = true
+	tracker := h.tracker
+	trackerCtx := h.trackerCtx
 	h.mu.Unlock()
+
 	h.sensorMgr.StartEnabled()
+
+	// Location tracking runs only while armed. There is no reason to scan for
+	// Wi-Fi or hit a geolocation service while the user is sitting at the
+	// machine, and every reason not to.
+	if tracker != nil && trackerCtx != nil {
+		tracker.Start(trackerCtx)
+	}
+
 	h.broadcastStatus()
 	h.logEvent(eventlog.Event{Type: eventlog.EventArm, Message: "System armed"})
 }
@@ -183,8 +226,15 @@ func (h *Hub) Disarm() {
 	h.armed = false
 	h.alarmActive = false
 	h.alarmSensor = ""
+	tracker := h.tracker
 	h.mu.Unlock()
+
 	h.sensorMgr.StopAll()
+	if tracker != nil {
+		// Stop keeps the last fix, so the phone can still show where the
+		// machine was rather than an empty panel.
+		tracker.Stop()
+	}
 	h.fireAlarmDismiss()
 	h.broadcastStatus()
 	h.logEvent(eventlog.Event{Type: eventlog.EventDisarm, Message: "System disarmed"})
@@ -332,6 +382,12 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 			h.fireAlarmTrigger()
 			h.PushAlert(NewAlarmActive(alert.Sensor, alert.Message))
 			h.logEvent(eventlog.Event{Type: eventlog.EventAlert, Sensor: alert.Sensor, Message: alert.Message})
+
+			// An alarm is exactly when the position matters, so it goes out
+			// with the alert rather than waiting for the next poll.
+			if payload := h.LocationPayload(); payload.Enabled {
+				h.PushAlert(NewLocation(payload))
+			}
 		}
 	}
 }
@@ -430,6 +486,10 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 			}
 		case MsgTypeGetConfig:
 			h.handleGetConfig(client)
+		case MsgTypeLocationAnchor:
+			h.handleLocationAnchor(msg)
+		case MsgTypeGetLocation:
+			client.send(NewLocation(h.LocationPayload()))
 		case MsgTypeUpdateConfig:
 			h.handleUpdateConfig(msg, client)
 		case MsgTypeResetConfig:
@@ -558,6 +618,27 @@ func (h *Hub) handleConfigure(msg ClientMessage) {
 	h.broadcastStatus()
 }
 
+// handleLocationAnchor records the phone's own position as a stand-in for the
+// laptop's. The two are in the same place when the user arms the system, which
+// makes this the most precise statement available about where the laptop is.
+func (h *Hub) handleLocationAnchor(msg ClientMessage) {
+	h.mu.RLock()
+	tracker := h.tracker
+	anchorEnabled := h.cfg == nil || h.cfg.Location.PhoneAnchor
+	h.mu.RUnlock()
+
+	if tracker == nil || !anchorEnabled {
+		return
+	}
+
+	fix := anchorFromWire(msg.Location)
+	if fix == nil {
+		log.Warn("Ignoring location anchor with coordinates outside the valid range")
+		return
+	}
+	tracker.SetAnchor(fix)
+}
+
 func (h *Hub) handleGetConfig(client *Client) {
 	h.mu.RLock()
 	cfg := h.cfg
@@ -635,6 +716,27 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		cfg.EnabledSensors = p.EnabledSensors
 	}
 
+	// Location changes take effect on the next arm, except for the API key,
+	// which the client never receives: an empty key here means "leave it
+	// alone", not "clear it". Clearing is done by turning Wi-Fi off.
+	locationChanged := p.Location.Enabled != cfg.Location.Enabled ||
+		p.Location.WiFiEnabled != cfg.Location.WiFiEnabled ||
+		p.Location.IPFallback != cfg.Location.IPFallback ||
+		p.Location.PollSeconds != cfg.Location.PollSeconds
+	cfg.Location.Enabled = p.Location.Enabled
+	cfg.Location.PhoneAnchor = p.Location.PhoneAnchor
+	cfg.Location.IPFallback = p.Location.IPFallback
+	cfg.Location.WiFiEnabled = p.Location.WiFiEnabled
+	if p.Location.PollSeconds > 0 {
+		cfg.Location.PollSeconds = p.Location.PollSeconds
+	}
+	if p.Location.GeolocateURL != "" {
+		cfg.Location.GeolocateURL = p.Location.GeolocateURL
+	}
+	if p.Location.GeolocateKey != "" {
+		cfg.Location.GeolocateKey = p.Location.GeolocateKey
+	}
+
 	snapshot := *cfg
 	h.mu.Unlock()
 
@@ -659,6 +761,11 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 
 	if needsRestart {
 		h.PushAlert(NewAlert("system", "warning", "Port changed — restart required to take effect"))
+	}
+	if locationChanged {
+		// The tracker's providers are built once at startup from this config,
+		// so a source being switched on or off does not take effect until then.
+		h.PushAlert(NewAlert("system", "warning", "Location settings changed — restart required to take effect"))
 	}
 
 	log.Info("Configuration updated from client")
@@ -736,6 +843,17 @@ func configToPayload(cfg *config.Config) ConfigPayload {
 		EnabledSensors: cfg.EnabledSensors,
 		RemoteAccess:   remoteAccess,
 		RemotePort:     cfg.RemotePort,
+		Location: LocationConfigPayload{
+			Enabled:      cfg.Location.Enabled,
+			PollSeconds:  cfg.Location.PollSeconds,
+			PhoneAnchor:  cfg.Location.PhoneAnchor,
+			IPFallback:   cfg.Location.IPFallback,
+			WiFiEnabled:  cfg.Location.WiFiEnabled,
+			GeolocateURL: cfg.Location.GeolocateURL,
+			// The key itself never goes out, only whether one is set. Same
+			// treatment as the PIN.
+			HasKey: cfg.Location.GeolocateKey != "",
+		},
 	}
 }
 
