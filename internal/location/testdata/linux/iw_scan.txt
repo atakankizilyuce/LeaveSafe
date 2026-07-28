@@ -1,0 +1,28 @@
+BSS a4:b1:c1:00:11:22(on wlan0)
+	TSF: 1234567890 usec (0d, 00:20:34)
+	freq: 2437
+	beacon interval: 100 TUs
+	capability: ESS Privacy ShortSlotTime (0x0411)
+	signal: -59.00 dBm
+	last seen: 100 ms ago
+	SSID: HomeNet
+	Supported rates: 1.0* 2.0* 5.5* 11.0* 18.0 24.0 36.0 54.0 
+	DS Parameter set: channel 6
+	ERP: <no flags>
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+BSS 3c:7a:8a:ff:0e:01(on wlan0) -- associated
+	TSF: 987654321 usec (0d, 00:16:27)
+	freq: 5220
+	beacon interval: 100 TUs
+	capability: ESS Privacy (0x0411)
+	signal: -45.00 dBm
+	last seen: 20 ms ago
+	SSID: Neighbour-5G
+	Supported rates: 6.0* 9.0 12.0* 18.0 24.0* 36.0 48.0 54.0 
+BSS 00:1a:2b:3c:4d:5e(on wlan0)
+	freq: 2412
+	signal: -88.00 dBm
+	SSID: FarAway
+	DS Parameter set: channel 1
