@@ -44,18 +44,3 @@ updates:
         update-types:
           - minor
           - patch
-
-  # Base images in the Dockerfile.
-  - package-ecosystem: docker
-    directory: "/"
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: Europe/Istanbul
-    open-pull-requests-limit: 3
-    commit-message:
-      prefix: chore(docker)
-    labels:
-      - dependencies
-      - docker
