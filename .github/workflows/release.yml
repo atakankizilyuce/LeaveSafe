@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Run the full CI gate — format, typos, lint, tests, frontend, build, docker,
+  # Run the full CI gate — format, typos, lint, tests, frontend, build,
   # vulncheck — before a single artifact is published.
   ci:
     name: CI gate

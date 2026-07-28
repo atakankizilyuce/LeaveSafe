@@ -2,7 +2,7 @@ BINARY_NAME=leavesafe
 VERSION=1.0.0
 LDFLAGS=-ldflags="-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test fmt vet lint typos web-lint vuln check docker docker-run
+.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test fmt vet lint typos web-lint vuln check
 
 all: build-windows build-darwin build-darwin-arm build-linux
 
@@ -50,9 +50,3 @@ check: fmt vet lint web-lint vuln test
 
 clean:
 	rm -rf dist/ $(BINARY_NAME) $(BINARY_NAME).exe
-
-docker:
-	docker build -t $(BINARY_NAME) .
-
-docker-run:
-	docker run --rm -it -p 8080:8080 -e PORT=8080 -e CONTAINER=1 $(BINARY_NAME)

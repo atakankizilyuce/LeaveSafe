@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -115,13 +114,7 @@ func (s *Server) URLs() []string {
 	}
 
 	ips := getLocalIPs()
-	urls := make([]string, 0, len(ips)+1)
-
-	// In container environments, localhost is the primary access point
-	// because Docker port mapping forwards host:PORT -> container:PORT.
-	if isContainer() {
-		urls = append(urls, fmt.Sprintf("%s://localhost:%d", scheme, s.port))
-	}
+	urls := make([]string, 0, len(ips))
 
 	for _, ip := range ips {
 		urls = append(urls, fmt.Sprintf("%s://%s:%d", scheme, ip.String(), s.port))
@@ -154,10 +147,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.hub.HandleConnection(r.Context(), conn)
-}
-
-func isContainer() bool {
-	return os.Getenv("CONTAINER") == "1"
 }
 
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual
