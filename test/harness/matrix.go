@@ -19,7 +19,7 @@ type Matrix struct {
 	results map[string]string // sensor -> "triggered" or "skipped: <reason>"
 }
 
-// NewMatrix creates an empty matrix labelled with the current platform.
+// NewMatrix creates an empty matrix labeled with the current platform.
 func NewMatrix() *Matrix {
 	return NewLabeledMatrix(runtime.GOOS)
 }
@@ -82,7 +82,8 @@ func (m *Matrix) WriteSummary() error {
 	if path == "" {
 		return nil
 	}
-	// #nosec G304 -- the path is supplied by the CI runner, not by user input
+	// #nosec G304,G703 -- the path comes from GITHUB_STEP_SUMMARY, which the CI
+	// runner sets and only the job itself can influence.
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("open step summary: %w", err)
