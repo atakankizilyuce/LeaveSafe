@@ -107,8 +107,8 @@ func (h *Hub) SetLocationTracker(ctx context.Context, tracker *location.Tracker)
 	h.mu.Unlock()
 
 	if tracker != nil {
-		tracker.SetUpdateCallback(func(snap location.Snapshot) {
-			h.PushAlert(NewLocation(locationPayload(true, snap)))
+		tracker.SetUpdateCallback(func(location.Snapshot) {
+			h.PushAlert(NewLocation(h.LocationPayload()))
 		})
 	}
 }
@@ -117,12 +117,20 @@ func (h *Hub) SetLocationTracker(ctx context.Context, tracker *location.Tracker)
 func (h *Hub) LocationPayload() LocationPayload {
 	h.mu.RLock()
 	tracker := h.tracker
+	anchorEnabled := h.cfg != nil && h.cfg.Location.PhoneAnchor
 	h.mu.RUnlock()
 
 	if tracker == nil {
 		return LocationPayload{Enabled: false}
 	}
-	return locationPayload(true, tracker.Snapshot())
+
+	payload := locationPayload(true, tracker.Snapshot())
+	// The tracker only knows about its own providers. With the phone anchor
+	// turned on there is a source even when every provider is unavailable, and
+	// saying otherwise would send the panel to "nothing works here" while it
+	// waits for a position the phone is about to send.
+	payload.Available = payload.Available || anchorEnabled
+	return payload
 }
 
 // SetConfig stores the application config reference for web-based configuration.
