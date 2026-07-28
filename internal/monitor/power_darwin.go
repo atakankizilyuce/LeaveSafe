@@ -5,7 +5,6 @@ package monitor
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -74,6 +73,5 @@ func isOnACPower() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	output := string(out)
-	return strings.Contains(output, "'AC Power'"), nil
+	return parseOnACPower(string(out)), nil
 }

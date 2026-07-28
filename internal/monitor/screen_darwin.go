@@ -5,7 +5,6 @@ package monitor
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -62,6 +61,5 @@ func isScreenOnDarwin() (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	// DevicePowerState 4 = on, 0-3 = dimmed/off
-	return !strings.Contains(string(out), `"DevicePowerState" = 0`), nil
+	return parseDisplayOn(string(out)), nil
 }
