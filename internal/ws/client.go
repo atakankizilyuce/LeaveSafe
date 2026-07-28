@@ -22,6 +22,7 @@ type Client struct {
 	hub           *Hub
 	conn          *websocket.Conn // nil for non-WebSocket transports
 	transport     Transport       // nil for WebSocket clients (uses conn)
+	remoteAddr    string          // peer address, used to rate-limit pairing per source
 	authenticated bool
 	token         string
 }
