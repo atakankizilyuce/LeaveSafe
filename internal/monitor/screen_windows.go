@@ -69,7 +69,7 @@ func isScreenOnWindows() (bool, error) {
 			return true, err
 		}
 		// If LogonUI is running, screen is locked
-		return !strings.Contains(strings.TrimSpace(string(out2)), "True"), nil
+		return !parseLogonUIPresent(string(out2)), nil
 	}
 	return strings.TrimSpace(string(out)) == "True", nil
 }
