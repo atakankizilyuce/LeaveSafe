@@ -1,30 +1,173 @@
 name: CI
 
 on:
+  pull_request:
   push:
     branches: [main, "release/**"]
-  pull_request:
-    branches: [main, "release/**"]
+  workflow_dispatch:
+  # Release tags run the exact same gate before anything is published.
+  workflow_call:
+
+# Least privilege by default; no job here needs write access.
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes the running checks.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
-    name: Test
+  # ---------------------------------------------------------------------------
+  # Formatting and spelling: platform independent, so one runner is enough.
+  # ---------------------------------------------------------------------------
+  format:
+    name: Format
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::Not gofmt-formatted. Run 'gofmt -w .':"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go mod tidy is up to date
+        run: |
+          go mod tidy
+          if ! git diff --exit-code -- go.mod go.sum; then
+            echo "::error::go.mod/go.sum are stale. Run 'go mod tidy'."
+            exit 1
+          fi
+
+  typos:
+    name: Typos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: crate-ci/typos@v1.48.0
+
+  # ---------------------------------------------------------------------------
+  # Lint runs once per target OS. Half of this codebase sits behind build tags
+  # (*_windows.go, *_darwin.go, *_linux.go), and a linter only ever sees the
+  # files for the platform it is analysing. darwin additionally needs cgo, so it
+  # has to run on a real macOS runner rather than a cross-compile.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint (${{ matrix.goos }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            runner: ubuntu-latest
+          - goos: windows
+            runner: windows-latest
+          - goos: darwin
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
+  # ---------------------------------------------------------------------------
+  # Tests run on every supported OS: the sensors, alarm and BLE backends are
+  # entirely different implementations per platform.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            # -race needs cgo, which is only guaranteed present on the Unix runners.
+            race: "-race"
+          - os: macos-latest
+            race: "-race"
+          - os: windows-latest
+            race: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       - name: Run tests
-        run: go test ./... -v -race -count=1
+        shell: bash
+        run: go test ./... -v ${{ matrix.race }} -count=1 -coverprofile=coverage.out -covermode=atomic
 
+      - name: Coverage summary
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+          echo "### Coverage: $total" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Coverage HTML report
+        if: matrix.os == 'ubuntu-latest'
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage report
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Web assets: vanilla JS, checked with a single self-contained binary.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Biome check
+        run: npx --yes @biomejs/biome@2.5.6 ci web/ --error-on-warnings
+
+  # ---------------------------------------------------------------------------
+  # Release binaries for every published target.
+  # ---------------------------------------------------------------------------
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: windows
@@ -53,10 +196,10 @@ jobs:
             ext: ""
             cgo: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -72,7 +215,86 @@ jobs:
             ./cmd/leavesafe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Container image: build it and scan the result, but never push from CI.
+  # ---------------------------------------------------------------------------
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: leavesafe:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image is FROM scratch, so this scans the Go binary itself. Kept to
+      # CRITICAL-and-fixable so it stays actionable; govulncheck covers the rest
+      # with reachability analysis.
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: leavesafe:ci
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # ---------------------------------------------------------------------------
+  # Known vulnerabilities in the Go toolchain and dependencies. gosec runs as
+  # part of golangci-lint, where it can be scoped per path.
+  # ---------------------------------------------------------------------------
+  vulncheck:
+    name: Vulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  # ---------------------------------------------------------------------------
+  # Single required status check for branch protection. Fails if any job above
+  # failed or was skipped, so a new job cannot be silently left out.
+  # ---------------------------------------------------------------------------
+  ci-success:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [format, typos, lint, test, frontend, build, docker, vulncheck]
+    if: always()
+    steps:
+      - name: Fail if any job did not succeed
+        if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled') ||
+          contains(needs.*.result, 'skipped')
+        run: |
+          echo "::error::At least one CI job did not succeed."
+          exit 1
+
+      - name: All checks passed
+        run: echo "All CI jobs succeeded."

@@ -5,28 +5,31 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Run tests
-        run: go test ./... -v -race -count=1
+  # Run the full CI gate — format, typos, lint, tests, frontend, build, docker,
+  # vulncheck — before a single artifact is published.
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
   release:
     name: Release (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ${{ matrix.runner }}
-    needs: test
+    needs: ci
+    timeout-minutes: 20
     permissions:
       contents: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: windows
@@ -55,10 +58,10 @@ jobs:
             ext: ""
             cgo: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -73,8 +76,17 @@ jobs:
             -o dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
             ./cmd/leavesafe
 
+      - name: Checksum
+        shell: bash
+        run: |
+          cd dist
+          shasum -a 256 leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
+            > leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}.sha256
+
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          files: dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+          files: |
+            dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+            dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}.sha256
           generate_release_notes: true
