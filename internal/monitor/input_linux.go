@@ -24,7 +24,7 @@ func NewInputSensorWithThreshold(n int) *InputSensor {
 	return &InputSensor{threshold: n}
 }
 
-func (s *InputSensor) Name() string       { return "input" }
+func (s *InputSensor) Name() string        { return "input" }
 func (s *InputSensor) DisplayName() string { return "Mouse/Keyboard" }
 
 func (s *InputSensor) Available() bool {

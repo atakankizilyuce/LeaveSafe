@@ -19,7 +19,7 @@ func NewScreenSensor() *ScreenSensor {
 }
 
 func (s *ScreenSensor) Name() string        { return "screen" }
-func (s *ScreenSensor) DisplayName() string  { return "Screen/Display" }
+func (s *ScreenSensor) DisplayName() string { return "Screen/Display" }
 
 func (s *ScreenSensor) Available() bool {
 	_, err := exec.LookPath("xset")
