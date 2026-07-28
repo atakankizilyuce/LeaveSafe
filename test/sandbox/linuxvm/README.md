@@ -13,26 +13,39 @@ Measured inside one, `/proc/acpi/button/lid`, `/sys/bus/usb/devices` and
 battery rather than the laptop's. That is why this project has no Docker support
 and why the sandbox is a VM.
 
-## What it creates
+## What it actually proves
 
-| Sensor | Real trigger |
-| --- | --- |
-| power | `test_power` module; writing `ac_online=0` unplugs the charger for real |
-| input | `uinput` virtual keyboard driven by `evemu-event` |
-| usb | `dummy_hcd` host controller with the `g_zero` gadget bound to it |
-| screen | `Xvfb +extension DPMS` plus `xset dpms force off` |
-| network | `ip addr add` on the loopback interface |
-| lid | not possible — QEMU x86 emulates no ACPI lid button |
+Measured on `ubuntu-latest`, not assumed:
 
-Anything that cannot be created is skipped with the reason attached and appears
-in the coverage matrix the run prints. The matrix is forwarded to the GitHub job
-summary, so a reader of the pull request sees the gaps rather than inferring
-coverage from a green check.
+| Sensor | Real trigger | Result |
+| --- | --- | --- |
+| power | `test_power` module; writing `ac_online=off` unplugs the charger for real | **proven** |
+| network | `ip addr add` on the loopback interface | **proven** |
+| input | `uinput` device driven by `evemu-event` | not proven — see below |
+| usb | `dummy_hcd` host controller with a gadget bound to it | not proven — `dummy_hcd` is not in the runner kernel's module set |
+| screen | `Xvfb` plus `xset dpms force off` | not proven — this Xvfb build has no DPMS extension even with `+extension DPMS` |
+| lid | — | not possible; QEMU x86 emulates no ACPI lid button |
 
-The `+extension DPMS` flag is not decoration: a plain `Xvfb` reports "Server
-does not have the DPMS Extension", which makes `xset dpms force off` a no-op and
-the screen scenario meaningless. The captured runner fixture in
-`internal/monitor/testdata/linux/xset_q_on.txt` shows exactly that.
+Every "not proven" row is a skip carrying that exact reason, printed in the
+coverage matrix and forwarded to the GitHub job summary. Nothing here reports
+success for hardware it did not actually change.
+
+Each helper verifies its own effect before the scenario asserts anything. The
+power helper writes the module parameter and then **reads the value back through
+`/sys/class/power_supply`**, because `test_power` maps the written string through
+a lookup table and silently keeps the old value for anything it does not
+recognise — `1` and `0` are ignored, `on` and `off` are not. Without the
+read-back this scenario failed as a mysterious timeout.
+
+### The input result is a finding, not just a gap
+
+The input helper measured that injected key events leave the mtime of
+`/dev/input/event*` unchanged. That timestamp is the *only* signal
+`internal/monitor/input_linux.go` reads. Device nodes on devtmpfs get their mtime
+at creation and do not update as events flow through them, which suggests the
+Linux input sensor would not detect a real keyboard either. That is a product
+question rather than a test-environment one, so the scenario skips and says so
+instead of quietly passing or quietly failing.
 
 ## Safety
 

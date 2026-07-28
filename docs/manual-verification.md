@@ -13,10 +13,10 @@ run publishes to its job summary.
 - The binary builds, starts, pairs, arms, raises and clears an alarm, enforces
   the auth lockout and the three-session cap, serves and persists config, and
   shuts down cleanly, releasing its port — on Windows, Linux and macOS.
-- In the Linux VM sandbox, real hardware changes are detected: charger removal
-  through the `test_power` module, keyboard activity through `uinput`, USB
-  attachment through `dummy_hcd`, screen blanking through a real X server, and
-  IP changes.
+- In the Linux VM sandbox, two real hardware changes are detected: charger
+  removal through the `test_power` kernel module, and IP changes. The VM's other
+  scenarios skip with measured reasons — see
+  [test/sandbox/linuxvm/README.md](../test/sandbox/linuxvm/README.md).
 - On Windows, real pointer activity moves `GetLastInputInfo` and the input
   sensor fires. Real IP changes are detected.
 - On macOS, real IP changes are detected.
@@ -65,6 +65,23 @@ run publishes to its job summary.
   entirely unexercised by CI.
 - **Disconnect grace period.** Needs a second physical device that can leave the
   network.
+
+## Open question raised by this suite
+
+The Linux VM measured that injected key events leave the mtime of
+`/dev/input/event*` unchanged, and that timestamp is the only signal
+`internal/monitor/input_linux.go` reads. Device nodes on devtmpfs receive their
+mtime at creation and do not update as events flow through them, so the Linux
+input sensor may not detect a real keyboard either.
+
+Until someone confirms it on real hardware, treat check 12 below as the one that
+matters most on Linux. This was left as a finding rather than a fix: changing how
+a sensor detects input is a product decision, not part of setting up the test
+environment.
+
+| # | Check | Platform | Expected |
+| - | ----- | -------- | -------- |
+| 12 | Arm, wait past the grace period, then type on the built-in keyboard | Linux | Phone alerts; if it does not, the sensor needs a different signal than file mtimes |
 
 ## Closing the gaps
 
