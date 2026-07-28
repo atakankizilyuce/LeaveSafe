@@ -113,7 +113,7 @@ func isACOnline(supplyPath string) (bool, error) {
 	onlinePath := filepath.Join(supplyPath, "online")
 	data, err := os.ReadFile(onlinePath)
 	if err == nil {
-		return strings.TrimSpace(string(data)) == "1", nil
+		return parseACOnline(string(data)), nil
 	}
 
 	// Fallback: check "status" file (for batteries)
@@ -122,6 +122,5 @@ func isACOnline(supplyPath string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	status := strings.TrimSpace(string(data))
-	return status == "Charging" || status == "Full", nil
+	return parseBatteryCharging(string(data)), nil
 }

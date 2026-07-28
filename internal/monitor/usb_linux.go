@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -90,7 +89,7 @@ func listUSBDevicesLinux() (map[string]bool, error) {
 		if err != nil {
 			continue
 		}
-		name := strings.TrimSpace(string(data))
+		name := parseUSBProductName(string(data))
 		if name != "" {
 			devices[entry.Name()+"="+name] = true
 		}
