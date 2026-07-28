@@ -213,7 +213,17 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Verify KVM is available
+      # /dev/kvm exists on these runners but is root:kvm 0660, and the runner
+      # user is not in the kvm group — so QEMU fails with "Permission denied"
+      # despite the device being present. This udev rule opens it up.
+      - name: Grant access to /dev/kvm
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify KVM is usable
         run: |
           if [ ! -e /dev/kvm ]; then
             echo "::error::/dev/kvm is missing; the sandbox VM cannot boot. This is a"
@@ -221,6 +231,11 @@ jobs:
             exit 1
           fi
           ls -l /dev/kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "::error::/dev/kvm exists but is not readable and writable by this user,"
+            echo "::error::so QEMU cannot use hardware acceleration."
+            exit 1
+          fi
 
       - name: Install QEMU and cloud-image tools
         run: |
