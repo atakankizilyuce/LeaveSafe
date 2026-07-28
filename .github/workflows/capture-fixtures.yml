@@ -7,12 +7,6 @@ name: Capture Fixtures
 # and committed under internal/monitor/testdata/.
 on:
   workflow_dispatch:
-  # Temporary: workflow_dispatch only works for workflows already on the default
-  # branch, so this trigger lets the first capture run before the merge. Removed
-  # once the fixtures are committed.
-  push:
-    branches: [test/real-environment-verification]
-    paths: [".github/workflows/capture-fixtures.yml"]
 
 permissions:
   contents: read
