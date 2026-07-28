@@ -41,7 +41,22 @@ func triggerNetworkChange(t *testing.T) error {
 
 // triggerScreenOff puts the display to sleep for real, which changes the
 // IODisplayWrangler power state the sensor reads.
+//
+// On a headless runner `pmset displaysleepnow` succeeds but changes nothing
+// observable: IOKit publishes no DevicePowerState because there is no display
+// whose power it manages. Rather than let the scenario time out and imply the
+// sensor is broken, probe for the key first and skip with the real reason.
 func triggerScreenOff(_ *testing.T) error {
+	// #nosec G204 -- fixed arguments, no external input
+	state, err := exec.Command("ioreg", "-r", "-d", "1", "-c", "IODisplayWrangler").Output()
+	if err != nil {
+		return fmt.Errorf("read IODisplayWrangler: %w", err)
+	}
+	if !strings.Contains(string(state), "DevicePowerState") {
+		return fmt.Errorf("%w: IOKit reports no DevicePowerState, so this machine has "+
+			"no display whose power state the sensor could observe", errUnsupported)
+	}
+
 	// #nosec G204 -- fixed arguments, no external input
 	out, err := exec.Command("pmset", "displaysleepnow").CombinedOutput()
 	if err != nil {

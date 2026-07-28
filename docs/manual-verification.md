@@ -19,7 +19,7 @@ run publishes to its job summary.
   IP changes.
 - On Windows, real pointer activity moves `GetLastInputInfo` and the input
   sensor fires. Real IP changes are detected.
-- On macOS, real display sleep and real IP changes are detected.
+- On macOS, real IP changes are detected.
 - Every OS-output parser is tested against output the operating systems really
   produced. See `internal/monitor/testdata/PROVENANCE.md`.
 
@@ -35,6 +35,7 @@ run publishes to its job summary.
 | 6 | Arm, then unplug a USB stick | Windows | Phone alerts within ~1 s |
 | 7 | Arm, then unplug a USB stick | macOS | Phone alerts within ~3 s |
 | 8 | Arm, then lock the screen | Windows | Phone alerts; with auto-arm on, the system arms itself |
+| 8a | Arm, then let the display sleep | macOS | Phone alerts within ~2 s |
 | 9 | Trigger an alarm and let it escalate | any | Volume rises through the configured levels and is audible |
 | 10 | Pair over Bluetooth instead of Wi-Fi | any | Pairing succeeds and alerts arrive over BLE |
 | 11 | Arm, then carry the phone out of Wi-Fi range | any | Alarm fires after the disconnect grace period |
@@ -51,8 +52,13 @@ run publishes to its job summary.
 - **USB on Windows and macOS.** No attachable device exists on a hosted runner;
   the captured `system_profiler SPUSBDataType` output is empty. The Linux VM
   covers this case through `dummy_hcd`.
-- **Screen lock on Windows.** Locking or blanking the session would cut off the
-  session the CI job itself runs in.
+- **Screen on Windows and macOS.** On Windows, locking or blanking the session
+  would cut off the session the CI job itself runs in. On macOS the runner is
+  headless: `ioreg -c IODisplayWrangler` publishes no `DevicePowerState` at all,
+  so `pmset displaysleepnow` succeeds while changing nothing the sensor could
+  observe. This was measured, not assumed — the first CI run failed here and the
+  scenario was turned into a stated skip rather than a passing pretence. The
+  Linux VM covers this case through a real X server.
 - **Audible alarm and volume escalation.** Runners have no audio device, and
   nothing could listen to it if they did.
 - **Bluetooth.** No runner exposes a Bluetooth adapter, so the BLE transport is
