@@ -15,6 +15,7 @@ func maximizeConsole() {
 	hwnd, _, _ := getConsoleWindow.Call()
 	if hwnd != 0 {
 		const swMaximize = 3
-		showWindow.Call(hwnd, uintptr(swMaximize))
+		// ShowWindow returns the previous visibility state, not an error.
+		_, _, _ = showWindow.Call(hwnd, uintptr(swMaximize))
 	}
 }

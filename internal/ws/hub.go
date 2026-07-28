@@ -181,7 +181,7 @@ func (h *Hub) RegisterExternalClient(transport Transport) *Client {
 
 // HandleExternalMessage processes a message from an external (non-WebSocket) client.
 func (h *Hub) HandleExternalMessage(client *Client, msg ClientMessage) {
-	h.handleMessage(context.Background(), client, msg)
+	h.handleMessage(client, msg)
 }
 
 // RemoveExternalClient removes a non-WebSocket client from the hub.
@@ -198,7 +198,7 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn) {
 
 	defer func() {
 		h.removeClient(client)
-		conn.Close(websocket.StatusNormalClosure, "")
+		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
 
 	for {
@@ -212,7 +212,7 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn) {
 			continue
 		}
 
-		h.handleMessage(ctx, client, msg)
+		h.handleMessage(client, msg)
 	}
 }
 
@@ -357,10 +357,10 @@ func (h *Hub) fireAlarmDismiss() {
 	}
 }
 
-func (h *Hub) handleMessage(ctx context.Context, client *Client, msg ClientMessage) {
+func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 	switch msg.Type {
 	case MsgTypeAuth:
-		h.handleAuth(ctx, client, msg)
+		h.handleAuth(client, msg)
 	case MsgTypePing:
 		client.send(ServerMessage{Type: MsgTypePong})
 	default:
@@ -464,7 +464,7 @@ func (h *Hub) clearAlarm() string {
 	return sensor
 }
 
-func (h *Hub) handleAuth(ctx context.Context, client *Client, msg ClientMessage) {
+func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	token, remaining, err := h.authManager.Authenticate(msg.Key)
 	if err != nil {
 		client.send(NewAuthFail(err.Error(), remaining))

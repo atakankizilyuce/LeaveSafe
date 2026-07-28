@@ -325,14 +325,16 @@ func main() {
 		localAlarm.Stop()
 		sensorMgr.StopAll()
 		if portMapping != nil {
-			portMapping.Close()
+			_ = portMapping.Close()
 		}
 		if el := hub.EventLogger(); el != nil {
-			el.Close()
+			_ = el.Close()
 		}
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Warnf("Server shutdown: %v", err)
+		}
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -350,7 +352,6 @@ func main() {
 
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	hub *ws.Hub, sensorMgr *monitor.Manager, publicIP string) *statusBar {
-
 	termW, termH, err := term.GetSize(int(out.Fd()))
 	if err != nil || termW < 80 || termH < 20 {
 		termW, termH = 120, 40
@@ -618,4 +619,3 @@ func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
 	}
 	log.Infof("%d/%d sensors available", available, len(sensors))
 }
-

@@ -43,7 +43,9 @@ func getPublicIPviaSTUN() (string, error) {
 		0x09, 0x0A, 0x0B, 0x0C,
 	}
 
-	conn.SetDeadline(time.Now().Add(httpTimeout))
+	if err := conn.SetDeadline(time.Now().Add(httpTimeout)); err != nil {
+		return "", err
+	}
 	if _, err := conn.Write(req); err != nil {
 		return "", err
 	}

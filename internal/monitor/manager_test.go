@@ -29,7 +29,7 @@ func (m *mockSensor) Stop() error         { m.stopped = true; return nil }
 
 func (m *mockSensor) Start(ctx context.Context, _ chan<- Alert) error {
 	close(m.started) // signal that Start was called
-	<-ctx.Done()     // block until cancelled
+	<-ctx.Done()     // block until canceled
 	return nil
 }
 
@@ -142,7 +142,7 @@ func TestStartEnabled_StopAll(t *testing.T) {
 
 	mgr.StopAll()
 
-	// After StopAll the context passed to Start is cancelled; allow goroutine to exit.
+	// After StopAll the context passed to Start is canceled; allow goroutine to exit.
 	time.Sleep(50 * time.Millisecond)
 }
 

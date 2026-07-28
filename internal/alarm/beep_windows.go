@@ -13,7 +13,8 @@ func beepTone(freq int, durationMs int, stopCh <-chan struct{}) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		procBeep.Call(uintptr(freq), uintptr(durationMs))
+		// A failed beep is not worth surfacing; the alarm has other channels.
+		_, _, _ = procBeep.Call(uintptr(freq), uintptr(durationMs))
 	}()
 
 	select {
