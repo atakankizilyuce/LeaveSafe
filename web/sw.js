@@ -1,12 +1,12 @@
-self.addEventListener('install', function(e) {
+self.addEventListener('install', function () {
     self.skipWaiting();
 });
 
-self.addEventListener('activate', function(e) {
+self.addEventListener('activate', function (e) {
     e.waitUntil(self.clients.claim());
 });
 
-self.addEventListener('message', function(e) {
+self.addEventListener('message', function (e) {
     if (!e.data) return;
 
     if (e.data.type === 'alarm') {
@@ -15,20 +15,20 @@ self.addEventListener('message', function(e) {
             tag: 'leavesafe-alarm',
             requireInteraction: true,
             renotify: true,
-            vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500]
+            vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500],
         });
     }
 });
 
-self.addEventListener('notificationclick', function(e) {
+self.addEventListener('notificationclick', function (e) {
     e.notification.close();
     e.waitUntil(
-        self.clients.matchAll({ type: 'window' }).then(function(clientList) {
+        self.clients.matchAll({ type: 'window' }).then(function (clientList) {
             for (var i = 0; i < clientList.length; i++) {
                 var client = clientList[i];
                 if ('focus' in client) return client.focus();
             }
             if (self.clients.openWindow) return self.clients.openWindow('/');
-        })
+        }),
     );
 });

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,8 +20,10 @@ import (
 // Config holds server configuration.
 type Config struct {
 	Hub     *ws.Hub
-	Port    int  // 0 means pick a free port automatically
-	DevMode bool // serve web assets from filesystem instead of embedded
+	Port    int              // 0 means pick a free port automatically
+	DevMode bool             // serve web assets from filesystem instead of embedded
+	TLSCert *tls.Certificate // non-nil enables HTTPS/WSS
+	CertFP  string           // SHA-256 fingerprint of the TLS certificate
 }
 
 // Server is the HTTP server that serves the web UI and handles WebSocket connections.
@@ -29,13 +32,17 @@ type Server struct {
 	listener   net.Listener
 	port       int
 	hub        *ws.Hub
+	tlsCert    *tls.Certificate
+	certFP     string
 }
 
 // New creates a new HTTP server.
 func New(cfg Config) *Server {
 	s := &Server{
-		hub:  cfg.Hub,
-		port: cfg.Port,
+		hub:     cfg.Hub,
+		port:    cfg.Port,
+		tlsCert: cfg.TLSCert,
+		certFP:  cfg.CertFP,
 	}
 
 	mux := http.NewServeMux()
@@ -58,17 +65,35 @@ func New(cfg Config) *Server {
 // Listen binds to the configured port (or a free port if Port is 0).
 // Call this before URLs() or Start().
 func (s *Server) Listen() error {
+	// #nosec G102 -- binding to all interfaces is the point: the phone connects
+	// to this machine over the LAN (or via the UPnP mapping) to reach the alarm.
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil && s.port != 0 {
 		log.Warnf("Port %d busy, picking a free port", s.port)
-		ln, err = net.Listen("tcp", ":0")
+		ln, err = net.Listen("tcp", ":0") // #nosec G102 -- see above
 	}
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	s.port = ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		_ = ln.Close()
+		return fmt.Errorf("listen: unexpected address type %T", ln.Addr())
+	}
+	s.port = addr.Port
+
+	if s.tlsCert != nil {
+		tlsCfg := &tls.Config{
+			Certificates: []tls.Certificate{*s.tlsCert},
+			MinVersion:   tls.VersionTLS12,
+		}
+		ln = tls.NewListener(ln, tlsCfg)
+		log.Infof("HTTPS server bound to port %d (TLS enabled)", s.port)
+	} else {
+		log.Infof("HTTP server bound to port %d", s.port)
+	}
+
 	s.listener = ln
-	log.Infof("HTTP server bound to port %d", s.port)
 	return nil
 }
 
@@ -82,21 +107,36 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
-// URLs returns the HTTP URLs clients can connect to.
+// URLs returns the HTTP(S) URLs clients can connect to.
 func (s *Server) URLs() []string {
+	scheme := "http"
+	if s.tlsCert != nil {
+		scheme = "https"
+	}
+
 	ips := getLocalIPs()
 	urls := make([]string, 0, len(ips)+1)
 
 	// In container environments, localhost is the primary access point
 	// because Docker port mapping forwards host:PORT -> container:PORT.
 	if isContainer() {
-		urls = append(urls, fmt.Sprintf("http://localhost:%d", s.port))
+		urls = append(urls, fmt.Sprintf("%s://localhost:%d", scheme, s.port))
 	}
 
 	for _, ip := range ips {
-		urls = append(urls, fmt.Sprintf("http://%s:%d", ip.String(), s.port))
+		urls = append(urls, fmt.Sprintf("%s://%s:%d", scheme, ip.String(), s.port))
 	}
 	return urls
+}
+
+// IsTLS returns whether the server is using TLS.
+func (s *Server) IsTLS() bool {
+	return s.tlsCert != nil
+}
+
+// CertFingerprint returns the SHA-256 fingerprint of the TLS certificate.
+func (s *Server) CertFingerprint() string {
+	return s.certFP
 }
 
 // Port returns the bound port number.
@@ -156,12 +196,12 @@ func getLocalIPs() []net.IP {
 // WSL, Hyper-V, VirtualBox, and similar virtualization tools.
 func isVirtualInterface(name string) bool {
 	prefixes := []string{
-		"docker", "br-", "veth",    // Docker
-		"vEthernet",                 // Hyper-V / WSL
-		"virbr",                     // libvirt
-		"VirtualBox", "vboxnet",     // VirtualBox
-		"vmnet",                     // VMware
-		"ham",                       // Hamachi
+		"docker", "br-", "veth", // Docker
+		"vEthernet",             // Hyper-V / WSL
+		"virbr",                 // libvirt
+		"VirtualBox", "vboxnet", // VirtualBox
+		"vmnet", // VMware
+		"ham",   // Hamachi
 	}
 	lower := strings.ToLower(name)
 	for _, p := range prefixes {

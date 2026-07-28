@@ -11,7 +11,7 @@ import (
 
 // PowerSensor monitors the charger/AC power state on macOS.
 type PowerSensor struct {
-	lastOnAC bool
+	lastOnAC    bool
 	initialized bool
 }
 
@@ -20,7 +20,7 @@ func NewPowerSensor() *PowerSensor {
 }
 
 func (s *PowerSensor) Name() string        { return "power" }
-func (s *PowerSensor) DisplayName() string  { return "Power/Charger" }
+func (s *PowerSensor) DisplayName() string { return "Power/Charger" }
 
 func (s *PowerSensor) Available() bool {
 	_, err := exec.LookPath("pmset")

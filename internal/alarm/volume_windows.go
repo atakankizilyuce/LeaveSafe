@@ -45,7 +45,8 @@ func comVtableMethod(obj unsafe.Pointer, index int) uintptr {
 
 func comRelease(obj unsafe.Pointer) {
 	if obj != nil {
-		syscall.SyscallN(comVtableMethod(obj, 2), uintptr(obj))
+		// IUnknown::Release returns the new reference count, not an error.
+		_, _, _ = syscall.SyscallN(comVtableMethod(obj, 2), uintptr(obj))
 	}
 }
 
@@ -68,7 +69,7 @@ func acquireEndpointVolume() (vol unsafe.Pointer, cleanup func(), err error) {
 		uintptr(unsafe.Pointer(&enumerator)),
 	)
 	if hr != 0 {
-		procCoUninitialize.Call()
+		_, _, _ = procCoUninitialize.Call()
 		return nil, nil, fmt.Errorf("CoCreateInstance failed: 0x%x", hr)
 	}
 
@@ -80,7 +81,7 @@ func acquireEndpointVolume() (vol unsafe.Pointer, cleanup func(), err error) {
 	)
 	if hr != 0 {
 		comRelease(enumerator)
-		procCoUninitialize.Call()
+		_, _, _ = procCoUninitialize.Call()
 		return nil, nil, fmt.Errorf("GetDefaultAudioEndpoint failed: 0x%x", hr)
 	}
 
@@ -94,15 +95,15 @@ func acquireEndpointVolume() (vol unsafe.Pointer, cleanup func(), err error) {
 	if hr != 0 {
 		comRelease(device)
 		comRelease(enumerator)
-		procCoUninitialize.Call()
-		return nil, nil, fmt.Errorf("Activate failed: 0x%x", hr)
+		_, _, _ = procCoUninitialize.Call()
+		return nil, nil, fmt.Errorf("IMMDevice.Activate failed: 0x%x", hr)
 	}
 
 	return volume, func() {
 		comRelease(volume)
 		comRelease(device)
 		comRelease(enumerator)
-		procCoUninitialize.Call()
+		_, _, _ = procCoUninitialize.Call()
 	}, nil
 }
 
@@ -131,7 +132,8 @@ func maxVolume() (float64, error) {
 		return float64(prevLevel), fmt.Errorf("SetMasterVolumeLevelScalar failed: 0x%x", hr)
 	}
 
-	syscall.SyscallN(comVtableMethod(volume, 11),
+	// Unmuting is best effort: the volume level is already at maximum.
+	_, _, _ = syscall.SyscallN(comVtableMethod(volume, 11),
 		uintptr(volume), 0, uintptr(unsafe.Pointer(&emptyGUID)))
 
 	return float64(prevLevel), nil

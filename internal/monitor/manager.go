@@ -9,11 +9,11 @@ import (
 
 // Manager handles sensor registration, lifecycle, and alert routing.
 type Manager struct {
-	mu       sync.RWMutex
-	sensors  []Sensor
-	enabled  map[string]bool
-	cancels  map[string]context.CancelFunc
-	alertCh  chan Alert
+	mu      sync.RWMutex
+	sensors []Sensor
+	enabled map[string]bool
+	cancels map[string]context.CancelFunc
+	alertCh chan Alert
 }
 
 // NewManager creates a new sensor manager.
@@ -86,6 +86,7 @@ func (m *Manager) StartEnabled() {
 			continue
 		}
 
+		// #nosec G118 -- cancel is kept in m.cancels and invoked by StopAll
 		ctx, cancel := context.WithCancel(context.Background())
 		m.cancels[s.Name()] = cancel
 		alertCh := m.alertCh

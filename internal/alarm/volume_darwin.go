@@ -11,7 +11,6 @@ import (
 )
 
 var (
-	coreAudio                  uintptr
 	audioObjectGetPropertyData uintptr
 	audioObjectSetPropertyData uintptr
 )
@@ -21,7 +20,6 @@ func init() {
 	if err != nil {
 		return
 	}
-	coreAudio = lib
 	audioObjectGetPropertyData, _ = purego.Dlsym(lib, "AudioObjectGetPropertyData")
 	audioObjectSetPropertyData, _ = purego.Dlsym(lib, "AudioObjectSetPropertyData")
 }
@@ -34,10 +32,10 @@ type audioObjectPropertyAddress struct {
 
 const (
 	kAudioHardwareServiceDeviceProperty_VirtualMainVolume = 0x766D7663
-	kAudioObjectPropertyScopeOutput                      = 0x6F757470
-	kAudioObjectPropertyElementMain                      = 0
-	kAudioHardwarePropertyDefaultOutputDevice            = 0x644F7574
-	kAudioObjectSystemObject                             = 1
+	kAudioObjectPropertyScopeOutput                       = 0x6F757470
+	kAudioObjectPropertyElementMain                       = 0
+	kAudioHardwarePropertyDefaultOutputDevice             = 0x644F7574
+	kAudioObjectSystemObject                              = 1
 )
 
 func getDefaultOutputDevice() (uint32, error) {

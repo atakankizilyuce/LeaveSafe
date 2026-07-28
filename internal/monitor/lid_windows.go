@@ -11,7 +11,7 @@ import (
 
 // LidSensor monitors the laptop lid state on Windows.
 type LidSensor struct {
-	lastOpen bool
+	lastOpen    bool
 	initialized bool
 }
 
@@ -20,7 +20,7 @@ func NewLidSensor() *LidSensor {
 }
 
 func (s *LidSensor) Name() string        { return "lid" }
-func (s *LidSensor) DisplayName() string  { return "Lid State" }
+func (s *LidSensor) DisplayName() string { return "Lid State" }
 
 func (s *LidSensor) Available() bool {
 	// Check if this is a laptop by querying battery info

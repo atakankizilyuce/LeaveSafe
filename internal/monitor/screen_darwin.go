@@ -19,8 +19,8 @@ func NewScreenSensor() *ScreenSensor {
 }
 
 func (s *ScreenSensor) Name() string        { return "screen" }
-func (s *ScreenSensor) DisplayName() string  { return "Screen/Display" }
-func (s *ScreenSensor) Available() bool      { return true }
+func (s *ScreenSensor) DisplayName() string { return "Screen/Display" }
+func (s *ScreenSensor) Available() bool     { return true }
 
 func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 	ticker := time.NewTicker(2 * time.Second)

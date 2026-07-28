@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"sync"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/leavesafe/leavesafe/internal/ws"
+	log "github.com/sirupsen/logrus"
 )
 
 // Custom 128-bit UUIDs for LeaveSafe BLE GATT service.
@@ -79,6 +79,10 @@ func (s *Server) handleIncoming(connID string, data []byte, newTransport func() 
 }
 
 // removeClient removes and unregisters the client for a given connection ID.
+// Only the darwin BLE backend reports disconnects, so linters analyzing other
+// platforms see this as dead code.
+//
+//nolint:unused // used by ble_darwin.go
 func (s *Server) removeClient(connID string) {
 	s.mu.Lock()
 	client, ok := s.clients[connID]

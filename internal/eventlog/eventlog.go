@@ -37,6 +37,7 @@ type Logger struct {
 // New creates a new event logger that appends to the given file path.
 // The parent directory must exist.
 func New(path string) (*Logger, error) {
+	// #nosec G304 -- path is built from the app's own config dir, never user input
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
@@ -71,6 +72,7 @@ func (l *Logger) Close() error {
 
 // ReadLast reads the last n events from a JSONL file.
 func ReadLast(path string, n int) ([]Event, error) {
+	// #nosec G304 -- path is built from the app's own config dir, never user input
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
