@@ -75,6 +75,8 @@ func binary(t *testing.T) string {
 	t.Helper()
 
 	if path := os.Getenv("LEAVESAFE_TEST_BINARY"); path != "" {
+		// #nosec G703 -- the path is set by whoever runs the suite, in the same
+		// shell that could run the binary directly; it is not attacker input.
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("LEAVESAFE_TEST_BINARY=%s is not usable: %v", path, err)
 		}

@@ -82,15 +82,14 @@ linters:
         linters:
           - gosec
         text: G304
-      # nhooyr.io/websocket is deprecated in favour of github.com/coder/websocket,
+      # nhooyr.io/websocket is deprecated in favor of github.com/coder/websocket,
       # which is the same package under a new import path. Migrating is a
-      # dependency change, tracked separately from this CI work.
+      # dependency change, tracked separately from this CI work. Matching the
+      # deprecation notice itself covers the import and every call through it,
+      # whatever the receiver is named.
       - linters:
           - staticcheck
-        text: "SA1019: .*nhooyr.io/websocket"
-      - linters:
-          - staticcheck
-        text: "SA1019: (websocket|conn|c\\.conn)\\."
+        text: "SA1019: .*coder now maintains this library"
 
 formatters:
   enable:

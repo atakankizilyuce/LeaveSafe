@@ -27,7 +27,7 @@ func TestParseLidStatusWMI(t *testing.T) {
 		t.Error("a closed lid was read as open; the alarm would never fire")
 	}
 	if !parseLidStatusWMI("1\r\n") {
-		t.Error("the numeric form of an open lid was not recognised")
+		t.Error("the numeric form of an open lid was not recognized")
 	}
 	// PowerShell writes CRLF, which the parser has to tolerate.
 	if !parseLidStatusWMI("True\r\n") {
