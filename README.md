@@ -231,11 +231,22 @@ The CI workflow adds a few things a laptop cannot cover on its own:
 | `typos` | spell check across the repo ([typos](https://github.com/crate-ci/typos), configured in `_typos.toml`) |
 | `lint` | `golangci-lint` once per target OS — half this codebase sits behind build tags, so a single platform never sees all of it |
 | `test` | unit tests on Linux, Windows and macOS, with coverage reported in the run summary |
+| `e2e` | starts the real binary on each OS and drives the whole user flow over a real WebSocket |
+| `realtrigger` | fires the hardware changes each runner genuinely permits, and records every one it cannot |
+| `sandbox-linux` | boots a real Linux VM under QEMU/KVM and creates real kernel-backed hardware |
 | `frontend` | Biome lint and format check on the embedded web client |
 | `build` | the full five-target release matrix |
 | `vulncheck` | `govulncheck` against the Go toolchain and dependencies |
 
 `ci-success` aggregates all of them, so branch protection only needs that one required check. Dependency and action updates arrive weekly through Dependabot.
+
+### How much this proves
+
+Every run publishes a coverage matrix naming each sensor that was genuinely triggered and each one that could not be, with the reason. No test fakes hardware and reports success: where a real trigger is impossible, it is skipped and the gap is stated.
+
+In the Linux VM the charger is genuinely unplugged (`test_power`), a real key is typed (`uinput`), a real USB gadget is attached (`dummy_hcd`) and a real display is blanked (`Xvfb` with DPMS). On Windows and macOS only what a hosted runner permits is fired — pointer activity, IP changes, display sleep. What no CI environment can reach is listed in [docs/manual-verification.md](docs/manual-verification.md).
+
+Run the layers locally with `make test-e2e`, `make test-realtrigger` and `make test-sandbox`; plain `make test` stays fast and touches no hardware.
 
 <br/>
 
