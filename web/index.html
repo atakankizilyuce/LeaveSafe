@@ -64,6 +64,16 @@
                     </div>
                 </div>
 
+                <div class="card card-location hidden" id="location-card">
+                    <div class="card-header">
+                        <h2>Location</h2>
+                        <button id="location-refresh-btn" class="btn-icon" type="button">Refresh</button>
+                    </div>
+                    <div id="location-body">
+                        <p class="muted">Arm the system to start tracking</p>
+                    </div>
+                </div>
+
                 <div class="card card-sensors">
                     <h2>Sensors</h2>
                     <div id="sensor-list"></div>
@@ -192,6 +202,52 @@
                                         <input type="checkbox" id="cfg-auto-arm">
                                         <span class="slider"></span>
                                     </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" data-section="location">
+                            <div class="section-header">
+                                <h3>Location</h3>
+                                <span class="section-info-btn" title="Toggle info">i</span>
+                            </div>
+                            <div class="section-desc">Report where this machine is while armed. Off by default: with it on, position lookups leave the machine. Changes take effect after a restart.</div>
+                            <div class="section-body collapsed">
+                                <div class="setting-group">
+                                    <label>Location Tracking <span class="setting-hint">(restart required)</span></label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="cfg-location-enabled">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-group">
+                                    <label>Phone Position on Arm <span class="setting-hint">(most precise, stays local)</span></label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="cfg-location-anchor">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-group">
+                                    <label>IP Lookup <span class="setting-hint">(city level, ~25 km)</span></label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="cfg-location-ip">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-group">
+                                    <label>Wi-Fi Positioning <span class="setting-hint">(~30 m, needs an API key)</span></label>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="cfg-location-wifi">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-group">
+                                    <label>Geolocation API Key</label>
+                                    <input type="password" id="cfg-location-key" placeholder="Leave blank to keep current" autocomplete="off">
+                                </div>
+                                <div class="setting-group">
+                                    <label>Update Interval (seconds)</label>
+                                    <input type="number" id="cfg-location-poll" min="15" max="3600">
                                 </div>
                             </div>
                         </div>
