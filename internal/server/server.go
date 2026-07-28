@@ -146,7 +146,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.hub.HandleConnection(r.Context(), conn)
+	s.hub.HandleConnection(r.Context(), conn, r.RemoteAddr)
 }
 
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual

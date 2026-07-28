@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	heartbeatInterval     = 15 * time.Second
-	disconnectGracePeriod = 30 * time.Second
+	defaultHeartbeatInterval     = 15 * time.Second
+	defaultDisconnectGracePeriod = 30 * time.Second
 )
 
 // Hub manages all WebSocket connections and dispatches alerts.
@@ -39,6 +39,9 @@ type Hub struct {
 	alertChan       chan ServerMessage
 	eventLog        *eventlog.Logger
 
+	heartbeatInterval     time.Duration
+	disconnectGracePeriod time.Duration
+
 	cfg *config.Config
 
 	// Alarm state tracking to prevent re-trigger loops
@@ -50,12 +53,28 @@ type Hub struct {
 // NewHub creates a new WebSocket hub.
 func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *Hub {
 	return &Hub{
-		clients:           make(map[*Client]bool),
-		authManager:       authMgr,
-		sensorMgr:         sensorMgr,
-		version:           version,
-		alertChan:         make(chan ServerMessage, 100),
-		suppressedSensors: make(map[string]time.Time),
+		clients:               make(map[*Client]bool),
+		authManager:           authMgr,
+		sensorMgr:             sensorMgr,
+		version:               version,
+		alertChan:             make(chan ServerMessage, 100),
+		suppressedSensors:     make(map[string]time.Time),
+		heartbeatInterval:     defaultHeartbeatInterval,
+		disconnectGracePeriod: defaultDisconnectGracePeriod,
+	}
+}
+
+// SetTimings configures the status broadcast interval and how long the hub
+// waits after the last client drops before treating it as an intrusion. Zero
+// or negative values leave the current setting untouched.
+func (h *Hub) SetTimings(heartbeat, disconnectGrace time.Duration) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if heartbeat > 0 {
+		h.heartbeatInterval = heartbeat
+	}
+	if disconnectGrace > 0 {
+		h.disconnectGracePeriod = disconnectGrace
 	}
 }
 
@@ -171,11 +190,15 @@ func (h *Hub) Disarm() {
 	h.logEvent(eventlog.Event{Type: eventlog.EventDisarm, Message: "System disarmed"})
 }
 
-// RegisterExternalClient creates and registers a client using a non-WebSocket transport.
+// RegisterExternalClient creates and registers a client using a non-WebSocket
+// transport. Such transports have no network address, so they share a single
+// rate-limit bucket — which is right for BLE, where every peer is within radio
+// range anyway.
 func (h *Hub) RegisterExternalClient(transport Transport) *Client {
 	return &Client{
-		hub:       h,
-		transport: transport,
+		hub:        h,
+		transport:  transport,
+		remoteAddr: auth.UnknownAddr,
 	}
 }
 
@@ -189,11 +212,14 @@ func (h *Hub) RemoveExternalClient(client *Client) {
 	h.removeClient(client)
 }
 
-// HandleConnection handles a new WebSocket connection.
-func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn) {
+// HandleConnection handles a new WebSocket connection. remoteAddr is the peer
+// address reported by the HTTP server; pairing attempts are rate-limited
+// against it.
+func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remoteAddr string) {
 	client := &Client{
-		hub:  h,
-		conn: conn,
+		hub:        h,
+		conn:       conn,
+		remoteAddr: remoteAddr,
 	}
 
 	defer func() {
@@ -312,7 +338,11 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 
 // RunHeartbeat sends periodic status updates to all clients.
 func (h *Hub) RunHeartbeat(ctx context.Context) {
-	ticker := time.NewTicker(heartbeatInterval)
+	h.mu.RLock()
+	interval := h.heartbeatInterval
+	h.mu.RUnlock()
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -465,7 +495,7 @@ func (h *Hub) clearAlarm() string {
 }
 
 func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
-	token, remaining, err := h.authManager.Authenticate(msg.Key)
+	token, remaining, err := h.authManager.Authenticate(client.remoteAddr, msg.Key)
 	if err != nil {
 		client.send(NewAuthFail(err.Error(), remaining))
 		return
@@ -721,6 +751,7 @@ func (h *Hub) removeClient(client *Client) {
 	clientCount := len(h.clients)
 	disconnectCb := h.onAllDisconnect
 	changeCb := h.onClientChange
+	grace := h.disconnectGracePeriod
 	h.mu.Unlock()
 
 	if changeCb != nil {
@@ -732,7 +763,7 @@ func (h *Hub) removeClient(client *Client) {
 	if armed && clientCount == 0 && disconnectCb != nil {
 		log.Warn("All clients disconnected while armed - triggering alarm")
 		go func() {
-			time.Sleep(disconnectGracePeriod)
+			time.Sleep(grace)
 			h.mu.RLock()
 			count := len(h.clients)
 			isArmed := h.armed
