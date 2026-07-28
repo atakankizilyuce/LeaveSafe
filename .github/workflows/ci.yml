@@ -197,6 +197,54 @@ jobs:
         run: go test -tags realtrigger ./test/realtrigger/... -v -count=1 -timeout 15m
 
   # ---------------------------------------------------------------------------
+  # Layer 1: a real Ubuntu VM where real kernel modules create real hardware.
+  # The charger is genuinely unplugged rather than simulated. A container cannot
+  # do this, which is why the Docker support was removed rather than reused.
+  # ---------------------------------------------------------------------------
+  sandbox-linux:
+    name: Sandbox VM (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Verify KVM is available
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm is missing; the sandbox VM cannot boot. This is a"
+            echo "::error::runner capability change, not a test failure — do not paper over it."
+            exit 1
+          fi
+          ls -l /dev/kvm
+
+      - name: Install QEMU and cloud-image tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils
+
+      - name: Cache the Ubuntu cloud image
+        uses: actions/cache@v4
+        with:
+          path: test/sandbox/linuxvm/.work/base.img
+          key: ubuntu-cloudimg-24.04-amd64
+
+      - name: Run the sandbox scenarios
+        run: test/sandbox/linuxvm/run.sh
+
+      - name: Upload the VM console log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sandbox-vm-console
+          path: test/sandbox/linuxvm/.work/vm-console.log
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
   # Web assets: vanilla JS, checked with a single self-contained binary.
   # ---------------------------------------------------------------------------
   frontend:
@@ -300,7 +348,7 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [format, typos, lint, test, e2e, realtrigger, frontend, build, vulncheck]
+    needs: [format, typos, lint, test, e2e, realtrigger, sandbox-linux, frontend, build, vulncheck]
     if: always()
     steps:
       - name: Fail if any job did not succeed

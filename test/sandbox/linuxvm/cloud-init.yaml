@@ -1,0 +1,23 @@
+#cloud-config
+users:
+  - name: sandbox
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - SSH_PUBLIC_KEY_PLACEHOLDER
+
+package_update: true
+packages:
+  - xvfb
+  - x11-xserver-utils
+  - evemu-tools
+
+runcmd:
+  # The extra modules package is kernel-version specific, so it can only be
+  # resolved once the guest kernel is known. test_power, uinput and dummy_hcd
+  # all live in it.
+  - [sh, -c, "apt-get install -y linux-modules-extra-$(uname -r) || true"]
+  # The scenarios refuse to load kernel modules unless this marker exists, so
+  # running them by accident on a workstation cannot touch that machine.
+  - [sh, -c, "echo 'leavesafe disposable test vm' > /etc/leavesafe-sandbox"]
