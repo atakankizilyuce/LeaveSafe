@@ -73,7 +73,6 @@ No internet connection required. Communication is local-only over WebSocket or B
 ### Deployment
 - **Cross-Platform** — Native sensor implementations for Windows, Linux, and macOS
 - **Single Binary** — No dependencies, just download and run
-- **Docker Support** — Run in a container with privileged hardware access
 - **Configuration Persistence** — Settings saved in JSON format across sessions
 
 </td>
@@ -234,18 +233,9 @@ The CI workflow adds a few things a laptop cannot cover on its own:
 | `test` | unit tests on Linux, Windows and macOS, with coverage reported in the run summary |
 | `frontend` | Biome lint and format check on the embedded web client |
 | `build` | the full five-target release matrix |
-| `docker` | builds the container image and scans it with Trivy |
 | `vulncheck` | `govulncheck` against the Go toolchain and dependencies |
 
-`ci-success` aggregates all of them, so branch protection only needs that one required check. Dependency, action and base-image updates arrive weekly through Dependabot.
-
-### Docker
-
-```bash
-docker-compose up
-```
-
-> **Note:** The container runs with `privileged: true` and mounts `/sys` and `/proc` for full sensor access on Linux.
+`ci-success` aggregates all of them, so branch protection only needs that one required check. Dependency and action updates arrive weekly through Dependabot.
 
 <br/>
 
