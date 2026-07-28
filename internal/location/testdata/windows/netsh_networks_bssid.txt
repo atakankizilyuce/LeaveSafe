@@ -1,0 +1,43 @@
+
+Interface name : Wi-Fi 
+There are 3 networks currently visible. 
+
+SSID 1 : HomeNet
+    Network type            : Infrastructure
+    Authentication          : WPA2-Personal
+    Encryption              : CCMP 
+    BSSID 1                 : a4:b1:c1:00:11:22
+         Signal             : 82%  
+         Radio type         : 802.11n
+         Channel            : 6 
+         Basic rates (Mbps) : 1 2 5.5 11 
+         Other rates (Mbps) : 6 9 12 18 24 36 48 54 
+    BSSID 2                 : a4:b1:c1:00:11:23
+         Signal             : 55%  
+         Radio type         : 802.11ac
+         Channel            : 44 
+         Basic rates (Mbps) : 6 12 24 
+         Other rates (Mbps) : 9 18 36 48 54 
+
+SSID 2 : Neighbour-2G
+    Network type            : Infrastructure
+    Authentication          : WPA2-Personal
+    Encryption              : CCMP 
+    BSSID 1                 : 3C:7A:8A:FF:0E:01
+         Signal             : 24%  
+         Radio type         : 802.11n
+         Channel            : 11 
+         Basic rates (Mbps) : 1 2 5.5 11 
+         Other rates (Mbps) : 6 9 12 18 24 36 48 54 
+
+SSID 3 : 
+    Network type            : Infrastructure
+    Authentication          : Open
+    Encryption              : None 
+    BSSID 1                 : 00:1a:2b:3c:4d:5e
+         Signal             : 100%  
+         Radio type         : 802.11ax
+         Channel            : 1 
+         Basic rates (Mbps) : 1 2 
+         Other rates (Mbps) : 5.5 11 
+
