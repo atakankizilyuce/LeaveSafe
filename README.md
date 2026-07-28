@@ -30,7 +30,7 @@ A lightweight, cross-platform device security monitor that turns your phone into
 
 LeaveSafe runs on your laptop as a terminal dashboard and lets you **arm a security monitor** from your phone by scanning a QR code. Once armed, it watches the laptop's sensors (charger, lid, USB, screen lock, network, input) and sends instant alerts to your phone if anything changes while you're away.
 
-No internet connection required. Communication is local-only over WebSocket or Bluetooth Low Energy (BLE), secured with a 16-digit Luhn-validated pairing key.
+No internet connection required. Communication runs over WebSocket or Bluetooth Low Energy (BLE), secured with a 16-digit Luhn-validated pairing key. It stays on your local network unless you deliberately turn on [remote access](#remote-access-mobile-data) — and even then, your phone talks straight to your laptop rather than through anyone's server.
 
 <br/>
 
@@ -43,7 +43,8 @@ No internet connection required. Communication is local-only over WebSocket or B
 ### Pairing & Connection
 - **QR Code Pairing** — Scan once from your phone's browser, no app required
 - **Dual Transport** — Connect via Wi-Fi (WebSocket) or Bluetooth Low Energy (BLE)
-- **No Cloud, No Accounts** — Everything stays on your local network
+- **No Cloud, No Accounts** — Your phone connects directly to your laptop, never through a server
+- **Mobile Data** — Optional remote access over HTTPS for reaching the laptop from another network
 
 ### Monitoring
 - **Multi-Sensor Monitoring** — Power/charger, lid, USB, screen lock, network, and input changes
@@ -270,11 +271,60 @@ The terminal dashboard opens with:
 | `trigger <sensor>` | Manually trigger a specific sensor (`power`, `lid`, `usb`, `screen`, `network`, `input`) |
 | `stop` / `silence` | Stop an active alarm |
 | `history` | Show the last 20 security events |
+| `urls` | List every URL the server is reachable on; `*` marks the one in the QR code |
+| `qr <n>` | Show the QR code for URL `n` from that list |
+| `cert` | Print the TLS certificate fingerprint to compare against your phone's warning |
 | `rotate-key` | Generate a new pairing key and invalidate all sessions |
 | `help` | Show available commands |
 | `Ctrl+C` | Graceful shutdown |
 
 **On your phone:** Open the URL shown in the terminal (or scan the QR code), authenticate, and use the **Arm** / **Disarm** buttons. You can also enable/disable individual sensors and configure alarm settings from the phone UI.
+
+<br/>
+
+## Remote Access (mobile data)
+
+By default LeaveSafe only accepts connections from your local network. **Remote
+access** publishes the port so your phone can reach the laptop over mobile data
+or from another network. You are asked which mode you want on first run, and can
+change it later from the phone's settings screen. Either way it takes a restart.
+
+Understand what you are turning on: remote access makes the port reachable from
+the internet, and the 16-digit pairing key becomes the only thing between a
+stranger and your alarm.
+
+### What happens when you enable it
+
+1. A self-signed TLS certificate is generated in the config directory, so the
+   connection is HTTPS and the pairing key is encrypted in transit.
+2. A UPnP port mapping is requested from your router and renewed every 30 minutes.
+3. The public IP is discovered over STUN, falling back to HTTPS lookup.
+4. The dashboard lists the public URL alongside the local ones.
+
+**If the certificate cannot be created, remote access does not start.** LeaveSafe
+will not serve an internet-facing port over plain HTTP, because that would put
+your pairing key on the wire in cleartext. It stays available on the local
+network and tells you what went wrong.
+
+### The certificate warning
+
+The certificate is self-signed, so your phone will warn you the first time. That
+warning is expected — but it looks exactly the same as a real interception. Run
+`cert` in the terminal and compare the fingerprint with the one your browser
+shows before you accept it.
+
+### If your router has no UPnP
+
+UPnP is off by default on many routers. When it fails, LeaveSafe logs the port it
+needs and keeps running. Forward that TCP port to your laptop manually in your
+router's admin page, and the public URL works as normal.
+
+### Pairing at home while remote access is on
+
+Scanning the public URL from a phone on the same Wi-Fi requires your router to
+support NAT hairpinning, and plenty do not. If the QR code will not connect while
+you are sitting next to the laptop, run `urls` to see the local address and
+`qr <n>` to show its code instead.
 
 <br/>
 
@@ -318,7 +368,9 @@ You can change settings from the phone UI or by editing the file directly.
 | `heartbeat_seconds` | `15` | Status broadcast interval |
 | `disconnect_grace_seconds` | `30` | Delay before alarm on full disconnect |
 | `auto_arm_on_lock` | `false` | Arm automatically when screen locks |
-| `connection_mode` | `wifi` | Transport mode (`wifi` or `bluetooth`) |
+| `connection_mode` | `wifi` | Transport mode (`wifi`, `bluetooth`, or `both`) |
+| `remote_access` | asked on first run | Publish the port beyond the local network |
+| `remote_port` | `9443` | Port used when remote access is enabled |
 | `pin_protection.enabled` | `false` | Require PIN to disarm |
 | `alarm.escalation_enabled` | `false` | Enable volume escalation levels |
 | `enabled_sensors.*` | varies | Toggle individual sensors on/off |
@@ -333,10 +385,14 @@ You can change settings from the phone UI or by editing the file directly.
 |-------|--------|
 | **Pairing Key** | 16 digits with Luhn check digit, generated fresh each run |
 | **Session Tokens** | 256-bit random hex strings, never reused |
-| **Rate Limiting** | 60-second lockout after 5 failed auth attempts |
+| **Rate Limiting** | 60-second lockout after 5 failed attempts, counted **per source address** so a stranger cannot lock you out |
 | **Session Limit** | Maximum 3 concurrent connections |
 | **Disconnect Alarm** | Triggers after 30-second grace period if all clients drop while armed |
-| **Local-Only** | No data ever leaves your LAN |
+| **Transport** | Local network by default. With remote access enabled the port is published to the internet over HTTPS — never plain HTTP |
+
+All four rate-limiting and session values above are configurable; the defaults
+are shown. Nothing is uploaded to any server: even in remote access mode the
+phone talks directly to your laptop.
 
 <br/>
 
