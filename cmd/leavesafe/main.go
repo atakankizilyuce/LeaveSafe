@@ -25,6 +25,7 @@ import (
 	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
+	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/qr"
@@ -396,6 +397,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	hub.SetLocationTracker(ctx, buildLocationTracker(cfg))
+
 	go hub.RunAlertDispatcher(ctx)
 	go hub.RunHeartbeat(ctx)
 	go runStatusTicker(ctx, sb)
@@ -734,6 +737,44 @@ func runStatusTicker(ctx context.Context, sb *statusBar) {
 			sb.refresh()
 		}
 	}
+}
+
+// buildLocationTracker assembles the position sources the config asks for.
+// Returns nil when the feature is off, which is the default — with it off no
+// scan runs and no request leaves the machine.
+func buildLocationTracker(cfg *config.Config) *location.Tracker {
+	lc := cfg.Location
+	if !lc.Enabled {
+		return nil
+	}
+
+	var providers []location.Provider
+
+	if lc.WiFiEnabled {
+		p := location.NewWiFiProvider(lc.GeolocateURL, lc.GeolocateKey)
+		providers = append(providers, p)
+		if !p.Available() {
+			log.Warn("Wi-Fi positioning is enabled but unavailable on this machine — falling back to the other sources")
+		}
+	}
+	if lc.IPFallback {
+		providers = append(providers, location.NewIPProvider(lc.IPLookupURL))
+	}
+
+	tracker := location.NewTracker(providers, time.Duration(lc.PollSeconds)*time.Second)
+
+	switch {
+	case tracker.HasProviders():
+		log.Info("Location tracking enabled — position is reported while armed")
+	case lc.PhoneAnchor:
+		// No live source, but the phone's own position at arm time is still a
+		// real answer to "where did I leave it", so the tracker stays.
+		log.Info("Location tracking enabled with no live source — using the phone's position at arm time only")
+	default:
+		log.Warn("Location tracking is enabled but every source is switched off")
+	}
+
+	return tracker
 }
 
 func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
