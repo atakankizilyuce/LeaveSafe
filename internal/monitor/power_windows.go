@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	kernel32              = syscall.NewLazyDLL("kernel32.dll")
-	getSystemPowerStatus  = kernel32.NewProc("GetSystemPowerStatus")
+	kernel32             = syscall.NewLazyDLL("kernel32.dll")
+	getSystemPowerStatus = kernel32.NewProc("GetSystemPowerStatus")
 )
 
 type systemPowerStatus struct {
@@ -34,7 +34,7 @@ func NewPowerSensor() *PowerSensor {
 }
 
 func (s *PowerSensor) Name() string        { return "power" }
-func (s *PowerSensor) DisplayName() string  { return "Power/Charger" }
+func (s *PowerSensor) DisplayName() string { return "Power/Charger" }
 
 func (s *PowerSensor) Available() bool {
 	var status systemPowerStatus
@@ -63,13 +63,14 @@ func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 				continue
 			}
 			if status.ACLineStatus != s.lastACState {
-				if status.ACLineStatus == 0 {
+				switch status.ACLineStatus {
+				case 0:
 					alerts <- Alert{
 						Sensor:  "power",
 						Level:   AlertCritical,
 						Message: "Charger disconnected!",
 					}
-				} else if status.ACLineStatus == 1 {
+				case 1:
 					alerts <- Alert{
 						Sensor:  "power",
 						Level:   AlertWarning,
@@ -88,7 +89,7 @@ func getPowerStatus() (*systemPowerStatus, error) {
 	var status systemPowerStatus
 	ret, _, err := getSystemPowerStatus.Call(uintptr(unsafe.Pointer(&status)))
 	if ret == 0 {
-		return nil, fmt.Errorf("GetSystemPowerStatus failed: %v", err)
+		return nil, fmt.Errorf("GetSystemPowerStatus failed: %w", err)
 	}
 	return &status, nil
 }

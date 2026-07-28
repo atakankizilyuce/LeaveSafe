@@ -18,11 +18,11 @@ const (
 
 // Manager handles pairing key generation, validation, rate limiting, and sessions.
 type Manager struct {
-	mu           sync.Mutex
-	pairingKey   string            // 16-digit key with Luhn check
-	sessions     map[string]bool   // active session tokens
-	attempts     int               // failed attempts counter
-	lockedUntil  time.Time         // lockout expiry
+	mu          sync.Mutex
+	pairingKey  string          // 16-digit key with Luhn check
+	sessions    map[string]bool // active session tokens
+	attempts    int             // failed attempts counter
+	lockedUntil time.Time       // lockout expiry
 }
 
 // NewManager creates a new auth manager with a fresh pairing key.
@@ -137,7 +137,7 @@ func generatePairingKey() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		digits[i] = byte('0' + n.Int64())
+		digits[i] = "0123456789"[n.Int64()]
 	}
 	check := luhnCheckDigit(string(digits))
 	return string(digits) + string(check), nil

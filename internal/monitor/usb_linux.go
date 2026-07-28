@@ -23,7 +23,7 @@ func NewUSBSensor() *USBSensor {
 }
 
 func (s *USBSensor) Name() string        { return "usb" }
-func (s *USBSensor) DisplayName() string  { return "USB Devices" }
+func (s *USBSensor) DisplayName() string { return "USB Devices" }
 
 func (s *USBSensor) Available() bool {
 	_, err := os.Stat(usbDevicesPath)

@@ -1,0 +1,97 @@
+version: "2"
+
+run:
+  timeout: 5m
+  # CI runs this file once per GOOS so the build-tagged platform files
+  # (*_windows.go, *_darwin.go, *_linux.go) all get analysed.
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      # `shadow` is deliberately left off: `if err := f(); err != nil` inside a
+      # function that already has an `err` is idiomatic Go, not a defect.
+      enable-all: false
+    gosec:
+      excludes:
+        # G103 flags every unsafe.Pointer use. This program is largely a
+        # syscall/purego bridge, so it would fire on correct FFI code only.
+        - G103
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: exported
+          disabled: true # internal packages carry doc comments where it matters
+        - name: package-comments
+          disabled: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+        # main() uses log.Fatalf for startup failures while also holding a
+        # deferred event-log close. Restructuring main into `func main() {
+        # os.Exit(run()) }` is a separate change from setting up CI.
+        - exitAfterDefer
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # Tests may shadow, ignore errors on cleanup, and repeat themselves.
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - gocritic
+          - gosec
+          - unparam
+          - govet
+      # syscall/purego bridges are inherently unsafe-looking and mirror the
+      # OS API shape rather than Go conventions.
+      - path: _(windows|darwin|linux)\.go$
+        linters:
+          - unparam
+      # purego/syscall bridges convert freely between uintptr and sized
+      # integers; that is the C ABI, not an overflow bug.
+      - path: internal/alarm/volume_.*\.go$
+        linters:
+          - gosec
+        text: G115
+      # Linux sensors read fixed /sys and /proc paths assembled from kernel
+      # directory listings, never from user input.
+      - path: internal/monitor/.*_linux\.go$
+        linters:
+          - gosec
+        text: G304
+      # nhooyr.io/websocket is deprecated in favour of github.com/coder/websocket,
+      # which is the same package under a new import path. Migrating is a
+      # dependency change, tracked separately from this CI work.
+      - linters:
+          - staticcheck
+        text: "SA1019: .*nhooyr.io/websocket"
+      - linters:
+          - staticcheck
+        text: "SA1019: (websocket|conn|c\\.conn)\\."
+
+formatters:
+  enable:
+    - gofmt

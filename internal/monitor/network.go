@@ -19,8 +19,8 @@ func NewNetworkSensor() *NetworkSensor {
 }
 
 func (s *NetworkSensor) Name() string        { return "network" }
-func (s *NetworkSensor) DisplayName() string  { return "IP Address Change" }
-func (s *NetworkSensor) Available() bool      { return true }
+func (s *NetworkSensor) DisplayName() string { return "IP Address Change" }
+func (s *NetworkSensor) Available() bool     { return true }
 
 func (s *NetworkSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 	s.lastSnapshot = networkSnapshot()

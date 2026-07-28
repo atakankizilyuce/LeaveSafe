@@ -1,0 +1,13 @@
+[files]
+extend-exclude = [
+  "go.sum",
+  "dist/",
+]
+
+# Identifiers from third-party APIs keep their vendor spelling.
+[default.extend-identifiers]
+AttributePermissionsWriteable = "AttributePermissionsWriteable"
+
+[default.extend-words]
+# "UPnP" splits into U/Pn/P, and "Pn" reads as a typo for "On".
+Pn = "Pn"

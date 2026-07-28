@@ -22,7 +22,7 @@ func NewLidSensor() *LidSensor {
 }
 
 func (s *LidSensor) Name() string        { return "lid" }
-func (s *LidSensor) DisplayName() string  { return "Lid State" }
+func (s *LidSensor) DisplayName() string { return "Lid State" }
 
 func (s *LidSensor) Available() bool {
 	_, err := os.Stat(lidStatePath)
