@@ -172,6 +172,31 @@ jobs:
         run: go test -tags e2e ./test/e2e/... -v -count=1 -timeout 15m
 
   # ---------------------------------------------------------------------------
+  # Layer 2: fire the hardware changes a hosted runner genuinely permits and
+  # record every one it does not, so the coverage gaps end up visible in the run
+  # summary rather than implied by a green check.
+  # ---------------------------------------------------------------------------
+  realtrigger:
+    name: Real triggers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run real-trigger suite
+        shell: bash
+        run: go test -tags realtrigger ./test/realtrigger/... -v -count=1 -timeout 15m
+
+  # ---------------------------------------------------------------------------
   # Web assets: vanilla JS, checked with a single self-contained binary.
   # ---------------------------------------------------------------------------
   frontend:
@@ -275,7 +300,7 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [format, typos, lint, test, e2e, frontend, build, vulncheck]
+    needs: [format, typos, lint, test, e2e, realtrigger, frontend, build, vulncheck]
     if: always()
     steps:
       - name: Fail if any job did not succeed
