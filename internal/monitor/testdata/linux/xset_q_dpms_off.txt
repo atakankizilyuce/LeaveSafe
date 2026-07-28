@@ -1,0 +1,4 @@
+DPMS (Display Power Management Signaling):
+  Standby: 600    Suspend: 900    Off: 1200
+  DPMS is Enabled
+  Monitor is Off
