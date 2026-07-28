@@ -1,0 +1,482 @@
+import { useEffect, useState } from 'preact/hooks';
+import type { AppConfig, ClientMessage } from '../lib/protocol';
+import { config, send, settingsOpen, showToast } from '../lib/store';
+import { Scrim } from './Scrim';
+
+/**
+ * Settings as a sheet you pull up and dismiss, rather than an accordion that
+ * pushes the panel off screen.
+ *
+ * Grouped by the question each group answers, and every field that only takes
+ * effect after a restart says so on the field rather than in a legend.
+ */
+export function SettingsSheet() {
+    const [draft, setDraft] = useState<AppConfig | null>(null);
+    const [pin, setPin] = useState('');
+    const [geoKey, setGeoKey] = useState('');
+    const [saved, setSaved] = useState(false);
+
+    const open = settingsOpen.value;
+    const current = config.value;
+
+    useEffect(() => {
+        if (open) {
+            send({ type: 'get_config' });
+            setPin('');
+            setGeoKey('');
+            setSaved(false);
+        }
+    }, [open]);
+
+    useEffect(() => {
+        if (current) setDraft(structuredClone(current));
+    }, [current]);
+
+    if (!open) return null;
+
+    const close = () => {
+        settingsOpen.value = false;
+    };
+
+    const patch = (changes: Partial<AppConfig>) => {
+        if (!draft) return;
+        setDraft({ ...draft, ...changes });
+    };
+
+    const save = () => {
+        if (!draft) return;
+
+        const payload: Partial<AppConfig> = {
+            ...draft,
+            pin_protection: { enabled: draft.pin_protection.enabled, pin },
+            location: { ...draft.location, geolocate_key: geoKey },
+        };
+
+        const message: ClientMessage = { type: 'update_config', config: payload };
+
+        // Changing PIN protection while it is on needs the current PIN. Asking
+        // only when it is actually required keeps the common case to one tap.
+        const pinWasOn = current?.pin_protection.enabled ?? false;
+        if (pinWasOn && (!draft.pin_protection.enabled || pin !== '')) {
+            const confirmPin = window.prompt('Enter your current PIN to change PIN settings:');
+            if (!confirmPin) return;
+            message.pin = confirmPin;
+        }
+
+        send(message);
+        setSaved(true);
+        showToast('Settings saved');
+        window.setTimeout(() => setSaved(false), 2000);
+    };
+
+    const reset = () => {
+        if (!window.confirm('Put every setting back to its default?')) return;
+        if (current?.pin_protection.enabled) {
+            const confirmPin = window.prompt('Enter your current PIN to confirm:');
+            if (!confirmPin) return;
+            send({ type: 'reset_config', pin: confirmPin });
+        } else {
+            send({ type: 'reset_config' });
+        }
+        showToast('Settings reset');
+    };
+
+    return (
+        <Scrim onClose={close} label="Settings">
+            <div class="sheet">
+                <div class="sheet-grip" aria-hidden="true" />
+                <div class="sheet-head">
+                    <h2 class="readout">Settings</h2>
+                    <button type="button" class="chip" onClick={close}>
+                        Done
+                    </button>
+                </div>
+
+                {!draft ? (
+                    <p class="empty">Loading settings…</p>
+                ) : (
+                    <div class="sheet-body">
+                        <Group title="Getting in" note="How your phone reaches this laptop.">
+                            <Num
+                                label="Port"
+                                hint="restart required"
+                                value={draft.port}
+                                min={0}
+                                max={65535}
+                                onChange={(port) => patch({ port })}
+                            />
+                            <Select
+                                label="Connection"
+                                hint="restart required"
+                                value={draft.connection_mode}
+                                options={[
+                                    ['wifi', 'Wi-Fi only'],
+                                    ['bluetooth', 'Bluetooth only'],
+                                    ['both', 'Wi-Fi and Bluetooth'],
+                                ]}
+                                onChange={(connection_mode) => patch({ connection_mode })}
+                            />
+                            <Toggle
+                                label="Reach it from anywhere"
+                                hint="Publishes the port to the internet over HTTPS. Restart required."
+                                value={draft.remote_access}
+                                onChange={(remote_access) => patch({ remote_access })}
+                            />
+                            <Num
+                                label="Port used for that"
+                                hint="restart required"
+                                value={draft.remote_port}
+                                min={1024}
+                                max={65535}
+                                onChange={(remote_port) => patch({ remote_port })}
+                            />
+                        </Group>
+
+                        <Group title="Keeping others out" note="Limits on pairing attempts and sessions.">
+                            <Num
+                                label="Phones at once"
+                                value={draft.max_sessions}
+                                min={1}
+                                max={10}
+                                onChange={(max_sessions) => patch({ max_sessions })}
+                            />
+                            <Num
+                                label="Wrong keys before lockout"
+                                value={draft.max_auth_attempts}
+                                min={1}
+                                max={20}
+                                onChange={(max_auth_attempts) => patch({ max_auth_attempts })}
+                            />
+                            <Num
+                                label="Lockout length"
+                                unit="seconds"
+                                value={draft.lockout_seconds}
+                                min={10}
+                                max={600}
+                                onChange={(lockout_seconds) => patch({ lockout_seconds })}
+                            />
+                            <Toggle
+                                label="Require a PIN to disarm"
+                                value={draft.pin_protection.enabled}
+                                onChange={(enabled) =>
+                                    patch({ pin_protection: { ...draft.pin_protection, enabled } })
+                                }
+                            />
+                            {draft.pin_protection.enabled && (
+                                <Text
+                                    label="New PIN"
+                                    password
+                                    placeholder={
+                                        draft.pin_protection.has_pin
+                                            ? 'Leave blank to keep the current PIN'
+                                            : 'Choose a PIN'
+                                    }
+                                    value={pin}
+                                    onChange={setPin}
+                                />
+                            )}
+                        </Group>
+
+                        <Group title="Watching" note="How closely it watches, and when it starts.">
+                            <Num
+                                label="Status update every"
+                                unit="seconds"
+                                value={draft.heartbeat_seconds}
+                                min={5}
+                                max={60}
+                                onChange={(heartbeat_seconds) => patch({ heartbeat_seconds })}
+                            />
+                            <Num
+                                label="Wait after your phone drops"
+                                unit="seconds"
+                                value={draft.disconnect_grace_seconds}
+                                min={5}
+                                max={120}
+                                onChange={(disconnect_grace_seconds) => patch({ disconnect_grace_seconds })}
+                            />
+                            <Num
+                                label="Input sensitivity"
+                                unit="seconds"
+                                value={draft.input_threshold}
+                                min={1}
+                                max={10}
+                                onChange={(input_threshold) => patch({ input_threshold })}
+                            />
+                            <Toggle
+                                label="Arm itself when the screen locks"
+                                value={draft.auto_arm_on_lock}
+                                onChange={(auto_arm_on_lock) => patch({ auto_arm_on_lock })}
+                            />
+                            <Toggle
+                                label="Build the alarm up gradually"
+                                hint="Notify your phone first, then half volume, then full."
+                                value={draft.alarm.escalation_enabled}
+                                onChange={(escalation_enabled) => patch({ alarm: { escalation_enabled } })}
+                            />
+                        </Group>
+
+                        <Group
+                            title="Where it is"
+                            note="Off by default. With it off, nothing is scanned and no lookup leaves the laptop. Restart required."
+                        >
+                            <Toggle
+                                label="Report its position while armed"
+                                value={draft.location.enabled}
+                                onChange={(enabled) => patch({ location: { ...draft.location, enabled } })}
+                            />
+                            <Toggle
+                                label="Use your phone's position when arming"
+                                hint="The most precise source, and it stays on your network."
+                                value={draft.location.phone_anchor}
+                                onChange={(phone_anchor) =>
+                                    patch({ location: { ...draft.location, phone_anchor } })
+                                }
+                            />
+                            <Toggle
+                                label="Look up the public IP"
+                                hint="City level, roughly 25 km."
+                                value={draft.location.ip_fallback}
+                                onChange={(ip_fallback) =>
+                                    patch({ location: { ...draft.location, ip_fallback } })
+                                }
+                            />
+                            <Toggle
+                                label="Use Wi-Fi positioning"
+                                hint="Around 30 m. Needs an API key. Not available on macOS."
+                                value={draft.location.wifi_enabled}
+                                onChange={(wifi_enabled) =>
+                                    patch({ location: { ...draft.location, wifi_enabled } })
+                                }
+                            />
+                            <Text
+                                label="Geolocation API key"
+                                password
+                                placeholder={
+                                    draft.location.has_geolocate_key
+                                        ? 'A key is set — leave blank to keep it'
+                                        : 'No key set'
+                                }
+                                value={geoKey}
+                                onChange={setGeoKey}
+                            />
+                            <Num
+                                label="Update position every"
+                                unit="seconds"
+                                value={draft.location.poll_seconds}
+                                min={15}
+                                max={3600}
+                                onChange={(poll_seconds) =>
+                                    patch({ location: { ...draft.location, poll_seconds } })
+                                }
+                            />
+                        </Group>
+
+                        <div class="sheet-actions">
+                            <button type="button" class="alarm-primary" onClick={save}>
+                                {saved ? 'Saved' : 'Save settings'}
+                            </button>
+                            <button type="button" class="sheet-reset" onClick={reset}>
+                                Reset everything
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </Scrim>
+    );
+}
+
+function Group({
+    title,
+    note,
+    children,
+}: {
+    title: string;
+    note: string;
+    children: preact.ComponentChildren;
+}) {
+    return (
+        <section class="group">
+            <h3 class="group-title readout">{title}</h3>
+            <p class="group-note">{note}</p>
+            {children}
+        </section>
+    );
+}
+
+/** A stable DOM id from a setting's label. Labels are unique in this sheet. */
+function fieldId(label: string): string {
+    return `set-${label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')}`;
+}
+
+/**
+ * One row of the settings sheet.
+ *
+ * Rows holding a real form control associate with it explicitly through
+ * for/id, so tapping the label text focuses the input. A toggle is a button
+ * carrying its own aria-label — a <label> around a button labels nothing — so
+ * those rows are a plain div instead.
+ */
+function Field({
+    label,
+    hint,
+    htmlFor,
+    children,
+}: {
+    label: string;
+    hint?: string;
+    htmlFor?: string;
+    children: preact.ComponentChildren;
+}) {
+    const text = (
+        <span class="setting-text">
+            <span class="setting-label">{label}</span>
+            {hint && <span class="setting-hint">{hint}</span>}
+        </span>
+    );
+
+    if (!htmlFor) {
+        return (
+            <div class="setting">
+                {text}
+                {children}
+            </div>
+        );
+    }
+
+    return (
+        <label class="setting" for={htmlFor}>
+            {text}
+            {children}
+        </label>
+    );
+}
+
+function Num({
+    label,
+    hint,
+    unit,
+    value,
+    min,
+    max,
+    onChange,
+}: {
+    label: string;
+    hint?: string;
+    unit?: string;
+    value: number;
+    min: number;
+    max: number;
+    onChange(value: number): void;
+}) {
+    const id = fieldId(label);
+    return (
+        <Field label={label} hint={hint} htmlFor={id}>
+            <span class="setting-num">
+                <input
+                    id={id}
+                    class="field field-num figure"
+                    type="number"
+                    min={min}
+                    max={max}
+                    value={value}
+                    onInput={(e) => onChange(Number((e.target as HTMLInputElement).value) || 0)}
+                />
+                {unit && <span class="readout">{unit}</span>}
+            </span>
+        </Field>
+    );
+}
+
+function Text({
+    label,
+    hint,
+    value,
+    placeholder,
+    password,
+    onChange,
+}: {
+    label: string;
+    hint?: string;
+    value: string;
+    placeholder?: string;
+    password?: boolean;
+    onChange(value: string): void;
+}) {
+    const id = fieldId(label);
+    return (
+        <Field label={label} hint={hint} htmlFor={id}>
+            <input
+                id={id}
+                class="field field-text"
+                type={password ? 'password' : 'text'}
+                autoComplete="off"
+                placeholder={placeholder}
+                value={value}
+                onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+            />
+        </Field>
+    );
+}
+
+function Select({
+    label,
+    hint,
+    value,
+    options,
+    onChange,
+}: {
+    label: string;
+    hint?: string;
+    value: string;
+    options: Array<[string, string]>;
+    onChange(value: string): void;
+}) {
+    const id = fieldId(label);
+    return (
+        <Field label={label} hint={hint} htmlFor={id}>
+            <select
+                id={id}
+                class="field field-select"
+                value={value}
+                onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
+            >
+                {options.map(([v, text]) => (
+                    <option key={v} value={v}>
+                        {text}
+                    </option>
+                ))}
+            </select>
+        </Field>
+    );
+}
+
+function Toggle({
+    label,
+    hint,
+    value,
+    onChange,
+}: {
+    label: string;
+    hint?: string;
+    value: boolean;
+    onChange(value: boolean): void;
+}) {
+    return (
+        <Field label={label} hint={hint}>
+            <button
+                type="button"
+                class="switch"
+                role="switch"
+                aria-checked={value}
+                aria-label={label}
+                onClick={() => onChange(!value)}
+            >
+                <span class="switch-knob" />
+            </button>
+        </Field>
+    );
+}
