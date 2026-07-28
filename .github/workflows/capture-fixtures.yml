@@ -1,0 +1,98 @@
+name: Capture Fixtures
+
+# Run by hand when a parser fixture needs refreshing. Parser tests are only
+# worth anything if their input is output the operating system really produced,
+# and nobody can hand-write ioreg output correctly, so it is collected from the
+# runners themselves. The captured output is downloaded from the run artifacts
+# and committed under internal/monitor/testdata/.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Capture (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Capture
+        run: |
+          mkdir -p out
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb x11-xserver-utils
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x24 &
+          sleep 3
+          xset q > out/xset_q_on.txt
+          xset dpms force off || true
+          sleep 2
+          xset q > out/xset_q_off.txt
+          for supply in /sys/class/power_supply/*; do
+            [ -e "$supply" ] || continue
+            {
+              echo "--- $supply ---"
+              echo "type: $(cat "$supply/type" 2>/dev/null || echo missing)"
+              echo "online: $(cat "$supply/online" 2>/dev/null || echo missing)"
+              echo "status: $(cat "$supply/status" 2>/dev/null || echo missing)"
+            } >> out/power_supply_dump.txt
+          done
+          [ -f out/power_supply_dump.txt ] || \
+            echo "no power supply on this runner" > out/power_supply_dump.txt
+          cat /proc/acpi/button/lid/*/state > out/lid_state_dump.txt 2>/dev/null || \
+            echo "no acpi lid on this runner" > out/lid_state_dump.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fixtures-linux
+          path: out/
+
+  darwin:
+    name: Capture (darwin)
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Capture
+        run: |
+          mkdir -p out
+          pmset -g batt > out/pmset_ac.txt
+          ioreg -r -k AppleClamshellState -d 1 > out/ioreg_clamshell.txt
+          ioreg -r -d 1 -c IODisplayWrangler > out/ioreg_display_on.txt
+          ioreg -c IOHIDSystem -d 4 -S > out/ioreg_hid_idle.txt
+          system_profiler SPUSBDataType -detailLevel mini > out/system_profiler_usb.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fixtures-darwin
+          path: out/
+
+  windows:
+    name: Capture (windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Capture
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          (Get-WmiObject -Class Win32_Battery).Count |
+            Out-File -Encoding utf8 out/battery_count.txt
+          try {
+            (Get-WmiObject -Namespace root/WMI -Class MSAcpi_LidStatus).LidStatus |
+              Out-File -Encoding utf8 out/lid_status.txt
+          } catch {
+            "no MSAcpi_LidStatus on this runner" |
+              Out-File -Encoding utf8 out/lid_status.txt
+          }
+          Get-WmiObject -Class Win32_PnPEntity |
+            Where-Object { $_.PNPDeviceID -like 'USB\VID_%' } |
+            Select-Object -First 3 Name, PNPDeviceID, Service |
+            Out-File -Encoding utf8 out/usb_devices.txt
+          (Get-Process -Name LogonUI -ErrorAction SilentlyContinue) -ne $null |
+            Out-File -Encoding utf8 out/logonui_present.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fixtures-windows
+          path: out/
