@@ -79,9 +79,7 @@ func generateCert(certPath, keyPath string) (tls.Certificate, string, error) {
 	// Collect SANs: all local IPs
 	var ips []net.IP
 	ips = append(ips, net.ParseIP("127.0.0.1"))
-	for _, ip := range getLocalIPs() {
-		ips = append(ips, ip)
-	}
+	ips = append(ips, getLocalIPs()...)
 
 	template := &x509.Certificate{
 		SerialNumber: serialNumber,

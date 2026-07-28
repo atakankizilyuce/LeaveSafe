@@ -20,8 +20,8 @@ import (
 // Config holds server configuration.
 type Config struct {
 	Hub     *ws.Hub
-	Port    int  // 0 means pick a free port automatically
-	DevMode bool // serve web assets from filesystem instead of embedded
+	Port    int              // 0 means pick a free port automatically
+	DevMode bool             // serve web assets from filesystem instead of embedded
 	TLSCert *tls.Certificate // non-nil enables HTTPS/WSS
 	CertFP  string           // SHA-256 fingerprint of the TLS certificate
 }
@@ -65,15 +65,22 @@ func New(cfg Config) *Server {
 // Listen binds to the configured port (or a free port if Port is 0).
 // Call this before URLs() or Start().
 func (s *Server) Listen() error {
+	// #nosec G102 -- binding to all interfaces is the point: the phone connects
+	// to this machine over the LAN (or via the UPnP mapping) to reach the alarm.
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil && s.port != 0 {
 		log.Warnf("Port %d busy, picking a free port", s.port)
-		ln, err = net.Listen("tcp", ":0")
+		ln, err = net.Listen("tcp", ":0") // #nosec G102 -- see above
 	}
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	s.port = ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		_ = ln.Close()
+		return fmt.Errorf("listen: unexpected address type %T", ln.Addr())
+	}
+	s.port = addr.Port
 
 	if s.tlsCert != nil {
 		tlsCfg := &tls.Config{
@@ -189,12 +196,12 @@ func getLocalIPs() []net.IP {
 // WSL, Hyper-V, VirtualBox, and similar virtualization tools.
 func isVirtualInterface(name string) bool {
 	prefixes := []string{
-		"docker", "br-", "veth",    // Docker
-		"vEthernet",                 // Hyper-V / WSL
-		"virbr",                     // libvirt
-		"VirtualBox", "vboxnet",     // VirtualBox
-		"vmnet",                     // VMware
-		"ham",                       // Hamachi
+		"docker", "br-", "veth", // Docker
+		"vEthernet",             // Hyper-V / WSL
+		"virbr",                 // libvirt
+		"VirtualBox", "vboxnet", // VirtualBox
+		"vmnet", // VMware
+		"ham",   // Hamachi
 	}
 	lower := strings.ToLower(name)
 	for _, p := range prefixes {

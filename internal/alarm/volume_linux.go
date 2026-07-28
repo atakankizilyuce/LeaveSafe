@@ -3,6 +3,7 @@
 package alarm
 
 import (
+	"errors"
 	"fmt"
 	"unsafe"
 
@@ -10,8 +11,6 @@ import (
 )
 
 var (
-	libasound uintptr
-
 	sndMixerOpen                        uintptr
 	sndMixerClose                       uintptr
 	sndMixerAttach                      uintptr
@@ -34,7 +33,6 @@ func init() {
 	if err != nil {
 		return
 	}
-	libasound = lib
 	alsaAvailable = true
 
 	sndMixerOpen, _ = purego.Dlsym(lib, "snd_mixer_open")
@@ -77,7 +75,7 @@ func openMasterMixer() (elem uintptr, cleanup func(), err error) {
 	e := findMasterElem(mixer)
 	if e == 0 {
 		purego.SyscallN(sndMixerClose, mixer)
-		return 0, nil, fmt.Errorf("Master mixer element not found")
+		return 0, nil, errors.New("master mixer element not found")
 	}
 
 	return e, func() { purego.SyscallN(sndMixerClose, mixer) }, nil
@@ -175,20 +173,15 @@ func goString(ptr uintptr) string {
 	if ptr == 0 {
 		return ""
 	}
+	// ALSA hands back a raw C string address through purego, so the pointer has
+	// to be reconstituted from a uintptr. go vet's unsafeptr check cannot tell
+	// that the referenced memory is owned by libasound and stays alive.
+	base := unsafe.Pointer(ptr) //nolint:govet // FFI boundary, not Go-managed memory
+
+	const maxLen = 256
 	var length int
-	for {
-		b := *(*byte)(unsafe.Pointer(ptr + uintptr(length)))
-		if b == 0 {
-			break
-		}
+	for length < maxLen && *(*byte)(unsafe.Add(base, length)) != 0 {
 		length++
-		if length > 256 {
-			break
-		}
 	}
-	buf := make([]byte, length)
-	for i := range length {
-		buf[i] = *(*byte)(unsafe.Pointer(ptr + uintptr(i)))
-	}
-	return string(buf)
+	return string(unsafe.Slice((*byte)(base), length))
 }

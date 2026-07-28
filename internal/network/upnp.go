@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -16,27 +17,32 @@ const (
 
 // PortMapping represents an active UPnP port forwarding rule.
 type PortMapping struct {
-	InternalPort int
-	ExternalPort int
+	InternalPort uint16
+	ExternalPort uint16
 	device       *upnp.IGD
 }
 
 // OpenPort discovers a UPnP gateway and forwards the given TCP port.
 // It returns the mapping or an error if UPnP is unavailable.
 func OpenPort(port int) (*PortMapping, error) {
+	if port < 1 || port > math.MaxUint16 {
+		return nil, fmt.Errorf("invalid port %d", port)
+	}
+	p := uint16(port) // #nosec G115 -- range checked directly above
+
 	d, err := upnp.Discover()
 	if err != nil {
 		return nil, fmt.Errorf("UPnP discovery failed: %w", err)
 	}
 
-	if err := d.Forward(uint16(port), portDescription); err != nil {
+	if err := d.Forward(p, portDescription); err != nil {
 		return nil, fmt.Errorf("UPnP port forward failed: %w", err)
 	}
 
 	log.WithField("port", port).Info("UPnP port mapping created")
 	return &PortMapping{
-		InternalPort: port,
-		ExternalPort: port,
+		InternalPort: p,
+		ExternalPort: p,
 		device:       d,
 	}, nil
 }
@@ -48,7 +54,7 @@ func (pm *PortMapping) ExternalIP() (string, error) {
 
 // Close removes the port mapping from the router.
 func (pm *PortMapping) Close() error {
-	if err := pm.device.Clear(uint16(pm.ExternalPort)); err != nil {
+	if err := pm.device.Clear(pm.ExternalPort); err != nil {
 		log.WithError(err).Warn("Failed to remove UPnP port mapping")
 		return err
 	}
@@ -56,7 +62,7 @@ func (pm *PortMapping) Close() error {
 	return nil
 }
 
-// KeepAlive periodically renews the port mapping lease until ctx is cancelled.
+// KeepAlive periodically renews the port mapping lease until ctx is canceled.
 func (pm *PortMapping) KeepAlive(ctx context.Context) {
 	ticker := time.NewTicker(leaseRenewInterval)
 	defer ticker.Stop()
@@ -65,7 +71,7 @@ func (pm *PortMapping) KeepAlive(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := pm.device.Forward(uint16(pm.ExternalPort), portDescription); err != nil {
+			if err := pm.device.Forward(pm.ExternalPort, portDescription); err != nil {
 				log.WithError(err).Warn("UPnP lease renewal failed")
 			} else {
 				log.Debug("UPnP lease renewed")

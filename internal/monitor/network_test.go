@@ -34,7 +34,7 @@ func TestNetworkSensor_Stop(t *testing.T) {
 }
 
 // TestNetworkSensor_Start_CancelledContext verifies that Start returns nil
-// immediately when given an already-cancelled context.
+// immediately when given an already-canceled context.
 func TestNetworkSensor_Start_CancelledContext(t *testing.T) {
 	s := NewNetworkSensor()
 	alerts := make(chan Alert, 10)
@@ -44,7 +44,7 @@ func TestNetworkSensor_Start_CancelledContext(t *testing.T) {
 
 	err := s.Start(ctx, alerts)
 	if err != nil {
-		t.Errorf("Start() with cancelled context returned error: %v", err)
+		t.Errorf("Start() with canceled context returned error: %v", err)
 	}
 }
 

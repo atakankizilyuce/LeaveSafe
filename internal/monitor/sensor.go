@@ -29,7 +29,7 @@ type Sensor interface {
 	Available() bool
 
 	// Start begins monitoring. It should send alerts to the provided channel.
-	// It blocks until the context is cancelled or an error occurs.
+	// It blocks until the context is canceled or an error occurs.
 	Start(ctx context.Context, alerts chan<- Alert) error
 
 	// Stop signals the sensor to stop monitoring.
