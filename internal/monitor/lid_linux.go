@@ -5,7 +5,6 @@ package monitor
 import (
 	"context"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -76,5 +75,5 @@ func isLidOpenLinux() (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	return strings.Contains(string(data), "open"), nil
+	return parseLidOpen(string(data)), nil
 }

@@ -5,7 +5,6 @@ package monitor
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -66,12 +65,5 @@ func isScreenOnLinux() (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	output := string(out)
-	// DPMS: Monitor is On / Off / Standby / Suspend
-	if strings.Contains(output, "Monitor is Off") ||
-		strings.Contains(output, "Monitor is Standby") ||
-		strings.Contains(output, "Monitor is Suspend") {
-		return false, nil
-	}
-	return true, nil
+	return parseDPMSOn(string(out)), nil
 }
