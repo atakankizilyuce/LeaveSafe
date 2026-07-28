@@ -1,0 +1,17 @@
++-o IODisplayWrangler  <class IODisplayWrangler, id 0x10000015b, registered, matched, active, busy 0 (0 ms), retain 5>
+    {
+      "IOClass" = "IODisplayWrangler"
+      "CFBundleIdentifier" = "com.apple.iokit.IOGraphicsFamily"
+      "IOProviderClass" = "IOResources"
+      "IOGraphicsIgnoreParameters" = {"aupc"=Yes,"auph"=Yes," bpc"=Yes,"aums"=Yes,"aupp"=Yes}
+      "IOGraphicsPrefsParameters" = {"thue"=Yes,"pscn"=Yes,"vbst"=Yes,"oscn"=Yes,"tbri"=Yes,"cyuv"=268435456,"tsat"=Yes}
+      "IOResourceMatch" = "IOKit"
+      "IOProbeScore" = 0
+      "IOMatchCategory" = "IOGraphics"
+      "IOMatchedAtBoot" = Yes
+      "IOGeneralInterest" = "IOCommand is not serializable"
+      "IOPersonalityPublisher" = "com.apple.iokit.IOGraphicsFamily"
+      "CFBundleIdentifierKernel" = "com.apple.iokit.IOGraphicsFamily"
+    }
+    
+

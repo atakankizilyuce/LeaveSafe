@@ -1,0 +1,6 @@
++-o AppleACPIPlatformExpert  <class AppleACPIPlatformExpert, id 0x100000110, registered, matched, active, busy 0 (0 ms), retain 42>
+    {
+      "AppleClamshellState" = No
+      "IOPlatformSystemSleepPolicy" = <534c505402000c00>
+    }
+

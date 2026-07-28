@@ -1,0 +1,1 @@
+no MSAcpi_LidStatus on this runner
