@@ -5,7 +5,6 @@ package monitor
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -29,7 +28,7 @@ func (s *LidSensor) Available() bool {
 	if err != nil {
 		return false
 	}
-	return strings.TrimSpace(string(out)) != "0" && strings.TrimSpace(string(out)) != ""
+	return parseHasBattery(string(out))
 }
 
 func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
@@ -76,6 +75,5 @@ func isLidOpenWindows() (bool, error) {
 	if err != nil {
 		return true, err // Assume open if we can't determine
 	}
-	status := strings.TrimSpace(strings.ToLower(string(out)))
-	return status == "true" || status == "1", nil
+	return parseLidStatusWMI(string(out)), nil
 }

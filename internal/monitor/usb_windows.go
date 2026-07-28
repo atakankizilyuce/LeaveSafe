@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strings"
 )
 
 // USBSensor monitors USB device changes on Windows using WMI event subscriptions.
@@ -63,15 +62,10 @@ while ($true) {
 
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		eventType, name, ok := parseUSBEventLine(scanner.Text())
+		if !ok {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		eventType, name := parts[0], parts[1]
 
 		var alert Alert
 		switch eventType {
