@@ -260,7 +260,10 @@ jobs:
           retention-days: 7
 
   # ---------------------------------------------------------------------------
-  # Web assets: vanilla JS, checked with a single self-contained binary.
+  # Web assets: a Vite + TypeScript + Preact app in web/src, built into
+  # web/dist. That build output is committed so `go build` works with no Node
+  # installed — which is only safe if something proves the committed output
+  # still matches the source. That is the last step here.
   # ---------------------------------------------------------------------------
   frontend:
     name: Frontend
@@ -269,8 +272,37 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
       - name: Biome check
-        run: npx --yes @biomejs/biome@2.5.6 ci web/ --error-on-warnings
+        run: npx --yes @biomejs/biome@2.5.6 ci . --error-on-warnings
+
+      - name: Typecheck
+        working-directory: web
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+      - name: Committed web/dist matches the source
+        run: |
+          if ! git diff --exit-code --stat -- web/dist; then
+            echo "::error::web/dist is stale. Run 'npm run build' in web/ and commit the result."
+            echo "The binary embeds web/dist, so a stale build ships a UI that does not"
+            echo "match web/src — and nothing else would catch it."
+            exit 1
+          fi
+          echo "web/dist is in step with web/src."
 
   # ---------------------------------------------------------------------------
   # Release binaries for every published target.
