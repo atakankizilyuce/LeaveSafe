@@ -46,8 +46,11 @@ func New(cfg Config) *Server {
 
 	mux := http.NewServeMux()
 	if cfg.DevMode {
-		log.Info("Dev mode: serving web assets from filesystem (web/)")
-		mux.Handle("/", http.FileServer(http.Dir("web")))
+		// Serves whatever `npm run build` last produced, so a rebuild shows up
+		// without restarting the binary. For hot reload instead, run
+		// `npm run dev` in web/ — it proxies /ws back to this server.
+		log.Info("Dev mode: serving web assets from web/dist")
+		mux.Handle("/", http.FileServer(http.Dir("web/dist")))
 	} else {
 		mux.Handle("/", http.FileServer(http.FS(web.StaticFiles())))
 	}

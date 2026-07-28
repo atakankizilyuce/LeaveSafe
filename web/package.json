@@ -1,0 +1,22 @@
+{
+  "name": "leavesafe-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phone interface for LeaveSafe, built into dist/ and embedded in the Go binary.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.0.1",
+    "preact": "^10.27.2"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}
