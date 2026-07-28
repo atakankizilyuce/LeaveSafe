@@ -229,11 +229,197 @@
                 showPinDialog();
                 break;
 
+            case 'location':
+                if (msg.location) renderLocation(msg.location);
+                break;
+
             case 'pong':
                 lastPongTime = Date.now();
                 setConnectionState('connected');
                 updateLastCheck();
                 break;
+        }
+    }
+
+    // ---- Location -------------------------------------------------------
+
+    var locationCard = document.getElementById('location-card');
+    var locationBody = document.getElementById('location-body');
+    var mapShown = false;
+
+    var SOURCE_LABELS = {
+        phone: 'Phone GPS, recorded when armed',
+        wifi: 'Wi-Fi positioning',
+        ip: 'IP address lookup',
+    };
+
+    // sendAnchor hands the laptop this phone's own position. The two are in the
+    // same place at the moment of arming, which is the whole reason this is a
+    // usable stand-in for a laptop that has no GPS of its own.
+    function sendAnchor() {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            function (pos) {
+                sendMsg({
+                    type: 'location_anchor',
+                    location: {
+                        lat: pos.coords.latitude,
+                        lon: pos.coords.longitude,
+                        accuracy_m: pos.coords.accuracy || 0,
+                        ts: Math.floor(pos.timestamp / 1000),
+                    },
+                });
+            },
+            function () {
+                // Permission denied or no fix. The other sources still work,
+                // so this is not worth interrupting the user over.
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+        );
+    }
+
+    function formatDistance(meters) {
+        if (meters < 1000) return Math.round(meters) + ' m';
+        return (meters / 1000).toFixed(meters < 10000 ? 1 : 0) + ' km';
+    }
+
+    function formatAge(unixSeconds) {
+        if (!unixSeconds) return '';
+        var secs = Math.floor(Date.now() / 1000) - unixSeconds;
+        if (secs < 10) return 'just now';
+        if (secs < 60) return secs + 's ago';
+        if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+        return Math.floor(secs / 3600) + 'h ago';
+    }
+
+    function renderLocation(loc) {
+        if (!loc.enabled) {
+            locationCard.classList.add('hidden');
+            return;
+        }
+        locationCard.classList.remove('hidden');
+
+        if (!loc.fix) {
+            locationBody.innerHTML = loc.available
+                ? '<p class="muted">Waiting for a position…</p>'
+                : '<p class="muted">No position source is available on this machine. ' +
+                  'See the README for what each platform supports.</p>';
+            return;
+        }
+
+        // Coerce before anything is built from these. They end up inside href
+        // and src attributes, and escapeHtml does not escape quotes — so a
+        // non-numeric value would be a way out of the attribute rather than
+        // merely a rendering glitch.
+        var fix = {
+            lat: Number(loc.fix.lat),
+            lon: Number(loc.fix.lon),
+            accuracy_m: Number(loc.fix.accuracy_m) || 0,
+            ts: Number(loc.fix.ts) || 0,
+            source: String(loc.fix.source || ''),
+            label: String(loc.fix.label || ''),
+        };
+        if (!Number.isFinite(fix.lat) || !Number.isFinite(fix.lon)) {
+            locationBody.innerHTML = '<p class="muted">Received an unreadable position.</p>';
+            return;
+        }
+
+        var coords = fix.lat.toFixed(5) + ', ' + fix.lon.toFixed(5);
+        var html = '';
+
+        if (loc.moved) {
+            html +=
+                '<div class="location-moved">Moved ' +
+                escapeHtml(formatDistance(Number(loc.moved_m) || 0)) +
+                ' from where it was armed</div>';
+        }
+
+        html +=
+            '<div class="location-coords">' +
+            escapeHtml(coords) +
+            '</div>' +
+            '<div class="location-accuracy">Accurate to about ' +
+            escapeHtml(formatDistance(fix.accuracy_m)) +
+            '</div>' +
+            '<div class="info-row"><span>Source</span><span>' +
+            escapeHtml(SOURCE_LABELS[fix.source] || fix.source) +
+            '</span></div>' +
+            '<div class="info-row"><span>Updated</span><span>' +
+            escapeHtml(formatAge(fix.ts)) +
+            '</span></div>';
+
+        if (fix.label) {
+            html += '<div class="info-row"><span>Place</span><span>' + escapeHtml(fix.label) + '</span></div>';
+        }
+        if (loc.anchor && !loc.moved && fix.source !== 'phone') {
+            html +=
+                '<div class="info-row"><span>From armed spot</span><span>' +
+                escapeHtml(formatDistance(Number(loc.moved_m) || 0)) +
+                '</span></div>';
+        }
+
+        html +=
+            '<div class="location-actions">' +
+            '<button type="button" class="btn-icon" id="location-copy-btn">Copy</button>' +
+            '<a class="btn-icon" id="location-maps-link" target="_blank" rel="noopener noreferrer" href="' +
+            escapeHtml(
+                'https://www.openstreetmap.org/?mlat=' +
+                    fix.lat +
+                    '&mlon=' +
+                    fix.lon +
+                    '#map=17/' +
+                    fix.lat +
+                    '/' +
+                    fix.lon,
+            ) +
+            '">Open in maps</a>' +
+            '<button type="button" class="btn-icon" id="location-map-btn">' +
+            (mapShown ? 'Hide map' : 'Show map') +
+            '</button>' +
+            '</div>';
+
+        // The map is opt-in and stays that way. Loading it reaches out to
+        // openstreetmap.org, which is the one thing this program otherwise
+        // never does without being asked.
+        if (mapShown) {
+            var d = Math.max(0.002, Math.min(0.5, fix.accuracy_m / 60000));
+            var bbox = [fix.lon - d, fix.lat - d, fix.lon + d, fix.lat + d].join(',');
+            html +=
+                '<iframe class="location-map" title="Map" loading="lazy" src="' +
+                escapeHtml(
+                    'https://www.openstreetmap.org/export/embed.html?bbox=' +
+                        bbox +
+                        '&layer=mapnik&marker=' +
+                        fix.lat +
+                        ',' +
+                        fix.lon,
+                ) +
+                '"></iframe>' +
+                '<p class="location-map-note">Map tiles are loaded from openstreetmap.org.</p>';
+        }
+
+        locationBody.innerHTML = html;
+
+        var copyBtn = document.getElementById('location-copy-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function () {
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(coords).then(function () {
+                        copyBtn.textContent = 'Copied';
+                        setTimeout(function () {
+                            copyBtn.textContent = 'Copy';
+                        }, 1500);
+                    });
+                }
+            });
+        }
+
+        var mapBtn = document.getElementById('location-map-btn');
+        if (mapBtn) {
+            mapBtn.addEventListener('click', function () {
+                mapShown = !mapShown;
+                renderLocation(loc);
+            });
         }
     }
 
@@ -314,6 +500,7 @@
         startUptime();
         updateLastCheck();
         startPingInterval();
+        sendMsg({ type: 'get_location' });
         if (window.history.replaceState) {
             window.history.replaceState({}, document.title, '/');
         }
@@ -551,6 +738,10 @@
                 armCountdownInterval = null;
                 armBtn.disabled = false;
                 sendMsg({ type: 'arm' });
+                // The phone is next to the laptop right now, so this is the
+                // moment its GPS is worth anything as a stand-in.
+                sendAnchor();
+                sendMsg({ type: 'get_location' });
             } else {
                 label.textContent = 'ARMING... ' + remaining;
             }
@@ -864,6 +1055,16 @@
         document.getElementById('cfg-connection-mode').value = cfg.connection_mode;
         document.getElementById('cfg-remote-access').checked = !!cfg.remote_access;
         document.getElementById('cfg-remote-port').value = cfg.remote_port || 9443;
+        var loc = cfg.location || {};
+        document.getElementById('cfg-location-enabled').checked = !!loc.enabled;
+        document.getElementById('cfg-location-anchor').checked = !!loc.phone_anchor;
+        document.getElementById('cfg-location-ip').checked = !!loc.ip_fallback;
+        document.getElementById('cfg-location-wifi').checked = !!loc.wifi_enabled;
+        document.getElementById('cfg-location-poll').value = loc.poll_seconds || 60;
+        // The key itself is never sent to us; only whether one exists.
+        document.getElementById('cfg-location-key').placeholder = loc.has_geolocate_key
+            ? 'A key is set — leave blank to keep it'
+            : 'No key set';
         var pinGroup = document.getElementById('pin-config-group');
         if (cfg.pin_protection && cfg.pin_protection.enabled) {
             pinGroup.classList.remove('hidden');
@@ -894,6 +1095,14 @@
             pin_protection: {
                 enabled: document.getElementById('cfg-pin-enabled').checked,
                 pin: document.getElementById('cfg-pin').value || '',
+            },
+            location: {
+                enabled: document.getElementById('cfg-location-enabled').checked,
+                phone_anchor: document.getElementById('cfg-location-anchor').checked,
+                ip_fallback: document.getElementById('cfg-location-ip').checked,
+                wifi_enabled: document.getElementById('cfg-location-wifi').checked,
+                poll_seconds: parseInt(document.getElementById('cfg-location-poll').value, 10) || 60,
+                geolocate_key: document.getElementById('cfg-location-key').value || '',
             },
         };
         var msg = { type: 'update_config', config: cfg };
@@ -1038,6 +1247,10 @@
     document.getElementById('refresh-btn').addEventListener('click', refreshConnection);
     document.getElementById('test-alert-btn').addEventListener('click', sendTestAlert);
     document.getElementById('clear-alerts-btn').addEventListener('click', clearAlertHistory);
+    document.getElementById('location-refresh-btn').addEventListener('click', function () {
+        sendMsg({ type: 'get_location' });
+        if (armed) sendAnchor();
+    });
     armBtn.addEventListener('click', function () {
         if (disarmJustFired) {
             disarmJustFired = false;
