@@ -69,7 +69,7 @@ No internet connection required. Communication runs over WebSocket or Bluetooth 
 
 ### Interface
 - **Live TUI Dashboard** — ASCII terminal UI with QR code, live logs, and system status
-- **Mobile Web UI** — Responsive, dark-themed phone interface served directly from the binary
+- **Mobile Web UI** — Phone interface built as an annunciator panel: armed and disarmed are different colours, so you can read your state across a room
 - **Interactive Terminal Commands** — Test alerts, trigger sensors, view history, rotate keys
 
 ### Deployment
@@ -200,7 +200,7 @@ If you still see a "cannot be opened" warning, go to **System Settings > Privacy
 ### Build from Source
 
 ```bash
-# Requires Go 1.25+
+# Requires Go 1.25+. Node is NOT required — see below.
 git clone https://github.com/atakankizilyuce/LeaveSafe.git
 cd LeaveSafe
 
@@ -211,18 +211,50 @@ go build -o leavesafe ./cmd/leavesafe
 make all
 ```
 
+### Working on the phone interface
+
+The interface is a Vite + TypeScript + Preact app in `web/src`, built into
+`web/dist` and embedded in the binary.
+
+**`web/dist` is committed.** That is deliberate: `go build` and `go install`
+have to work on a machine that has never installed Node, and a Go project that
+silently produces a binary with no UI is a bad surprise. The cost of committing
+a build artifact is that it can drift from its source, so CI rebuilds it and
+fails if the result differs from what is checked in.
+
+If you change anything under `web/src`, rebuild and commit the output:
+
+```bash
+cd web
+npm ci
+npm run build      # writes web/dist — commit this
+npm run typecheck
+```
+
+For live reload, run the binary and point Vite's dev server at it. The dev
+server proxies `/ws` to port 9443:
+
+```bash
+go run ./cmd/leavesafe        # terminal one
+cd web && npm run dev         # terminal two
+```
+
+`./leavesafe -dev` also exists and serves `web/dist` straight from disk, so a
+rebuild shows up without restarting the binary.
+
 ### Development Checks
 
 Every pull request has to pass the same gate, and all of it runs locally:
 
 ```bash
-make fmt        # gofmt
-make vet        # go vet
-make lint       # golangci-lint (staticcheck, gosec, revive, errcheck, ...)
-make web-lint   # biome, for web/*.js
-make vuln       # govulncheck
-make test       # unit tests
-make check      # all of the above
+make fmt         # gofmt
+make vet         # go vet
+make lint        # golangci-lint (staticcheck, gosec, revive, errcheck, ...)
+make web-lint    # biome plus tsc, for web/src
+make web-verify  # rebuilds web/dist and fails if the committed output drifted
+make vuln        # govulncheck
+make test        # unit tests
+make check       # all of the above
 ```
 
 The CI workflow adds a few things a laptop cannot cover on its own:
@@ -236,7 +268,7 @@ The CI workflow adds a few things a laptop cannot cover on its own:
 | `e2e` | starts the real binary on each OS and drives the whole user flow over a real WebSocket |
 | `realtrigger` | fires the hardware changes each runner genuinely permits, and records every one it cannot |
 | `sandbox-linux` | boots a real Linux VM under QEMU/KVM and creates real kernel-backed hardware |
-| `frontend` | Biome lint and format check on the embedded web client |
+| `frontend` | Biome, `tsc`, a production build, and a check that the committed `web/dist` still matches `web/src` |
 | `build` | the full five-target release matrix |
 | `vulncheck` | `govulncheck` against the Go toolchain and dependencies |
 
