@@ -9,7 +9,7 @@ A lightweight, cross-platform device security monitor that turns your phone into
 <br/>
 
 [![CI](https://github.com/atakankizilyuce/LeaveSafe/actions/workflows/ci.yml/badge.svg)](https://github.com/atakankizilyuce/LeaveSafe/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/Go-1.25.0-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.25.12-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macOS-lightgrey)](#platform-support)
 
@@ -209,6 +209,35 @@ go build -o leavesafe ./cmd/leavesafe
 # Or use the Makefile to build all platforms
 make all
 ```
+
+### Development Checks
+
+Every pull request has to pass the same gate, and all of it runs locally:
+
+```bash
+make fmt        # gofmt
+make vet        # go vet
+make lint       # golangci-lint (staticcheck, gosec, revive, errcheck, ...)
+make web-lint   # biome, for web/*.js
+make vuln       # govulncheck
+make test       # unit tests
+make check      # all of the above
+```
+
+The CI workflow adds a few things a laptop cannot cover on its own:
+
+| Job | What it does |
+|-----|--------------|
+| `format` | `gofmt` plus a check that `go.mod`/`go.sum` are tidy |
+| `typos` | spell check across the repo ([typos](https://github.com/crate-ci/typos), configured in `_typos.toml`) |
+| `lint` | `golangci-lint` once per target OS — half this codebase sits behind build tags, so a single platform never sees all of it |
+| `test` | unit tests on Linux, Windows and macOS, with coverage reported in the run summary |
+| `frontend` | Biome lint and format check on the embedded web client |
+| `build` | the full five-target release matrix |
+| `docker` | builds the container image and scans it with Trivy |
+| `vulncheck` | `govulncheck` against the Go toolchain and dependencies |
+
+`ci-success` aggregates all of them, so branch protection only needs that one required check. Dependency, action and base-image updates arrive weekly through Dependabot.
 
 ### Docker
 

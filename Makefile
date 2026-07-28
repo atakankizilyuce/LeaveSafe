@@ -2,7 +2,7 @@ BINARY_NAME=leavesafe
 VERSION=1.0.0
 LDFLAGS=-ldflags="-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test fmt vet docker docker-run
+.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test fmt vet lint typos web-lint vuln check docker docker-run
 
 all: build-windows build-darwin build-darwin-arm build-linux
 
@@ -29,6 +29,24 @@ fmt:
 
 vet:
 	go vet ./...
+
+# Same checks CI runs. Each tool is fetched on demand so there is nothing to
+# install up front.
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run ./...
+
+# typos is a Rust binary; grab a release from
+# https://github.com/crate-ci/typos/releases and put it on PATH.
+typos:
+	typos
+
+web-lint:
+	npx --yes @biomejs/biome@2.5.6 ci web/ --error-on-warnings
+
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+check: fmt vet lint web-lint vuln test
 
 clean:
 	rm -rf dist/ $(BINARY_NAME) $(BINARY_NAME).exe
