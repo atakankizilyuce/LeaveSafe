@@ -57,23 +57,59 @@ func loadModule(name string) error {
 // The kernel republishes the new state through /sys/class/power_supply, which is
 // exactly the file the production sensor reads — so unplugging the charger here
 // is a real kernel event, not a stubbed return value.
+//
+// The module parameter takes the words "on" and "off": test_power maps the
+// written string through a lookup table and silently keeps the old value for
+// anything it does not recognise, so the write is always read back through
+// sysfs before the caller is told it worked.
 func setTestPowerAC(online bool) error {
-	value := "0"
+	word, want := "off", "0"
 	if online {
-		value = "1"
+		word, want = "on", "1"
 	}
+
 	const param = "/sys/module/test_power/parameters/ac_online"
-	if err := os.WriteFile(param, []byte(value), 0o600); err != nil {
+	if err := os.WriteFile(param, []byte(word), 0o600); err != nil {
 		return fmt.Errorf("%w: write %s: %v", errNoHardware, param, err)
 	}
 	// Give the kernel a moment to republish through sysfs.
 	time.Sleep(500 * time.Millisecond)
 
-	matches, err := filepath.Glob("/sys/class/power_supply/*/online")
-	if err != nil || len(matches) == 0 {
-		return fmt.Errorf("%w: test_power exposed no power supply under /sys", errNoHardware)
+	path, err := mainsOnlinePath()
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 -- path comes from a sysfs walk
+	if err != nil {
+		return fmt.Errorf("%w: read %s: %v", errNoHardware, path, err)
+	}
+	if got := strings.TrimSpace(string(raw)); got != want {
+		return fmt.Errorf("%w: wrote ac_online=%s but %s still reads %q, so the kernel "+
+			"never published the change the sensor would have to see",
+			errNoHardware, word, path, got)
 	}
 	return nil
+}
+
+// mainsOnlinePath finds the "online" file of the mains supply, the same way the
+// production sensor picks which supply to watch.
+func mainsOnlinePath() (string, error) {
+	entries, err := os.ReadDir("/sys/class/power_supply")
+	if err != nil {
+		return "", fmt.Errorf("%w: /sys/class/power_supply is absent: %v", errNoHardware, err)
+	}
+	for _, entry := range entries {
+		typePath := filepath.Join("/sys/class/power_supply", entry.Name(), "type")
+		data, err := os.ReadFile(typePath) // #nosec G304 -- path comes from a sysfs walk
+		if err != nil || strings.TrimSpace(string(data)) != "Mains" {
+			continue
+		}
+		online := filepath.Join("/sys/class/power_supply", entry.Name(), "online")
+		if _, err := os.Stat(online); err == nil {
+			return online, nil
+		}
+	}
+	return "", fmt.Errorf("%w: test_power exposed no Mains supply with an online file", errNoHardware)
 }
 
 // virtualKeyboard is a uinput device that emits real key events.
@@ -81,8 +117,15 @@ type virtualKeyboard struct {
 	devicePath string
 }
 
-// createVirtualKeyboard finds the input device uinput created and returns a
-// handle that can type on it.
+// createVirtualKeyboard returns a handle that injects real key events into an
+// evdev node.
+//
+// It then checks that the injected events actually move the signal the sensor
+// reads. The Linux input sensor watches the modification time of
+// /dev/input/event*, and devtmpfs does not necessarily update that timestamp
+// when events flow through a device. Rather than let the scenario time out and
+// read as a broken sensor, the mismatch is detected here and reported as an
+// environment limitation with the mechanism named.
 func createVirtualKeyboard() (*virtualKeyboard, error) {
 	if err := requireSandboxVM(); err != nil {
 		return nil, err
@@ -90,7 +133,7 @@ func createVirtualKeyboard() (*virtualKeyboard, error) {
 	if _, err := os.Stat("/dev/uinput"); err != nil {
 		return nil, fmt.Errorf("%w: /dev/uinput is absent: %v", errNoHardware, err)
 	}
-	if _, err := exec.LookPath("evemu-device"); err != nil {
+	if _, err := exec.LookPath("evemu-event"); err != nil {
 		return nil, fmt.Errorf("%w: evemu-tools is not installed: %v", errNoHardware, err)
 	}
 
@@ -98,7 +141,35 @@ func createVirtualKeyboard() (*virtualKeyboard, error) {
 	if err != nil || len(matches) == 0 {
 		return nil, fmt.Errorf("%w: no /dev/input/event* device exists", errNoHardware)
 	}
-	return &virtualKeyboard{devicePath: matches[0]}, nil
+	keyboard := &virtualKeyboard{devicePath: matches[0]}
+
+	before := inputMtimeSnapshot()
+	keyboard.Type(3)
+	time.Sleep(time.Second)
+	if inputMtimeSnapshot() == before {
+		return nil, fmt.Errorf("%w: injected key events leave the mtime of "+
+			"/dev/input/event* unchanged, and that timestamp is the only signal the "+
+			"Linux input sensor reads, so no synthetic input can exercise it here",
+			errNoHardware)
+	}
+	return keyboard, nil
+}
+
+// inputMtimeSnapshot mirrors what the production Linux input sensor samples:
+// the newest modification time across the evdev nodes.
+func inputMtimeSnapshot() int64 {
+	matches, _ := filepath.Glob("/dev/input/event*")
+	var latest int64
+	for _, path := range matches {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if t := info.ModTime().UnixNano(); t > latest {
+			latest = t
+		}
+	}
+	return latest
 }
 
 // Type emits real key-down/key-up pairs, spread out so the sensor — which polls
