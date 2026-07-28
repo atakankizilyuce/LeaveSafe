@@ -5,8 +5,6 @@ package monitor
 import (
 	"context"
 	"os/exec"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -89,19 +87,5 @@ func getIdleSeconds() float64 {
 	if err != nil {
 		return -1
 	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.Contains(line, "HIDIdleTime") {
-			parts := strings.Split(line, "=")
-			if len(parts) < 2 {
-				continue
-			}
-			val := strings.TrimSpace(parts[1])
-			ns, err := strconv.ParseInt(val, 10, 64)
-			if err != nil {
-				continue
-			}
-			return float64(ns) / 1e9
-		}
-	}
-	return -1
+	return parseHIDIdleSeconds(string(out))
 }
