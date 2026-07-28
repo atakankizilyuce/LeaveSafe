@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -70,13 +69,5 @@ func getUSBSnapshotDarwin() (string, []string, error) {
 		return "", nil, err
 	}
 	hash := fmt.Sprintf("%x", sha256.Sum256(out))
-
-	var names []string
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasSuffix(line, ":") && !strings.Contains(line, "USB") {
-			names = append(names, strings.TrimSuffix(line, ":"))
-		}
-	}
-	return hash, names, nil
+	return hash, parseUSBDeviceNames(string(out)), nil
 }
