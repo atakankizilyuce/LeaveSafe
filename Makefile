@@ -2,7 +2,7 @@ BINARY_NAME=leavesafe
 VERSION=1.0.0
 LDFLAGS=-ldflags="-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test fmt vet lint typos web-lint vuln check
+.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test test-e2e fmt vet lint typos web-lint vuln check
 
 all: build-windows build-darwin build-darwin-arm build-linux
 
@@ -23,6 +23,10 @@ build-linux:
 
 test:
 	go test ./... -v
+
+# Layer 0: starts the real binary on this OS and drives the full user flow.
+test-e2e:
+	go test -tags e2e ./test/e2e/... -v -count=1
 
 fmt:
 	go fmt ./...
