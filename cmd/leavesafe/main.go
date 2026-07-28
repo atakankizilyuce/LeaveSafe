@@ -54,9 +54,19 @@ type statusBar struct {
 	gridCol   int
 	gridWidth int
 
+	// QR geometry. The box is sized to the largest QR of any candidate URL so
+	// that switching between them with `qr <n>` never overflows the layout.
+	qrRow    int
+	qrCol    int
+	qrBoxW   int
+	qrBoxH   int
+	qrCodes  [][]string
+	qrURLIdx int
+
 	key          string
 	urls         []string
 	remoteStatus string // e.g. "ACTIVE — 85.1.2.3:9443" or "" if not remote
+	certFP       string // SHA-256 fingerprint of the TLS certificate, "" if plain HTTP
 }
 
 func visLen(s string) int {
@@ -124,6 +134,13 @@ func (sb *statusBar) gridLines() []string {
 		lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Remote   %s%s%s", cGreen, cReset, cGreen, sb.remoteStatus, cReset)))
 	}
 
+	// The certificate is self-signed, so the phone will warn about it. Showing
+	// the fingerprint is what lets the user tell that warning apart from an
+	// actual interception. `cert` prints it in full.
+	if sb.certFP != "" {
+		lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Cert     %s%s…%s", cCyan, cReset, cDim, shortFingerprint(sb.certFP), cReset)))
+	}
+
 	lines = append(lines, midSep)
 	lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Key      %s%s%s", cYellow, cReset, cBold, sb.key, cReset)))
 
@@ -140,6 +157,69 @@ func (sb *statusBar) gridLines() []string {
 
 	lines = append(lines, bottom)
 	return lines
+}
+
+// shortFingerprint returns the first four colon-separated octets of a SHA-256
+// fingerprint, which is enough to eyeball against the phone's warning dialog.
+func shortFingerprint(fp string) string {
+	parts := strings.Split(fp, ":")
+	if len(parts) > 4 {
+		parts = parts[:4]
+	}
+	return strings.Join(parts, ":")
+}
+
+// drawQR repaints the reserved QR box with the currently selected code. The
+// box is cleared first because codes for different URLs differ in size.
+func (sb *statusBar) drawQR() {
+	if sb.qrBoxH == 0 {
+		return
+	}
+	blank := strings.Repeat(" ", sb.qrBoxW)
+	for i := 0; i < sb.qrBoxH; i++ {
+		fmt.Fprintf(sb.out, "\033[%d;%dH%s", sb.qrRow+i, sb.qrCol, blank)
+	}
+	if sb.qrURLIdx < 0 || sb.qrURLIdx >= len(sb.qrCodes) {
+		return
+	}
+	for i, line := range sb.qrCodes[sb.qrURLIdx] {
+		if i >= sb.qrBoxH {
+			break
+		}
+		fmt.Fprintf(sb.out, "\033[%d;%dH%s", sb.qrRow+i, sb.qrCol, line)
+	}
+}
+
+// showQR switches the displayed QR code to the URL at index i (1-based, as the
+// dashboard lists them). Returns the URL shown, or "" if the index is unknown.
+func (sb *statusBar) showQR(i int) string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	if i < 1 || i > len(sb.qrCodes) {
+		return ""
+	}
+	sb.qrURLIdx = i - 1
+	fmt.Fprintf(sb.out, "\033[s")
+	sb.drawQR()
+	fmt.Fprintf(sb.out, "\033[u")
+	return sb.urls[sb.qrURLIdx]
+}
+
+// rekeyQR re-renders every QR code against a new pairing key. Without this the
+// codes on screen keep encoding the key that `rotate-key` just invalidated.
+func (sb *statusBar) rekeyQR(rawKey string) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	for i, u := range sb.urls {
+		lines, err := qr.Lines(u + "?key=" + rawKey)
+		if err != nil {
+			continue
+		}
+		sb.qrCodes[i] = lines
+	}
+	fmt.Fprintf(sb.out, "\033[s")
+	sb.drawQR()
+	fmt.Fprintf(sb.out, "\033[u")
 }
 
 func (sb *statusBar) doRedrawGrid() {
@@ -197,7 +277,11 @@ func main() {
 
 	remoteEnabled := cfg.RemoteAccess != nil && *cfg.RemoteAccess
 
-	authMgr, err := auth.NewManager()
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{
+		MaxSessions:   cfg.MaxSessions,
+		MaxAttempts:   cfg.MaxAuthAttempts,
+		LockoutPeriod: time.Duration(cfg.LockoutSeconds) * time.Second,
+	})
 	if err != nil {
 		log.Fatalf("Failed to initialize auth: %v", err)
 	}
@@ -207,6 +291,10 @@ func main() {
 
 	hub := ws.NewHub(authMgr, sensorMgr, version)
 	hub.SetConfig(cfg)
+	hub.SetTimings(
+		time.Duration(cfg.HeartbeatSeconds)*time.Second,
+		time.Duration(cfg.DisconnectGraceSeconds)*time.Second,
+	)
 
 	evLogPath := filepath.Join(config.ConfigDir(), "events.jsonl")
 	if err := os.MkdirAll(config.ConfigDir(), 0o700); err != nil {
@@ -229,6 +317,7 @@ func main() {
 	var publicIP string
 	srvCfg := server.Config{Hub: hub, Port: port, DevMode: *devMode}
 
+	var certFP string
 	if remoteEnabled {
 		if port == 0 {
 			port = cfg.RemotePort
@@ -237,10 +326,18 @@ func main() {
 
 		cert, fp, err := server.GenerateOrLoadCert(config.ConfigDir())
 		if err != nil {
-			log.Warnf("TLS certificate error: %v — falling back to HTTP", err)
+			// Remote access publishes this port to the internet. Serving it
+			// over plain HTTP would put the pairing key — the only thing
+			// guarding the alarm — in cleartext on the wire. Staying on the LAN
+			// is the safe failure, so remote access does not come up at all.
+			log.Errorf("TLS certificate error: %v", err)
+			log.Error("Remote access DISABLED: refusing to expose this port without TLS.")
+			log.Error("Pairing is still available on the local network. Fix the certificate to restore remote access.")
+			remoteEnabled = false
 		} else {
 			srvCfg.TLSCert = &cert
 			srvCfg.CertFP = fp
+			certFP = fp
 		}
 	}
 
@@ -268,7 +365,7 @@ func main() {
 		}
 	}
 
-	sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, publicIP)
+	sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, publicIP, certFP)
 
 	log.SetOutput(&logWriter{sb: sb})
 
@@ -351,7 +448,7 @@ func main() {
 }
 
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
-	hub *ws.Hub, sensorMgr *monitor.Manager, publicIP string) *statusBar {
+	hub *ws.Hub, sensorMgr *monitor.Manager, publicIP, certFP string) *statusBar {
 	termW, termH, err := term.GetSize(int(out.Fd()))
 	if err != nil || termW < 80 || termH < 20 {
 		termW, termH = 120, 40
@@ -395,17 +492,33 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		urls = append([]string{remoteURL}, urls...)
 	}
 
-	qrURL := ""
-	if len(urls) > 0 {
-		qrURL = urls[0] + "?key=" + authMgr.RawPairingKey()
+	// A QR code is rendered for every reachable URL, not just the first. With
+	// remote access on, the public URL only works from outside the network:
+	// scanning it from a phone on the same Wi-Fi needs NAT hairpinning, which
+	// plenty of routers do not do. `qr <n>` switches to the local URL instead.
+	qrCodes := make([][]string, 0, len(urls))
+	for _, u := range urls {
+		lines, err := qr.Lines(u + "?key=" + authMgr.RawPairingKey())
+		if err != nil {
+			log.Warnf("Could not render QR code for %s: %v", u, err)
+			lines = nil
+		}
+		qrCodes = append(qrCodes, lines)
 	}
 
-	qrLines, _ := qr.Lines(qrURL)
-
+	// Size the box to the largest code so switching between them never
+	// overflows into the rest of the layout.
 	const qrIndent = 2
-	qrW := 0
-	if len(qrLines) > 0 {
-		qrW = utf8.RuneCountInString(qrLines[0])
+	qrW, qrH := 0, 0
+	for _, lines := range qrCodes {
+		if len(lines) > qrH {
+			qrH = len(lines)
+		}
+		if len(lines) > 0 {
+			if w := utf8.RuneCountInString(lines[0]); w > qrW {
+				qrW = w
+			}
+		}
 	}
 
 	const gap = 3
@@ -435,47 +548,47 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		gridRow:      qrStartRow,
 		gridCol:      statusCol,
 		gridWidth:    statusW,
+		qrCol:        qrIndent + 1,
+		qrBoxW:       qrW,
+		qrBoxH:       qrH,
+		qrCodes:      qrCodes,
 		key:          authMgr.PairingKey(),
 		urls:         urls,
 		remoteStatus: remoteStatus,
+		certFP:       certFP,
 	}
 
 	statusLines := sb.gridLines()
 	statusH := len(statusLines)
 
-	totalRows := len(qrLines)
+	totalRows := qrH
 	if statusH > totalRows {
 		totalRows = statusH
 	}
 
 	qrVOff, statusVOff := 0, 0
-	if len(qrLines) < totalRows {
-		qrVOff = (totalRows - len(qrLines)) / 2
+	if qrH < totalRows {
+		qrVOff = (totalRows - qrH) / 2
 	}
 	if statusH < totalRows {
 		statusVOff = (totalRows - statusH) / 2
 	}
 	sb.gridRow = qrStartRow + statusVOff
+	sb.qrRow = qrStartRow + qrVOff
 
 	for i := 0; i < totalRows; i++ {
-		fmt.Fprintf(out, "\033[%d;1H", qrStartRow+i)
-
-		qi := i - qrVOff
-		if qi >= 0 && qi < len(qrLines) {
-			fmt.Fprintf(out, "%s%s", strings.Repeat(" ", qrIndent), qrLines[qi])
-		}
-
 		si := i - statusVOff
 		if si >= 0 && si < len(statusLines) {
 			fmt.Fprintf(out, "\033[%d;%dH%s", qrStartRow+i, statusCol, statusLines[si])
 		}
 	}
+	sb.drawQR()
 
 	row = qrStartRow + totalRows
 
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s test, trigger <sensor>, stop, history, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
+	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s test, trigger <sensor>, stop, history, urls, qr <n>, cert, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
@@ -565,11 +678,44 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 			} else {
 				sb.key = newKey
 				sb.refresh()
+				sb.rekeyQR(authMgr.RawPairingKey())
 				sb.writeLine("  %s[KEY]%s Pairing key rotated. New key: %s%s%s", cGreen, cReset, cBold, newKey, cReset)
-				sb.writeLine("  %s[KEY]%s All existing sessions invalidated.", cYellow, cReset)
+				sb.writeLine("  %s[KEY]%s All existing sessions invalidated. The QR code now encodes the new key.", cYellow, cReset)
 			}
+		case line == "urls":
+			for i, u := range sb.urls {
+				marker := " "
+				if i == sb.qrURLIdx {
+					marker = "*"
+				}
+				sb.writeLine("  %s[%d]%s %s%s", cBold, i+1, marker, u, cReset)
+			}
+			sb.writeLine("  %sUse 'qr <n>' to show the QR code for one of these.%s", cDim, cReset)
+
+		case strings.HasPrefix(line, "qr "):
+			n, err := strconv.Atoi(strings.TrimSpace(line[3:]))
+			if err != nil {
+				sb.writeLine("  Usage: qr <n>   (type 'urls' to list them)")
+				break
+			}
+			if shown := sb.showQR(n); shown == "" {
+				sb.writeLine("  No URL %d. Type 'urls' to list them.", n)
+			} else {
+				sb.writeLine("  %s[QR]%s Now showing %s", cGreen, cReset, shown)
+			}
+
+		case line == "cert":
+			if sb.certFP == "" {
+				sb.writeLine("  No TLS certificate — this server is running over plain HTTP on the local network.")
+			} else {
+				sb.writeLine("  %sTLS certificate SHA-256 fingerprint:%s", cBold, cReset)
+				sb.writeLine("  %s", sb.certFP)
+				sb.writeLine("  %sYour phone will warn that this certificate is untrusted; it is self-signed.%s", cDim, cReset)
+				sb.writeLine("  %sCompare the fingerprint above with the one the warning shows before accepting.%s", cDim, cReset)
+			}
+
 		case line == "help":
-			sb.writeLine("  Commands: test, trigger <sensor>, stop, history, rotate-key, help")
+			sb.writeLine("  Commands: test, trigger <sensor>, stop, history, urls, qr <n>, cert, rotate-key, help")
 		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)
