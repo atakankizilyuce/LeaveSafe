@@ -27,6 +27,16 @@ type Options struct {
 	Pin string
 	// EnabledSensors seeds the sensor enable-map in the config file.
 	EnabledSensors map[string]bool
+	// RemoteAccess seeds remote_access, the mode that exposes the port beyond
+	// the local network.
+	RemoteAccess bool
+	// MaxAuthAttempts overrides max_auth_attempts. Zero keeps the default of 5.
+	MaxAuthAttempts int
+	// BreakTLSSetup plants an ordinary file where the app must create its TLS
+	// directory, so certificate setup fails the way a permission problem or a
+	// stray file would. Used to prove that remote access refuses to fall back
+	// to cleartext.
+	BreakTLSSetup bool
 }
 
 // App is a running leavesafe process.
@@ -172,6 +182,12 @@ func StartIn(t *testing.T, home string, opts Options) *App {
 		writeSeedConfig(t, configDir, opts)
 	}
 
+	if opts.BreakTLSSetup {
+		if err := os.WriteFile(filepath.Join(configDir, "tls"), []byte("not a directory"), 0o600); err != nil {
+			t.Fatalf("plant blocking tls file: %v", err)
+		}
+	}
+
 	app := &App{
 		t:         t,
 		port:      opts.Port,
@@ -212,11 +228,15 @@ func StartIn(t *testing.T, home string, opts Options) *App {
 // caller's options, so the process never blocks on stdin.
 func writeSeedConfig(t *testing.T, dir string, opts Options) {
 	t.Helper()
-	remote := false
+	remote := opts.RemoteAccess
+	maxAuthAttempts := opts.MaxAuthAttempts
+	if maxAuthAttempts == 0 {
+		maxAuthAttempts = 5
+	}
 	cfg := map[string]any{
 		"port":                     0,
 		"max_sessions":             3,
-		"max_auth_attempts":        5,
+		"max_auth_attempts":        maxAuthAttempts,
 		"lockout_seconds":          60,
 		"heartbeat_seconds":        15,
 		"disconnect_grace_seconds": 30,
