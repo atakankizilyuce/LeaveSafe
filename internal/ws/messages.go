@@ -21,6 +21,8 @@ const (
 	MsgTypeGetConfig           = "get_config"
 	MsgTypeUpdateConfig        = "update_config"
 	MsgTypeResetConfig         = "reset_config"
+	MsgTypeLocationAnchor      = "location_anchor"
+	MsgTypeGetLocation         = "get_location"
 )
 
 const (
@@ -33,6 +35,7 @@ const (
 	MsgTypeAlarmActive       = "alarm_active"
 	MsgTypePinRequired       = "pin_required"
 	MsgTypeConfigData        = "config_data"
+	MsgTypeLocation          = "location"
 )
 
 // ClientMessage represents a message from the phone to the laptop.
@@ -45,6 +48,47 @@ type ClientMessage struct {
 	Sensor   string          `json:"sensor,omitempty"`
 	Duration int             `json:"duration,omitempty"`
 	Config   *ConfigPayload  `json:"config,omitempty"`
+	Location *LocationFix    `json:"location,omitempty"`
+}
+
+// LocationFix is one position estimate as it crosses the wire.
+type LocationFix struct {
+	Latitude  float64 `json:"lat"`
+	Longitude float64 `json:"lon"`
+	AccuracyM float64 `json:"accuracy_m"`
+	Source    string  `json:"source,omitempty"`
+	Timestamp int64   `json:"ts,omitempty"`
+	Label     string  `json:"label,omitempty"`
+}
+
+// LocationPayload is what the phone needs to render the location panel without
+// overstating what is known: the current position, the position recorded when
+// the system was armed, and how far apart they are.
+type LocationPayload struct {
+	// Enabled reports whether the feature is switched on at all.
+	Enabled bool `json:"enabled"`
+	// Available reports whether any source can actually produce a position on
+	// this machine. False here with Enabled true means the panel should
+	// explain itself rather than spin.
+	Available bool         `json:"available"`
+	Fix       *LocationFix `json:"fix,omitempty"`
+	Anchor    *LocationFix `json:"anchor,omitempty"`
+	MovedM    float64      `json:"moved_m,omitempty"`
+	Moved     bool         `json:"moved,omitempty"`
+}
+
+// LocationConfigPayload mirrors config.Location for client exchange, minus the
+// API key. Like the PIN, the key is reported as present or absent and never
+// sent back out.
+type LocationConfigPayload struct {
+	Enabled      bool   `json:"enabled"`
+	PollSeconds  int    `json:"poll_seconds"`
+	PhoneAnchor  bool   `json:"phone_anchor"`
+	IPFallback   bool   `json:"ip_fallback"`
+	WiFiEnabled  bool   `json:"wifi_enabled"`
+	GeolocateURL string `json:"geolocate_url,omitempty"`
+	HasKey       bool   `json:"has_geolocate_key"`
+	GeolocateKey string `json:"geolocate_key,omitempty"`
 }
 
 // ServerMessage represents a message from the laptop to the phone.
@@ -60,24 +104,26 @@ type ServerMessage struct {
 	Alert             *AlertData              `json:"alert,omitempty"`
 	Timestamp         int64                   `json:"ts,omitempty"`
 	Config            *ConfigPayload          `json:"config,omitempty"`
+	Location          *LocationPayload        `json:"location,omitempty"`
 }
 
 // ConfigPayload is a sanitized configuration for client exchange.
 type ConfigPayload struct {
-	Port                   int                  `json:"port"`
-	MaxSessions            int                  `json:"max_sessions"`
-	MaxAuthAttempts        int                  `json:"max_auth_attempts"`
-	LockoutSeconds         int                  `json:"lockout_seconds"`
-	HeartbeatSeconds       int                  `json:"heartbeat_seconds"`
-	DisconnectGraceSeconds int                  `json:"disconnect_grace_seconds"`
-	AutoArmOnLock          bool                 `json:"auto_arm_on_lock"`
-	InputThreshold         int                  `json:"input_threshold"`
-	ConnectionMode         string               `json:"connection_mode,omitempty"`
-	Alarm                  config.AlarmConfig   `json:"alarm"`
-	PinProtection          PinProtectionPayload `json:"pin_protection"`
-	EnabledSensors         map[string]bool      `json:"enabled_sensors,omitempty"`
-	RemoteAccess           bool                 `json:"remote_access,omitempty"`
-	RemotePort             int                  `json:"remote_port,omitempty"`
+	Port                   int                   `json:"port"`
+	MaxSessions            int                   `json:"max_sessions"`
+	MaxAuthAttempts        int                   `json:"max_auth_attempts"`
+	LockoutSeconds         int                   `json:"lockout_seconds"`
+	HeartbeatSeconds       int                   `json:"heartbeat_seconds"`
+	DisconnectGraceSeconds int                   `json:"disconnect_grace_seconds"`
+	AutoArmOnLock          bool                  `json:"auto_arm_on_lock"`
+	InputThreshold         int                   `json:"input_threshold"`
+	ConnectionMode         string                `json:"connection_mode,omitempty"`
+	Alarm                  config.AlarmConfig    `json:"alarm"`
+	PinProtection          PinProtectionPayload  `json:"pin_protection"`
+	EnabledSensors         map[string]bool       `json:"enabled_sensors,omitempty"`
+	RemoteAccess           bool                  `json:"remote_access,omitempty"`
+	RemotePort             int                   `json:"remote_port,omitempty"`
+	Location               LocationConfigPayload `json:"location"`
 }
 
 // PinProtectionPayload is the PIN config for client exchange.
@@ -148,6 +194,15 @@ func NewAlarmActive(sensor, message string) ServerMessage {
 			Sensor:  sensor,
 			Message: message,
 		},
+		Timestamp: time.Now().Unix(),
+	}
+}
+
+// NewLocation creates a location update message.
+func NewLocation(payload LocationPayload) ServerMessage {
+	return ServerMessage{
+		Type:      MsgTypeLocation,
+		Location:  &payload,
 		Timestamp: time.Now().Unix(),
 	}
 }

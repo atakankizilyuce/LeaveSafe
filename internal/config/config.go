@@ -26,6 +26,36 @@ type PinProtection struct {
 	Pin     string `json:"pin,omitempty"`
 }
 
+// Location controls whether and how the monitored machine reports where it is.
+//
+// It is off by default. Everything in here except the phone anchor involves
+// talking to a third party, which is the one thing this program otherwise never
+// does, so it is a decision the user makes rather than one made for them.
+type Location struct {
+	// Enabled turns the whole feature on. With it off nothing is scanned and
+	// no request leaves the machine.
+	Enabled bool `json:"enabled"`
+	// PollSeconds is how often the live providers are asked for a position.
+	PollSeconds int `json:"poll_seconds,omitempty"`
+	// PhoneAnchor records the paired phone's own position when arming, as a
+	// stand-in for the laptop's. Costs nothing and reaches no third party.
+	PhoneAnchor bool `json:"phone_anchor"`
+	// IPFallback looks up the public IP address. Accurate to a city.
+	IPFallback bool `json:"ip_fallback"`
+	// IPLookupURL overrides the IP geolocation endpoint.
+	IPLookupURL string `json:"ip_lookup_url,omitempty"`
+	// WiFiEnabled resolves a Wi-Fi scan through a geolocation service.
+	// Accurate to tens of meters, and the only source that stays right after
+	// the machine has been moved.
+	WiFiEnabled bool `json:"wifi_enabled"`
+	// GeolocateURL overrides the Wi-Fi geolocation endpoint. The default
+	// speaks Google's Geolocation API, which several other services implement.
+	GeolocateURL string `json:"geolocate_url,omitempty"`
+	// GeolocateKey is the API key for that service. It is never sent to a
+	// paired client.
+	GeolocateKey string `json:"geolocate_key,omitempty"`
+}
+
 // Config holds all application settings.
 type Config struct {
 	Port                   int             `json:"port"`
@@ -42,6 +72,7 @@ type Config struct {
 	EnabledSensors         map[string]bool `json:"enabled_sensors,omitempty"`
 	RemoteAccess           *bool           `json:"remote_access,omitempty"`
 	RemotePort             int             `json:"remote_port,omitempty"`
+	Location               Location        `json:"location"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -67,6 +98,16 @@ func Default() *Config {
 		RemotePort:     9443,
 		PinProtection: PinProtection{
 			Enabled: false,
+		},
+		Location: Location{
+			// Off by default. Turning it on is a decision to talk to a
+			// geolocation service, and nobody should discover after the fact
+			// that their laptop has been doing that.
+			Enabled:     false,
+			PollSeconds: 60,
+			PhoneAnchor: true,
+			IPFallback:  true,
+			WiFiEnabled: false,
 		},
 	}
 }
