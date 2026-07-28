@@ -20,6 +20,11 @@ for tool in qemu-system-x86_64 qemu-img cloud-localds ssh scp ssh-keygen curl; d
 done
 
 [ -e /dev/kvm ] || fail "/dev/kvm is missing; this machine cannot boot the sandbox VM"
+# Presence is not access: on stock CI images /dev/kvm is root:kvm 0660 and QEMU
+# fails with "Permission denied" well after the boot appears to start.
+if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+  fail "/dev/kvm is not readable and writable by $(id -un); add the user to the kvm group"
+fi
 
 mkdir -p "$WORK"
 cd "$WORK"
