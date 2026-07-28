@@ -1,5 +1,5 @@
 // LeaveSafe Web Client
-(function() {
+(function () {
     'use strict';
 
     var ws = null;
@@ -15,6 +15,7 @@
     var disconnectShown = false;
     var serverVersion = null;
     var alarmTriggerSensor = null;
+    // biome-ignore lint/correctness/noUnusedVariables: holds the BLE device reference so it is not collected mid-session
     var bleDevice = null;
     var bleRxChar = null;
     var bleTxChar = null;
@@ -43,7 +44,7 @@
     var armLabel = document.querySelector('#arm-btn .arm-label');
     var holdProgressBar = document.querySelector('#arm-btn .hold-progress');
 
-    keyInput.addEventListener('input', function(e) {
+    keyInput.addEventListener('input', function (e) {
         var v = e.target.value.replace(/[^0-9]/g, '');
         if (v.length > 16) v = v.substring(0, 16);
         var formatted = '';
@@ -54,7 +55,7 @@
         e.target.value = formatted;
     });
 
-    keyInput.addEventListener('keydown', function(e) {
+    keyInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') authenticate();
     });
 
@@ -80,15 +81,21 @@
         var checkUrl = location.protocol + '//' + location.host + '/';
         var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
         var fetchOpts = controller ? { signal: controller.signal } : {};
-        var fetchTimeout = controller ? setTimeout(function() { controller.abort(); }, 5000) : null;
+        var fetchTimeout = controller
+            ? setTimeout(function () {
+                  controller.abort();
+              }, 5000)
+            : null;
 
-        fetch(checkUrl, fetchOpts).then(function() {
-            if (fetchTimeout) clearTimeout(fetchTimeout);
-            connectWebSocket(key);
-        }).catch(function() {
-            if (fetchTimeout) clearTimeout(fetchTimeout);
-            connectWebSocket(key);
-        });
+        fetch(checkUrl, fetchOpts)
+            .then(function () {
+                if (fetchTimeout) clearTimeout(fetchTimeout);
+                connectWebSocket(key);
+            })
+            .catch(function () {
+                if (fetchTimeout) clearTimeout(fetchTimeout);
+                connectWebSocket(key);
+            });
     }
 
     function connectWebSocket(key) {
@@ -97,13 +104,13 @@
 
         try {
             ws = new WebSocket(wsUrl);
-        } catch(e) {
+        } catch {
             showAuthError('Connection failed. Check your network connection and try again.');
             resetConnectBtn();
             return;
         }
 
-        var connTimeout = setTimeout(function() {
+        var connTimeout = setTimeout(function () {
             if (ws && ws.readyState !== WebSocket.OPEN) {
                 ws.close();
                 showAuthError('Connection timed out. Check your network connection and try again.');
@@ -111,20 +118,27 @@
             }
         }, 8000);
 
-        ws.onopen = function() {
+        ws.onopen = function () {
             clearTimeout(connTimeout);
             ws.send(JSON.stringify({ type: 'auth', key: key }));
         };
 
-        ws.onmessage = function(e) {
+        ws.onmessage = function (e) {
             var msg;
-            try { msg = JSON.parse(e.data); } catch(err) { return; }
+            try {
+                msg = JSON.parse(e.data);
+            } catch {
+                return;
+            }
             handleMessage(msg);
         };
 
-        ws.onclose = function() {
+        ws.onclose = function () {
             clearTimeout(connTimeout);
-            if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+            if (pingInterval) {
+                clearInterval(pingInterval);
+                pingInterval = null;
+            }
             if (token) {
                 setConnectionState('disconnected');
                 showDisconnectWarning();
@@ -134,7 +148,7 @@
             }
         };
 
-        ws.onerror = function() {
+        ws.onerror = function () {
             clearTimeout(connTimeout);
             if (!token) {
                 showAuthError('Connection error. Make sure you are on the same Wi-Fi network.');
@@ -151,7 +165,7 @@
 
     function scheduleReconnect(key) {
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
-        reconnectTimeout = setTimeout(function() {
+        reconnectTimeout = setTimeout(function () {
             keyInput.value = formatKey(key);
             authenticate();
         }, 3000);
@@ -164,7 +178,7 @@
                 serverVersion = msg.version || null;
                 sensors = {};
                 if (msg.sensors) {
-                    msg.sensors.forEach(function(s) {
+                    msg.sensors.forEach(function (s) {
                         sensors[s.name] = s;
                     });
                 }
@@ -261,7 +275,7 @@
         if (ws && ws.readyState === WebSocket.OPEN) {
             sendMsg({ type: 'ping' });
             var checkBefore = lastPongTime;
-            setTimeout(function() {
+            setTimeout(function () {
                 if (lastPongTime === checkBefore) {
                     setConnectionState('disconnected');
                     showDisconnectWarning();
@@ -270,7 +284,7 @@
                 }
             }, 3000);
         } else {
-            setTimeout(function() {
+            setTimeout(function () {
                 setConnectionState('disconnected');
                 showDisconnectWarning();
             }, 500);
@@ -307,7 +321,7 @@
             Notification.requestPermission();
         }
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').catch(function() {});
+            navigator.serviceWorker.register('/sw.js').catch(function () {});
         }
     }
 
@@ -323,7 +337,9 @@
         toast.className = 'sensor-toast';
         toast.textContent = msg;
         sensorList.parentNode.insertBefore(toast, sensorList);
-        setTimeout(function() { toast.remove(); }, 2500);
+        setTimeout(function () {
+            toast.remove();
+        }, 2500);
     }
 
     function renderSensors() {
@@ -339,40 +355,67 @@
             else dotClass += 'ok';
 
             var desc = sensorDescriptions[name] || '';
-            var infoBtn = desc ? '<span class="sensor-info-btn" data-sensor="' + escapeHtml(name) + '" title="Info">i</span>' : '';
+            var infoBtn = desc
+                ? '<span class="sensor-info-btn" data-sensor="' + escapeHtml(name) + '" title="Info">i</span>'
+                : '';
 
             div.innerHTML =
-                '<div class="sensor-header" data-sensor="' + escapeHtml(name) + '">' +
-                    '<div class="sensor-info">' +
-                        '<span class="' + dotClass + '"></span>' +
-                        '<div>' +
-                            '<div class="sensor-name">' + escapeHtml(s.display_name || s.name) + ' ' + infoBtn + '</div>' +
-                            '<div class="sensor-status">' + (s.status || (s.available === false ? 'Unavailable' : 'OK')) + '</div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="sensor-actions">' +
-                        '<button class="btn-trigger-sensor" data-sensor="' + escapeHtml(name) + '" ' +
-                            (s.available === false ? 'disabled' : '') + '>Test</button>' +
-                        '<label class="toggle">' +
-                            '<input type="checkbox" ' + (s.enabled ? 'checked' : '') + ' ' + (s.available === false ? 'disabled' : '') + ' data-sensor="' + escapeHtml(name) + '">' +
-                            '<span class="slider"></span>' +
-                        '</label>' +
-                    '</div>' +
+                '<div class="sensor-header" data-sensor="' +
+                escapeHtml(name) +
+                '">' +
+                '<div class="sensor-info">' +
+                '<span class="' +
+                dotClass +
+                '"></span>' +
+                '<div>' +
+                '<div class="sensor-name">' +
+                escapeHtml(s.display_name || s.name) +
+                ' ' +
+                infoBtn +
                 '</div>' +
-                (desc ? '<div class="sensor-detail hidden" id="detail-' + escapeHtml(name) + '">' +
-                    '<p class="sensor-desc">' + escapeHtml(desc) + '</p>' +
-                '</div>' : '');
+                '<div class="sensor-status">' +
+                (s.status || (s.available === false ? 'Unavailable' : 'OK')) +
+                '</div>' +
+                '</div>' +
+                '</div>' +
+                '<div class="sensor-actions">' +
+                '<button class="btn-trigger-sensor" data-sensor="' +
+                escapeHtml(name) +
+                '" ' +
+                (s.available === false ? 'disabled' : '') +
+                '>Test</button>' +
+                '<label class="toggle">' +
+                '<input type="checkbox" ' +
+                (s.enabled ? 'checked' : '') +
+                ' ' +
+                (s.available === false ? 'disabled' : '') +
+                ' data-sensor="' +
+                escapeHtml(name) +
+                '">' +
+                '<span class="slider"></span>' +
+                '</label>' +
+                '</div>' +
+                '</div>' +
+                (desc
+                    ? '<div class="sensor-detail hidden" id="detail-' +
+                      escapeHtml(name) +
+                      '">' +
+                      '<p class="sensor-desc">' +
+                      escapeHtml(desc) +
+                      '</p>' +
+                      '</div>'
+                    : '');
             sensorList.appendChild(div);
         }
-        sensorList.querySelectorAll('.sensor-info-btn').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
+        sensorList.querySelectorAll('.sensor-info-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 var detail = document.getElementById('detail-' + this.dataset.sensor);
                 if (detail) detail.classList.toggle('hidden');
             });
         });
-        sensorList.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
-            cb.addEventListener('change', function() {
+        sensorList.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+            cb.addEventListener('change', function () {
                 if (armed) {
                     this.checked = !this.checked;
                     showSensorToast('Disarm first to change sensors');
@@ -383,20 +426,20 @@
                 sendMsg({ type: 'configure', sensors: cfg });
             });
         });
-        sensorList.querySelectorAll('.btn-trigger-sensor').forEach(function(btn) {
-            btn.addEventListener('click', function() {
+        sensorList.querySelectorAll('.btn-trigger-sensor').forEach(function (btn) {
+            btn.addEventListener('click', function () {
                 sendMsg({ type: 'trigger_sensor', sensor: this.dataset.sensor });
             });
         });
     }
 
     var sensorDescriptions = {
-        'power': 'Monitors AC power/charger connection. Alerts when charger is disconnected or reconnected.',
-        'lid': 'Monitors laptop lid state. Alerts when the lid is opened or closed.',
-        'usb': 'Monitors USB port activity. Alerts when a USB device is plugged in or removed.',
-        'screen': 'Monitors screen/display state. Alerts when screen is turned on or off.',
-        'network': 'Monitors network interfaces. Alerts when IP address changes (opt-in).',
-        'input': 'Monitors mouse and keyboard activity. Alerts when input is detected while armed (opt-in).'
+        power: 'Monitors AC power/charger connection. Alerts when charger is disconnected or reconnected.',
+        lid: 'Monitors laptop lid state. Alerts when the lid is opened or closed.',
+        usb: 'Monitors USB port activity. Alerts when a USB device is plugged in or removed.',
+        screen: 'Monitors screen/display state. Alerts when screen is turned on or off.',
+        network: 'Monitors network interfaces. Alerts when IP address changes (opt-in).',
+        input: 'Monitors mouse and keyboard activity. Alerts when input is detected while armed (opt-in).',
     };
 
     var ALERT_STORAGE_KEY = 'leavesafe_alerts';
@@ -414,7 +457,7 @@
                 var a = alerts[i];
                 renderAlertItem(a.message, a.level, a.time);
             }
-        } catch(e) {}
+        } catch {}
     }
 
     function saveAlertToHistory(alert, timeStr) {
@@ -425,11 +468,13 @@
             alerts.unshift({ message: alert.message, level: alert.level, sensor: alert.sensor, time: timeStr });
             if (alerts.length > MAX_STORED_ALERTS) alerts = alerts.slice(0, MAX_STORED_ALERTS);
             localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(alerts));
-        } catch(e) {}
+        } catch {}
     }
 
     function clearAlertHistory() {
-        try { localStorage.removeItem(ALERT_STORAGE_KEY); } catch(e) {}
+        try {
+            localStorage.removeItem(ALERT_STORAGE_KEY);
+        } catch {}
         alertFeed.innerHTML = '<p class="muted">No alerts yet</p>';
     }
 
@@ -439,10 +484,18 @@
         div.dataset.level = level;
         div.innerHTML =
             '<div class="alert-msg">' +
-                '<span class="alert-dot ' + escapeHtml(level) + '"></span>' +
-                '<span class="alert-' + escapeHtml(level) + '">' + escapeHtml(message) + '</span>' +
+            '<span class="alert-dot ' +
+            escapeHtml(level) +
+            '"></span>' +
+            '<span class="alert-' +
+            escapeHtml(level) +
+            '">' +
+            escapeHtml(message) +
+            '</span>' +
             '</div>' +
-            '<span class="alert-time">' + escapeHtml(timeStr) + '</span>';
+            '<span class="alert-time">' +
+            escapeHtml(timeStr) +
+            '</span>';
         if (alertFilterLevel !== 'all' && level !== alertFilterLevel) {
             div.style.display = 'none';
         }
@@ -491,7 +544,7 @@
         var label = armLabel;
         label.textContent = 'ARMING... ' + remaining;
         armBtn.disabled = true;
-        armCountdownInterval = setInterval(function() {
+        armCountdownInterval = setInterval(function () {
             remaining--;
             if (remaining <= 0) {
                 clearInterval(armCountdownInterval);
@@ -504,6 +557,7 @@
         }, 1000);
     }
 
+    // biome-ignore lint/correctness/noUnusedVariables: no caller yet; the arm countdown has no cancel path wired up
     function cancelArmCountdown() {
         if (armCountdownInterval) {
             clearInterval(armCountdownInterval);
@@ -526,14 +580,14 @@
         function animateBar() {
             var elapsed = Date.now() - holdStartTime;
             var progress = Math.min(elapsed / DISARM_HOLD_MS, 1);
-            bar.style.width = (progress * 100) + '%';
+            bar.style.width = progress * 100 + '%';
             if (progress < 1) {
                 holdAnimFrame = requestAnimationFrame(animateBar);
             }
         }
         holdAnimFrame = requestAnimationFrame(animateBar);
 
-        disarmPressTimer = setTimeout(function() {
+        disarmPressTimer = setTimeout(function () {
             disarmPressTimer = null;
             disarmJustFired = true;
             cancelHoldAnim();
@@ -542,7 +596,10 @@
     }
 
     function cancelHoldAnim() {
-        if (holdAnimFrame) { cancelAnimationFrame(holdAnimFrame); holdAnimFrame = null; }
+        if (holdAnimFrame) {
+            cancelAnimationFrame(holdAnimFrame);
+            holdAnimFrame = null;
+        }
         var bar = holdProgressBar;
         if (bar) bar.style.width = '0%';
         armBtn.classList.remove('holding');
@@ -564,7 +621,10 @@
         if (!input) return;
         var pin = input.value.trim();
         if (!pin) {
-            if (pinError) { pinError.textContent = 'Please enter PIN'; pinError.classList.remove('hidden'); }
+            if (pinError) {
+                pinError.textContent = 'Please enter PIN';
+                pinError.classList.remove('hidden');
+            }
             return;
         }
         sendMsg({ type: 'disarm_with_pin', pin: pin });
@@ -614,11 +674,11 @@
 
         var flash = true;
         var originalTitle = document.title;
-        titleFlashInterval = setInterval(function() {
+        titleFlashInterval = setInterval(function () {
             document.title = flash ? 'ALERT! ' + message : originalTitle;
             flash = !flash;
         }, 500);
-        titleFlashTimeout = setTimeout(function() {
+        titleFlashTimeout = setTimeout(function () {
             clearInterval(titleFlashInterval);
             titleFlashInterval = null;
             titleFlashTimeout = null;
@@ -629,7 +689,7 @@
 
         if (navigator.vibrate) {
             navigator.vibrate([500, 200, 500, 200, 500]);
-            vibrateInterval = setInterval(function() {
+            vibrateInterval = setInterval(function () {
                 if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
             }, 2000);
         }
@@ -637,14 +697,14 @@
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({
                 type: 'alarm',
-                message: message
+                message: message,
             });
         } else if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('LeaveSafe ALERT', {
                 body: message,
                 tag: 'leavesafe-alert',
                 requireInteraction: true,
-                renotify: true
+                renotify: true,
             });
         } else if ('Notification' in window && Notification.permission !== 'denied') {
             Notification.requestPermission();
@@ -720,13 +780,17 @@
             alarmHarmonicOsc.start();
 
             var high = true;
-            modulateInterval = setInterval(function() {
-                if (!alarmOscillator) { clearInterval(modulateInterval); modulateInterval = null; return; }
+            modulateInterval = setInterval(function () {
+                if (!alarmOscillator) {
+                    clearInterval(modulateInterval);
+                    modulateInterval = null;
+                    return;
+                }
                 alarmOscillator.frequency.value = high ? 880 : 660;
                 alarmHarmonicOsc.frequency.value = high ? 1760 : 1320;
                 high = !high;
             }, 400);
-        } catch(e) {}
+        } catch {}
     }
 
     function stopAlarmSound() {
@@ -735,22 +799,28 @@
             modulateInterval = null;
         }
         if (alarmOscillator) {
-            try { alarmOscillator.stop(); } catch(e) {}
+            try {
+                alarmOscillator.stop();
+            } catch {}
             alarmOscillator = null;
         }
         if (alarmHarmonicOsc) {
-            try { alarmHarmonicOsc.stop(); } catch(e) {}
+            try {
+                alarmHarmonicOsc.stop();
+            } catch {}
             alarmHarmonicOsc = null;
         }
         if (alarmCtx) {
-            try { alarmCtx.close(); } catch(e) {}
+            try {
+                alarmCtx.close();
+            } catch {}
             alarmCtx = null;
         }
     }
 
     function startUptime() {
         if (uptimeInterval) clearInterval(uptimeInterval);
-        uptimeInterval = setInterval(function() {
+        uptimeInterval = setInterval(function () {
             if (!connectedAt) return;
             var secs = Math.floor((Date.now() - connectedAt) / 1000);
             var mins = Math.floor(secs / 60);
@@ -807,38 +877,41 @@
         btn.disabled = true;
 
         var cfg = {
-            port: parseInt(document.getElementById('cfg-port').value) || 0,
-            max_sessions: parseInt(document.getElementById('cfg-max-sessions').value) || 3,
-            max_auth_attempts: parseInt(document.getElementById('cfg-max-auth-attempts').value) || 5,
-            lockout_seconds: parseInt(document.getElementById('cfg-lockout-seconds').value) || 60,
-            heartbeat_seconds: parseInt(document.getElementById('cfg-heartbeat-seconds').value) || 15,
-            disconnect_grace_seconds: parseInt(document.getElementById('cfg-disconnect-grace').value) || 30,
-            input_threshold: parseInt(document.getElementById('cfg-input-threshold').value) || 3,
+            port: parseInt(document.getElementById('cfg-port').value, 10) || 0,
+            max_sessions: parseInt(document.getElementById('cfg-max-sessions').value, 10) || 3,
+            max_auth_attempts: parseInt(document.getElementById('cfg-max-auth-attempts').value, 10) || 5,
+            lockout_seconds: parseInt(document.getElementById('cfg-lockout-seconds').value, 10) || 60,
+            heartbeat_seconds: parseInt(document.getElementById('cfg-heartbeat-seconds').value, 10) || 15,
+            disconnect_grace_seconds: parseInt(document.getElementById('cfg-disconnect-grace').value, 10) || 30,
+            input_threshold: parseInt(document.getElementById('cfg-input-threshold').value, 10) || 3,
             auto_arm_on_lock: document.getElementById('cfg-auto-arm').checked,
             connection_mode: document.getElementById('cfg-connection-mode').value,
             remote_access: document.getElementById('cfg-remote-access').checked,
-            remote_port: parseInt(document.getElementById('cfg-remote-port').value) || 9443,
+            remote_port: parseInt(document.getElementById('cfg-remote-port').value, 10) || 9443,
             alarm: {
-                escalation_enabled: document.getElementById('cfg-escalation').checked
+                escalation_enabled: document.getElementById('cfg-escalation').checked,
             },
             pin_protection: {
                 enabled: document.getElementById('cfg-pin-enabled').checked,
-                pin: document.getElementById('cfg-pin').value || ''
-            }
+                pin: document.getElementById('cfg-pin').value || '',
+            },
         };
         var msg = { type: 'update_config', config: cfg };
         var pinWasEnabled = lastPinEnabled;
         var pinChanging = pinWasEnabled && (!cfg.pin_protection.enabled || cfg.pin_protection.pin !== '');
         if (pinChanging) {
             var currentPin = prompt('Enter current PIN to confirm changes:');
-            if (!currentPin) { btn.disabled = false; return; }
+            if (!currentPin) {
+                btn.disabled = false;
+                return;
+            }
             msg.pin = currentPin;
         }
         sendMsg(msg);
 
         btn.textContent = 'Saved!';
         btn.classList.add('saved');
-        setTimeout(function() {
+        setTimeout(function () {
             btn.textContent = 'Save Settings';
             btn.classList.remove('saved');
             btn.disabled = false;
@@ -870,54 +943,52 @@
         btBtn.disabled = true;
         btBtn.textContent = 'Connecting...';
 
-        navigator.bluetooth.requestDevice({
-            filters: [{ services: [BLE_SERVICE_UUID] }]
-        })
-        .then(function(device) {
-            bleDevice = device;
-            device.addEventListener('gattserverdisconnected', function() {
-                bleRxChar = null;
-                bleTxChar = null;
-                if (token) {
-                    setConnectionState('disconnected');
-                    showDisconnectWarning();
-                }
+        navigator.bluetooth
+            .requestDevice({
+                filters: [{ services: [BLE_SERVICE_UUID] }],
+            })
+            .then(function (device) {
+                bleDevice = device;
+                device.addEventListener('gattserverdisconnected', function () {
+                    bleRxChar = null;
+                    bleTxChar = null;
+                    if (token) {
+                        setConnectionState('disconnected');
+                        showDisconnectWarning();
+                    }
+                });
+                return device.gatt.connect();
+            })
+            .then(function (server) {
+                return server.getPrimaryService(BLE_SERVICE_UUID);
+            })
+            .then(function (service) {
+                return Promise.all([service.getCharacteristic(BLE_TX_UUID), service.getCharacteristic(BLE_RX_UUID)]);
+            })
+            .then(function (chars) {
+                bleTxChar = chars[0];
+                bleRxChar = chars[1];
+                return bleTxChar.startNotifications();
+            })
+            .then(function () {
+                bleTxChar.addEventListener('characteristicvaluechanged', function (event) {
+                    var decoder = new TextDecoder();
+                    var text = decoder.decode(event.target.value);
+                    try {
+                        var msg = JSON.parse(text);
+                        handleMessage(msg);
+                    } catch {}
+                });
+                var key = keyInput.value.replace(/-/g, '');
+                sendBLE({ type: 'auth', key: key });
+                btBtn.disabled = false;
+                btBtn.textContent = 'Connect via Bluetooth';
+            })
+            .catch(function (err) {
+                showAuthError('Bluetooth: ' + err.message);
+                btBtn.disabled = false;
+                btBtn.textContent = 'Connect via Bluetooth';
             });
-            return device.gatt.connect();
-        })
-        .then(function(server) {
-            return server.getPrimaryService(BLE_SERVICE_UUID);
-        })
-        .then(function(service) {
-            return Promise.all([
-                service.getCharacteristic(BLE_TX_UUID),
-                service.getCharacteristic(BLE_RX_UUID)
-            ]);
-        })
-        .then(function(chars) {
-            bleTxChar = chars[0];
-            bleRxChar = chars[1];
-            return bleTxChar.startNotifications();
-        })
-        .then(function() {
-            bleTxChar.addEventListener('characteristicvaluechanged', function(event) {
-                var decoder = new TextDecoder();
-                var text = decoder.decode(event.target.value);
-                try {
-                    var msg = JSON.parse(text);
-                    handleMessage(msg);
-                } catch(e) {}
-            });
-            var key = keyInput.value.replace(/-/g, '');
-            sendBLE({ type: 'auth', key: key });
-            btBtn.disabled = false;
-            btBtn.textContent = 'Connect via Bluetooth';
-        })
-        .catch(function(err) {
-            showAuthError('Bluetooth: ' + err.message);
-            btBtn.disabled = false;
-            btBtn.textContent = 'Connect via Bluetooth';
-        });
     }
 
     function sendBLE(msg) {
@@ -925,7 +996,7 @@
         if (token) msg.token = token;
         var encoder = new TextEncoder();
         var data = encoder.encode(JSON.stringify(msg));
-        bleRxChar.writeValue(data).catch(function(err) {
+        bleRxChar.writeValue(data).catch(function (err) {
             console.warn('BLE write error:', err);
         });
     }
@@ -957,7 +1028,7 @@
 
     function startPingInterval() {
         if (pingInterval) clearInterval(pingInterval);
-        pingInterval = setInterval(function() {
+        pingInterval = setInterval(function () {
             sendMsg({ type: 'ping' });
         }, 15000);
     }
@@ -967,59 +1038,74 @@
     document.getElementById('refresh-btn').addEventListener('click', refreshConnection);
     document.getElementById('test-alert-btn').addEventListener('click', sendTestAlert);
     document.getElementById('clear-alerts-btn').addEventListener('click', clearAlertHistory);
-    armBtn.addEventListener('click', function() {
-        if (disarmJustFired) { disarmJustFired = false; return; }
+    armBtn.addEventListener('click', function () {
+        if (disarmJustFired) {
+            disarmJustFired = false;
+            return;
+        }
         if (!armed) toggleArm();
     });
-    armBtn.addEventListener('mousedown', function(e) {
+    armBtn.addEventListener('mousedown', function () {
         if (armed) startDisarmHold();
     });
     armBtn.addEventListener('mouseup', cancelDisarmHold);
     armBtn.addEventListener('mouseleave', cancelDisarmHold);
-    armBtn.addEventListener('touchstart', function(e) {
-        if (armed) { e.preventDefault(); startDisarmHold(); }
-    }, { passive: false });
-    armBtn.addEventListener('touchend', function(e) {
-        if (armed) { e.preventDefault(); cancelDisarmHold(); }
+    armBtn.addEventListener(
+        'touchstart',
+        function (e) {
+            if (armed) {
+                e.preventDefault();
+                startDisarmHold();
+            }
+        },
+        { passive: false },
+    );
+    armBtn.addEventListener('touchend', function (e) {
+        if (armed) {
+            e.preventDefault();
+            cancelDisarmHold();
+        }
     });
     armBtn.addEventListener('touchcancel', cancelDisarmHold);
     document.getElementById('dismiss-disconnect-btn').addEventListener('click', dismissDisconnect);
     document.getElementById('pin-submit-btn').addEventListener('click', submitPin);
     document.getElementById('pin-cancel-btn').addEventListener('click', cancelPin);
-    document.getElementById('pin-input').addEventListener('keydown', function(e) {
+    document.getElementById('pin-input').addEventListener('keydown', function (e) {
         if (e.key === 'Enter') submitPin();
     });
-    document.getElementById('toggle-settings-btn').addEventListener('click', function() {
+    document.getElementById('toggle-settings-btn').addEventListener('click', function () {
         var panel = document.getElementById('settings-panel');
         panel.classList.toggle('hidden');
         if (!panel.classList.contains('hidden')) requestConfig();
     });
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
     document.getElementById('reset-settings-btn').addEventListener('click', resetSettings);
-    document.getElementById('cfg-pin-enabled').addEventListener('change', function() {
+    document.getElementById('cfg-pin-enabled').addEventListener('change', function () {
         document.getElementById('pin-config-group').classList.toggle('hidden', !this.checked);
     });
-    document.querySelectorAll('.section-header').forEach(function(hdr) {
-        hdr.addEventListener('click', function() {
+    document.querySelectorAll('.section-header').forEach(function (hdr) {
+        hdr.addEventListener('click', function () {
             var section = this.closest('.settings-section');
             var body = section.querySelector('.section-body');
             body.classList.toggle('collapsed');
         });
     });
-    document.querySelectorAll('.section-info-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
+    document.querySelectorAll('.section-info-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
             e.stopPropagation();
             var section = this.closest('.settings-section');
             var desc = section.querySelector('.section-desc');
             desc.classList.toggle('hidden');
         });
     });
-    document.querySelectorAll('.alert-filter-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
+    document.querySelectorAll('.alert-filter-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
             alertFilterLevel = this.dataset.filter;
-            document.querySelectorAll('.alert-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelectorAll('.alert-filter-btn').forEach(function (b) {
+                b.classList.remove('active');
+            });
             this.classList.add('active');
-            alertFeed.querySelectorAll('.alert-item').forEach(function(item) {
+            alertFeed.querySelectorAll('.alert-item').forEach(function (item) {
                 if (alertFilterLevel === 'all' || item.dataset.level === alertFilterLevel) {
                     item.style.display = '';
                 } else {
@@ -1028,22 +1114,24 @@
             });
         });
     });
-    document.getElementById('alert-sort-btn').addEventListener('click', function() {
+    document.getElementById('alert-sort-btn').addEventListener('click', function () {
         alertSortAsc = !alertSortAsc;
         this.textContent = alertSortAsc ? 'Oldest' : 'Newest';
         var items = Array.from(alertFeed.querySelectorAll('.alert-item'));
         items.reverse();
-        items.forEach(function(item) { alertFeed.appendChild(item); });
+        items.forEach(function (item) {
+            alertFeed.appendChild(item);
+        });
     });
-    document.getElementById('dismiss-alert-btn').addEventListener('click', function(e) {
+    document.getElementById('dismiss-alert-btn').addEventListener('click', function (e) {
         e.stopPropagation();
         dismissAlert();
     });
-    document.getElementById('dismiss-pause-btn').addEventListener('click', function(e) {
+    document.getElementById('dismiss-pause-btn').addEventListener('click', function (e) {
         e.stopPropagation();
         dismissAlertPause();
     });
-    document.getElementById('dismiss-disable-btn').addEventListener('click', function(e) {
+    document.getElementById('dismiss-disable-btn').addEventListener('click', function (e) {
         e.stopPropagation();
         dismissAlertDisable();
     });
