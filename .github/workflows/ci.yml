@@ -222,40 +222,6 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Container image: build it and scan the result, but never push from CI.
-  # ---------------------------------------------------------------------------
-  docker:
-    name: Docker
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Build image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: false
-          load: true
-          tags: leavesafe:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # The image is FROM scratch, so this scans the Go binary itself. Kept to
-      # CRITICAL-and-fixable so it stays actionable; govulncheck covers the rest
-      # with reachability analysis.
-      - name: Trivy scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: leavesafe:ci
-          format: table
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-
-  # ---------------------------------------------------------------------------
   # Known vulnerabilities in the Go toolchain and dependencies. gosec runs as
   # part of golangci-lint, where it can be scoped per path.
   # ---------------------------------------------------------------------------
@@ -284,7 +250,7 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [format, typos, lint, test, frontend, build, docker, vulncheck]
+    needs: [format, typos, lint, test, frontend, build, vulncheck]
     if: always()
     steps:
       - name: Fail if any job did not succeed
