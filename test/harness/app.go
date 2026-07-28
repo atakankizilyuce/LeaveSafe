@@ -32,6 +32,13 @@ type Options struct {
 	RemoteAccess bool
 	// MaxAuthAttempts overrides max_auth_attempts. Zero keeps the default of 5.
 	MaxAuthAttempts int
+	// LocationEnabled turns on location tracking. Only the phone anchor is
+	// seeded as a source, so the suite stays hermetic: no scan, no lookup, no
+	// dependency on a third-party service being up.
+	LocationEnabled bool
+	// LocationGeolocateKey seeds the geolocation API key, so a test can prove
+	// it is never handed back to a paired client.
+	LocationGeolocateKey string
 	// BreakTLSSetup plants an ordinary file where the app must create its TLS
 	// directory, so certificate setup fails the way a permission problem or a
 	// stray file would. Used to prove that remote access refuses to fall back
@@ -253,6 +260,14 @@ func writeSeedConfig(t *testing.T, dir string, opts Options) {
 		"pin_protection": map[string]any{
 			"enabled": opts.Pin != "",
 			"pin":     opts.Pin,
+		},
+		"location": map[string]any{
+			"enabled":       opts.LocationEnabled,
+			"poll_seconds":  60,
+			"phone_anchor":  true,
+			"ip_fallback":   false,
+			"wifi_enabled":  false,
+			"geolocate_key": opts.LocationGeolocateKey,
 		},
 	}
 	if opts.EnabledSensors != nil {
