@@ -48,6 +48,7 @@ No internet connection required. Communication runs over WebSocket or Bluetooth 
 
 ### Monitoring
 - **Multi-Sensor Monitoring** — Power/charger, lid, USB, screen lock, network, and input changes
+- **Live Location** — Optional: see where the machine is while armed, with an honest accuracy radius
 - **Auto-Arm on Screen Lock** — Optionally arm automatically when you lock your laptop
 - **Sensor Pause / Disable** — Dismiss an alarm by pausing a sensor temporarily or disabling it permanently
 
@@ -328,6 +329,67 @@ you are sitting next to the laptop, run `urls` to see the local address and
 
 <br/>
 
+## Location
+
+While armed, LeaveSafe can report where the monitored machine is. **This is off
+by default.** With it off, nothing is scanned and no request leaves the machine.
+Turn it on in the phone's settings screen.
+
+A laptop has no GPS receiver, so there is no single source of truth. Three are
+combined, and every position is shown with the source that produced it and an
+honest accuracy radius:
+
+| Source | Accuracy | Needs | Weakness |
+|---|---|---|---|
+| **Phone GPS on arm** | 5–10 m | nothing | Records where the laptop *was* when you armed it |
+| **Wi-Fi positioning** | 20–50 m | API key, internet | Costs money and involves a third party |
+| **IP lookup** | ~25 km | internet | Often points at your ISP rather than at you |
+
+### Why the phone's position counts
+
+When you arm the system, your phone is next to the laptop. Its GPS is therefore
+the most precise statement available about where the laptop is — for free, with
+no third party involved. The catch is that it stops being true the moment the
+laptop is carried off, which is exactly when you care.
+
+So LeaveSafe checks the two against each other. When a live fix lands further
+from the anchor than both error radii can jointly explain, the two cannot be
+describing the same place: the anchor is known to be wrong, the live fix wins
+even though it is less precise, and the phone shows **how far the machine has
+moved since you armed it**.
+
+A coarse fix never overrules a precise one on its own. An IP lookup 3 km away
+that admits to 25 km of error is not evidence of anything.
+
+### Wi-Fi positioning
+
+Set a Google Geolocation API key in settings, or point `geolocate_url` at any
+service implementing the same API. Only the access points' MAC addresses and
+signal strengths are sent, capped at 24, and never your IP.
+
+### Platform differences
+
+| | Windows | Linux | macOS |
+|---|:---:|:---:|:---:|
+| Phone GPS on arm | ✅ | ✅ | ✅ |
+| IP lookup | ✅ | ✅ | ✅ |
+| Wi-Fi positioning | ✅ `netsh` | ✅ `nmcli` / `iw` | ❌ |
+
+**macOS cannot do Wi-Fi positioning, and this will not be fixed here.** Apple
+does not give access point BSSIDs to an unentitled process: `airport -s` was
+removed in macOS 14.4, `system_profiler SPAirPortDataType` reports neighboring
+networks with no BSSID at all, and CoreWLAN requires a Location Services
+authorization that a single self-contained binary cannot obtain. macOS is served
+by the phone anchor and the IP lookup.
+
+### The map
+
+The panel shows coordinates, an accuracy radius, the source, and the distance
+moved — all without touching the network. A map is one tap away and stays
+opt-in, because loading it fetches tiles from openstreetmap.org.
+
+<br/>
+
 ## Platform Support
 
 | Feature | Windows | Linux | macOS |
@@ -371,6 +433,12 @@ You can change settings from the phone UI or by editing the file directly.
 | `connection_mode` | `wifi` | Transport mode (`wifi`, `bluetooth`, or `both`) |
 | `remote_access` | asked on first run | Publish the port beyond the local network |
 | `remote_port` | `9443` | Port used when remote access is enabled |
+| `location.enabled` | `false` | Report where this machine is while armed |
+| `location.phone_anchor` | `true` | Use the paired phone's position when arming |
+| `location.ip_fallback` | `true` | Look up the public IP for a city-level position |
+| `location.wifi_enabled` | `false` | Resolve a Wi-Fi scan through a geolocation service |
+| `location.geolocate_key` | none | API key for that service; never sent to a client |
+| `location.poll_seconds` | `60` | How often to refresh the position while armed |
 | `pin_protection.enabled` | `false` | Require PIN to disarm |
 | `alarm.escalation_enabled` | `false` | Enable volume escalation levels |
 | `enabled_sensors.*` | varies | Toggle individual sensors on/off |
