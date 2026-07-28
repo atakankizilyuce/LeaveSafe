@@ -77,6 +77,5 @@ func isLidOpenDarwin() (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	// AppleClamshellState = No means lid is open
-	return strings.Contains(string(out), `"AppleClamshellState" = No`), nil
+	return parseClamshellOpen(string(out)), nil
 }
