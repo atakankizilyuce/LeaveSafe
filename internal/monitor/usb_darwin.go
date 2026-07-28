@@ -13,7 +13,7 @@ import (
 
 // USBSensor monitors USB device changes on macOS.
 type USBSensor struct {
-	lastHash string
+	lastHash        string
 	lastDeviceNames []string
 }
 
@@ -22,7 +22,7 @@ func NewUSBSensor() *USBSensor {
 }
 
 func (s *USBSensor) Name() string        { return "usb" }
-func (s *USBSensor) DisplayName() string  { return "USB Devices" }
+func (s *USBSensor) DisplayName() string { return "USB Devices" }
 
 func (s *USBSensor) Available() bool {
 	_, err := exec.LookPath("system_profiler")

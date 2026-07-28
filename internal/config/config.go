@@ -28,16 +28,16 @@ type PinProtection struct {
 
 // Config holds all application settings.
 type Config struct {
-	Port                   int            `json:"port"`
-	MaxSessions            int            `json:"max_sessions"`
-	MaxAuthAttempts        int            `json:"max_auth_attempts"`
-	LockoutSeconds         int            `json:"lockout_seconds"`
-	HeartbeatSeconds       int            `json:"heartbeat_seconds"`
-	DisconnectGraceSeconds int            `json:"disconnect_grace_seconds"`
-	AutoArmOnLock          bool           `json:"auto_arm_on_lock"`
-	InputThreshold         int            `json:"input_threshold"`
-	Alarm                  AlarmConfig    `json:"alarm"`
-	PinProtection          PinProtection  `json:"pin_protection"`
+	Port                   int             `json:"port"`
+	MaxSessions            int             `json:"max_sessions"`
+	MaxAuthAttempts        int             `json:"max_auth_attempts"`
+	LockoutSeconds         int             `json:"lockout_seconds"`
+	HeartbeatSeconds       int             `json:"heartbeat_seconds"`
+	DisconnectGraceSeconds int             `json:"disconnect_grace_seconds"`
+	AutoArmOnLock          bool            `json:"auto_arm_on_lock"`
+	InputThreshold         int             `json:"input_threshold"`
+	Alarm                  AlarmConfig     `json:"alarm"`
+	PinProtection          PinProtection   `json:"pin_protection"`
 	ConnectionMode         string          `json:"connection_mode,omitempty"`
 	EnabledSensors         map[string]bool `json:"enabled_sensors,omitempty"`
 	RemoteAccess           *bool           `json:"remote_access,omitempty"`

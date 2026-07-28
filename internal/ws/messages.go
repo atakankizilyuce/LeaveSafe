@@ -7,20 +7,20 @@ import (
 )
 
 const (
-	MsgTypeAuth         = "auth"
-	MsgTypeArm          = "arm"
-	MsgTypeDisarm       = "disarm"
-	MsgTypeDisarmPin    = "disarm_with_pin"
-	MsgTypeConfigure    = "configure"
-	MsgTypePing         = "ping"
-	MsgTypeTestAlert    = "test_alert"
-	MsgTypeDismissAlarm         = "dismiss_alarm"
-	MsgTypeDismissAlarmPause    = "dismiss_alarm_pause"
-	MsgTypeDismissAlarmDisable  = "dismiss_alarm_disable"
-	MsgTypeTriggerSensor        = "trigger_sensor"
-	MsgTypeGetConfig            = "get_config"
-	MsgTypeUpdateConfig         = "update_config"
-	MsgTypeResetConfig          = "reset_config"
+	MsgTypeAuth                = "auth"
+	MsgTypeArm                 = "arm"
+	MsgTypeDisarm              = "disarm"
+	MsgTypeDisarmPin           = "disarm_with_pin"
+	MsgTypeConfigure           = "configure"
+	MsgTypePing                = "ping"
+	MsgTypeTestAlert           = "test_alert"
+	MsgTypeDismissAlarm        = "dismiss_alarm"
+	MsgTypeDismissAlarmPause   = "dismiss_alarm_pause"
+	MsgTypeDismissAlarmDisable = "dismiss_alarm_disable"
+	MsgTypeTriggerSensor       = "trigger_sensor"
+	MsgTypeGetConfig           = "get_config"
+	MsgTypeUpdateConfig        = "update_config"
+	MsgTypeResetConfig         = "reset_config"
 )
 
 const (

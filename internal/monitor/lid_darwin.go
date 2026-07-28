@@ -20,7 +20,7 @@ func NewLidSensor() *LidSensor {
 }
 
 func (s *LidSensor) Name() string        { return "lid" }
-func (s *LidSensor) DisplayName() string  { return "Lid State" }
+func (s *LidSensor) DisplayName() string { return "Lid State" }
 
 func (s *LidSensor) Available() bool {
 	out, err := exec.Command("ioreg", "-r", "-k", "AppleClamshellState", "-d", "1").Output()
