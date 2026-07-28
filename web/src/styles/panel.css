@@ -1,0 +1,863 @@
+/* ── Pairing ───────────────────────────────────────────────────────────── */
+
+.pair {
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 32px 22px calc(32px + env(safe-area-inset-bottom));
+}
+
+.pair-inner {
+    width: 100%;
+    max-width: 380px;
+}
+
+.pair-mark {
+    color: var(--accent);
+    margin-bottom: 26px;
+}
+
+.pair-title {
+    font-size: clamp(1.9rem, 8vw, 2.4rem);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+    margin: 0 0 10px;
+}
+
+.pair-lead {
+    color: var(--quiet);
+    font-size: 0.92rem;
+    margin: 0 0 30px;
+    max-width: 30ch;
+}
+
+.pair-label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.field {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 12px 13px;
+    font-size: 0.95rem;
+    transition: border-color var(--swift), background var(--swift);
+}
+
+.field:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--raised);
+}
+
+.field::placeholder {
+    color: var(--faint);
+}
+
+.key-field {
+    font-size: 1.22rem;
+    letter-spacing: 0.1em;
+    text-align: center;
+    padding: 15px 12px;
+}
+
+/* Sixteen ticks that fill as the key is typed. The key is the only thing this
+   screen asks for, so its progress is worth drawing. */
+.key-progress {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    gap: 3px;
+    margin: 10px 0 26px;
+}
+
+.key-progress span {
+    height: 2px;
+    border-radius: 2px;
+    background: var(--edge);
+    transition: background var(--swift);
+}
+
+.key-progress span[data-filled='true'] {
+    background: var(--accent);
+}
+
+.pair-go {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #060a12;
+    font-weight: 650;
+    font-size: 0.98rem;
+    letter-spacing: -0.01em;
+    transition: opacity var(--swift), transform var(--swift);
+}
+
+.pair-go:disabled {
+    opacity: 0.36;
+    cursor: default;
+}
+
+.pair-go:not(:disabled):active {
+    transform: scale(0.985);
+}
+
+.pair-alt {
+    width: 100%;
+    margin-top: 10px;
+    padding: 13px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--quiet);
+    font-size: 0.88rem;
+    transition: color var(--swift), border-color var(--swift);
+}
+
+.pair-alt:hover,
+.pair-alt:focus-visible {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.pair-error {
+    margin-top: 16px;
+    color: var(--trip);
+    font-size: 0.85rem;
+}
+
+/* ── State header ──────────────────────────────────────────────────────── */
+
+.state {
+    padding: 18px 2px 22px;
+}
+
+.state-word-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+}
+
+.state-word {
+    font-size: clamp(2.4rem, 13vw, 3.4rem);
+    font-weight: 750;
+    letter-spacing: -0.045em;
+    line-height: 1;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.state-word[data-counting='true'] {
+    color: var(--quiet);
+}
+
+.state-count {
+    font-size: clamp(2.4rem, 13vw, 3.4rem);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--accent);
+    animation: countpulse 1s ease-out infinite;
+}
+
+@keyframes countpulse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    70% {
+        opacity: 0.35;
+        transform: scale(0.94);
+    }
+    100% {
+        opacity: 0.35;
+        transform: scale(0.94);
+    }
+}
+
+.trace {
+    display: block;
+    width: 100%;
+    height: 34px;
+    margin: 10px 0 6px;
+}
+
+.state-detail {
+    color: var(--quiet);
+    letter-spacing: 0.1em;
+}
+
+.state-lost {
+    color: var(--trip);
+}
+
+/* ── Annunciator ───────────────────────────────────────────────────────── */
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+@media (max-width: 380px) {
+    .grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/*
+ * A caption light. Dim and unremarkable at rest, outlined while it is watching,
+ * and unmistakable once it has fired — the same job an annunciator panel does
+ * in a cockpit, and for the same reason.
+ */
+.cap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    min-height: 74px;
+    padding: 11px 10px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    background: var(--raised);
+    text-align: left;
+    overflow: hidden;
+    transition: border-color var(--settle), background var(--settle), transform var(--swift);
+}
+
+.cap:active {
+    transform: scale(0.97);
+}
+
+.cap-label {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    color: var(--faint);
+    transition: color var(--settle);
+}
+
+.cap-state {
+    color: var(--faint);
+    font-size: 0.58rem;
+    transition: color var(--settle);
+}
+
+.cap[data-enabled='true'] .cap-label {
+    color: var(--quiet);
+}
+
+.cap[data-watching='true'] {
+    border-color: rgba(var(--accent-rgb), 0.45);
+}
+
+.cap[data-watching='true'] .cap-label {
+    color: var(--text);
+}
+
+.cap[data-off='true'] {
+    opacity: 0.42;
+}
+
+/* Fired. The flash is fast and the decay is slow, which is how a real caption
+   light behaves and why it catches the eye without being a strobe. */
+.cap[data-lit='true'] {
+    border-color: var(--trip);
+    background: rgba(var(--trip-rgb), 0.16);
+    animation: capflash 900ms ease-out;
+}
+
+.cap[data-lit='true'] .cap-label,
+.cap[data-lit='true'] .cap-state {
+    color: var(--trip);
+}
+
+@keyframes capflash {
+    0% {
+        background: rgba(var(--trip-rgb), 0.85);
+    }
+    100% {
+        background: rgba(var(--trip-rgb), 0.16);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cap[data-lit='true'] {
+        animation: none;
+    }
+    .state-count {
+        animation: none;
+    }
+}
+
+.cap-detail {
+    margin-top: 12px;
+    padding: 13px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    background: var(--raised);
+}
+
+.cap-detail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.cap-desc {
+    color: var(--quiet);
+    font-size: 0.85rem;
+    margin: 0 0 12px;
+}
+
+.cap-warn {
+    color: var(--warn);
+    font-size: 0.82rem;
+    margin: 0 0 12px;
+}
+
+.cap-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cap-actions .chip:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* ── Position ──────────────────────────────────────────────────────────── */
+
+.coords {
+    font-size: 1.18rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.coords-note {
+    color: var(--quiet);
+    font-size: 0.8rem;
+    margin: 2px 0 12px;
+}
+
+.moved {
+    border: 1px solid var(--warn);
+    background: rgba(255, 171, 61, 0.12);
+    color: var(--warn);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
+    margin-bottom: 12px;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.pos-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 13px;
+}
+
+.pos-actions .chip {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.map {
+    width: 100%;
+    height: 220px;
+    margin-top: 12px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    background: var(--raised);
+}
+
+.map-note {
+    margin: 6px 0 0;
+}
+
+/* ── Log ───────────────────────────────────────────────────────────────── */
+
+.log-tools,
+.log-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.log-filters {
+    margin-bottom: 12px;
+}
+
+.log-order {
+    margin-left: auto;
+}
+
+.log-tools .chip:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.log-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.log-entry {
+    display: flex;
+    gap: 11px;
+    align-items: baseline;
+    padding: 8px 0 8px 10px;
+    border-top: 1px solid var(--edge);
+    border-left: 2px solid transparent;
+    font-size: 0.86rem;
+}
+
+.log-entry:first-child {
+    border-top: none;
+}
+
+.log-entry[data-level='critical'] {
+    border-left-color: var(--trip);
+}
+
+.log-entry[data-level='warning'] {
+    border-left-color: var(--warn);
+}
+
+.log-time {
+    color: var(--faint);
+    font-size: 0.74rem;
+    flex-shrink: 0;
+}
+
+.log-msg {
+    color: var(--text);
+}
+
+.foot {
+    text-align: center;
+    padding: 6px 0 4px;
+    color: var(--faint);
+}
+
+/* ── Arm control ───────────────────────────────────────────────────────── */
+
+.dock {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--void) 42%);
+    transition: background var(--state-shift);
+    pointer-events: none;
+}
+
+.arm {
+    pointer-events: auto;
+    position: relative;
+    width: 100%;
+    max-width: 528px;
+    padding: 18px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #060a12;
+    font-size: 1rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    transition: background var(--state-shift), border-color var(--state-shift),
+        color var(--state-shift), transform var(--swift);
+}
+
+.arm:active {
+    transform: scale(0.985);
+}
+
+/* Armed, the control inverts: it stops inviting a tap and starts looking like
+   something you have to mean. */
+.arm[data-armed='true'] {
+    background: transparent;
+    color: var(--accent);
+}
+
+.arm[data-counting='true'] {
+    background: transparent;
+    color: var(--quiet);
+    border-color: var(--edge);
+}
+
+.arm-label {
+    position: relative;
+    z-index: 1;
+}
+
+/* The hold-to-disarm fill. It sweeps across rather than around, because a bar
+   crossing a button reads as "keep going" more plainly than an arc does. */
+.arm-ring {
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform-origin: left center;
+    transform: scaleX(var(--fill, 0));
+    opacity: 0.22;
+    pointer-events: none;
+}
+
+/* ── Sheet, dialogs, toast ─────────────────────────────────────────────── */
+
+.sheet-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(3, 6, 11, 0.72);
+    backdrop-filter: blur(6px);
+    animation: fade var(--swift) both;
+}
+
+/* The backdrop is a real button rather than a div with a click handler, so
+   dismissing works for a screen reader and a keyboard as well as a thumb. */
+.scrim-close {
+    position: absolute;
+    inset: 0;
+    border: none;
+    background: transparent;
+    padding: 0;
+}
+
+@keyframes fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.sheet {
+    width: 100%;
+    max-width: 560px;
+    max-height: 88dvh;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-bottom: none;
+    border-radius: 20px 20px 0 0;
+    padding: 10px 18px calc(24px + env(safe-area-inset-bottom));
+    animation: slideup var(--settle) both;
+}
+
+@keyframes slideup {
+    from {
+        transform: translateY(14%);
+        opacity: 0;
+    }
+    to {
+        transform: none;
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sheet,
+    .sheet-scrim {
+        animation: none;
+    }
+}
+
+.sheet-grip {
+    width: 38px;
+    height: 4px;
+    border-radius: 4px;
+    background: var(--edge);
+    margin: 2px auto 14px;
+}
+
+.sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.group {
+    margin-bottom: 26px;
+}
+
+.group-title {
+    color: var(--accent);
+    margin: 0 0 4px;
+    transition: color var(--state-shift);
+}
+
+.group-note {
+    color: var(--quiet);
+    font-size: 0.82rem;
+    margin: 0 0 14px;
+    max-width: 46ch;
+}
+
+.setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 11px 0;
+    border-top: 1px solid var(--edge);
+}
+
+.setting-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.setting-label {
+    font-size: 0.89rem;
+}
+
+.setting-hint {
+    color: var(--faint);
+    font-size: 0.75rem;
+}
+
+.setting-num {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+}
+
+.field-num {
+    width: 88px;
+    padding: 8px 10px;
+    text-align: right;
+}
+
+.field-num::-webkit-inner-spin-button,
+.field-num::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.field-text {
+    width: 190px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+}
+
+.field-select {
+    width: auto;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+}
+
+.switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 46px;
+    height: 27px;
+    border: 1px solid var(--edge);
+    border-radius: 100px;
+    background: var(--raised);
+    padding: 0;
+    transition: background var(--swift), border-color var(--swift);
+}
+
+.switch[aria-checked='true'] {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.switch-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    background: var(--quiet);
+    transition: transform var(--swift), background var(--swift);
+}
+
+.switch[aria-checked='true'] .switch-knob {
+    transform: translateX(19px);
+    background: #060a12;
+}
+
+.sheet-actions {
+    display: grid;
+    gap: 9px;
+    margin-top: 8px;
+}
+
+.alarm-primary {
+    padding: 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #060a12;
+    font-weight: 650;
+    font-size: 0.95rem;
+    transition: opacity var(--swift), transform var(--swift), background var(--state-shift);
+}
+
+.alarm-primary:active {
+    transform: scale(0.985);
+}
+
+.sheet-reset {
+    padding: 12px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--quiet);
+    font-size: 0.86rem;
+    transition: color var(--swift), border-color var(--swift);
+}
+
+.sheet-reset:hover,
+.sheet-reset:focus-visible {
+    color: var(--trip);
+    border-color: var(--trip);
+}
+
+.dialog {
+    width: 100%;
+    max-width: 340px;
+    margin: auto;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    padding: 22px;
+}
+
+.dialog-lead {
+    color: var(--quiet);
+    font-size: 0.88rem;
+    margin: 6px 0 14px;
+}
+
+.dialog-error {
+    color: var(--trip);
+    font-size: 0.82rem;
+    margin: 10px 0 0;
+}
+
+.dialog-actions {
+    display: flex;
+    gap: 9px;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 18px;
+}
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(104px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 50;
+    background: var(--raised);
+    border: 1px solid var(--edge);
+    border-radius: 100px;
+    padding: 9px 16px;
+    font-size: 0.84rem;
+    white-space: nowrap;
+}
+
+/* ── Alarm ─────────────────────────────────────────────────────────────── */
+
+.alarm {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(10, 2, 4, 0.9);
+}
+
+/* A field that breathes rather than a border that blinks. It fills the screen,
+   so there is no reading the panel around it. */
+.alarm-field {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 42%, rgba(var(--trip-rgb), 0.4), transparent 68%);
+    animation: breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+    0%,
+    100% {
+        opacity: 0.45;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .alarm-field {
+        animation: none;
+        opacity: 0.7;
+    }
+}
+
+.alarm-body {
+    position: relative;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+}
+
+.alarm-eyebrow {
+    color: var(--trip);
+    margin-bottom: 12px;
+}
+
+.alarm-msg {
+    font-size: 1.45rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin: 0 0 28px;
+}
+
+.alarm-actions {
+    display: grid;
+    gap: 9px;
+    justify-items: stretch;
+}
+
+.alarm-actions .alarm-primary {
+    background: var(--trip);
+    color: #12060a;
+}
+
+.alarm-actions .chip {
+    padding: 11px;
+    border-radius: var(--radius-sm);
+}

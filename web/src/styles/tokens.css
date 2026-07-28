@@ -1,0 +1,71 @@
+/*
+ * The panel has one job above all others: let you read your state from across a
+ * room, one-handed, while slightly anxious. So state is not a badge — state is
+ * the colour of the whole page.
+ *
+ * Standby is periwinkle: cool, instrument-idle, uneventful. Armed is vermilion,
+ * and every surface shifts with it. There is no way to glance at this and be
+ * unsure which one you are looking at.
+ */
+
+:root {
+    /* Surfaces: a deep slate with blue in it, like the inside of an instrument
+       case. Not black — black reads as "off", and this thing is never off. */
+    --void: #070b12;
+    --panel: #0d141f;
+    --raised: #131c2a;
+    --edge: #1c2738;
+
+    /* Text */
+    --text: #e8edf6;
+    --quiet: #8494ae;
+    --faint: #55637a;
+
+    /* State */
+    --accent: #6c8cff; /* standby */
+    --trip: #ff4a35;
+    --warn: #ffab3d;
+    --ok: #4ade80;
+
+    --accent-rgb: 108, 140, 255;
+    --trip-rgb: 255, 74, 53;
+
+    /* Type. No web fonts: this is served from a binary on a network with no
+       internet, so the personality has to come from treatment rather than from
+       a downloaded face. Mono is the instrument readout voice; sans is the
+       interface. */
+    --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+
+    /* Space */
+    --gap: 14px;
+    --pad: 16px;
+    --radius: 14px;
+    --radius-sm: 9px;
+
+    /* Motion */
+    --swift: 160ms cubic-bezier(0.32, 0.72, 0, 1);
+    --settle: 320ms cubic-bezier(0.32, 0.72, 0, 1);
+    --state-shift: 620ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Armed. The accent becomes the alarm colour and the surfaces warm with it, so
+   the shift reads as one movement rather than a red badge on a blue page. */
+:root[data-armed='true'] {
+    --void: #100609;
+    --panel: #1a0b10;
+    --raised: #251016;
+    --edge: #3a1a20;
+    --quiet: #c99a97;
+    --faint: #7d5551;
+    --accent: #ff4a35;
+    --accent-rgb: 255, 74, 53;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --swift: 1ms;
+        --settle: 1ms;
+        --state-shift: 1ms;
+    }
+}
