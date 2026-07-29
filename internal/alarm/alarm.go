@@ -7,6 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/safe"
 )
 
 const (
@@ -59,7 +60,7 @@ func (a *Alarm) Start() {
 	a.mu.Unlock()
 
 	if a.alarmCfg.EscalationEnabled && len(a.alarmCfg.Levels) > 0 {
-		go a.escalationLoop()
+		safe.Go("alarm-escalation", a.escalationLoop)
 	} else {
 		a.startFullSiren()
 	}
@@ -78,7 +79,7 @@ func (a *Alarm) startFullSiren() {
 	}
 
 	log.Info("Siren started")
-	go a.sirenLoop()
+	safe.Go("alarm-siren", a.sirenLoop)
 }
 
 func (a *Alarm) escalationLoop() {
@@ -121,7 +122,7 @@ func (a *Alarm) escalationLoop() {
 				}
 				a.mu.Unlock()
 			}
-			go a.sirenLoop()
+			safe.Go("alarm-siren", a.sirenLoop)
 
 		case "full_volume":
 			log.Info("Alarm escalation: full volume")

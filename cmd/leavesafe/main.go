@@ -29,11 +29,23 @@ import (
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/qr"
+	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/server"
+	"github.com/leavesafe/leavesafe/internal/state"
 	"github.com/leavesafe/leavesafe/internal/ws"
 )
 
 var version = "dev"
+
+// repoURL is where the project lives; the CLI points at it for bug reports and
+// release downloads rather than repeating the address in several places.
+const (
+	repoURL   = "https://github.com/atakankizilyuce/LeaveSafe"
+	issuesURL = repoURL + "/issues"
+)
+
+// eventLogFileName is the security event history kept in the config directory.
+const eventLogFileName = "events.jsonl"
 
 const (
 	cReset  = "\033[0m"
@@ -68,6 +80,32 @@ type statusBar struct {
 	urls         []string
 	remoteStatus string // e.g. "ACTIVE — 85.1.2.3:9443" or "" if not remote
 	certFP       string // SHA-256 fingerprint of the TLS certificate, "" if plain HTTP
+
+	// headless drops every drawing operation. Started from an autostart entry
+	// there is no terminal to draw on: the cursor-positioning escapes would go
+	// into a log file as garbage, and the QR code would be a wall of blocks
+	// nobody ever sees. Messages become ordinary log lines instead.
+	headless bool
+	// keyPath is where the pairing key is persisted, empty when it is not.
+	// Rotating the key has to update that file, or the next start would come
+	// back with the key the user just invalidated.
+	keyPath string
+}
+
+// newHeadlessStatusBar returns a status bar that draws nothing, for runs with
+// no terminal attached.
+func newHeadlessStatusBar(hub *ws.Hub, sensorMgr *monitor.Manager, key string, urls []string, certFP, keyPath string) *statusBar {
+	return &statusBar{
+		out:       io.Discard,
+		hub:       hub,
+		sensorMgr: sensorMgr,
+		key:       key,
+		urls:      urls,
+		certFP:    certFP,
+		headless:  true,
+		keyPath:   keyPath,
+		qrURLIdx:  -1,
+	}
 }
 
 func visLen(s string) int {
@@ -173,7 +211,7 @@ func shortFingerprint(fp string) string {
 // drawQR repaints the reserved QR box with the currently selected code. The
 // box is cleared first because codes for different URLs differ in size.
 func (sb *statusBar) drawQR() {
-	if sb.qrBoxH == 0 {
+	if sb.headless || sb.qrBoxH == 0 {
 		return
 	}
 	blank := strings.Repeat(" ", sb.qrBoxW)
@@ -196,7 +234,7 @@ func (sb *statusBar) drawQR() {
 func (sb *statusBar) showQR(i int) string {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-	if i < 1 || i > len(sb.qrCodes) {
+	if sb.headless || i < 1 || i > len(sb.qrCodes) {
 		return ""
 	}
 	sb.qrURLIdx = i - 1
@@ -211,6 +249,9 @@ func (sb *statusBar) showQR(i int) string {
 func (sb *statusBar) rekeyQR(rawKey string) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
+	if sb.headless {
+		return
+	}
 	for i, u := range sb.urls {
 		lines, err := qr.Lines(u + "?key=" + rawKey)
 		if err != nil {
@@ -224,6 +265,9 @@ func (sb *statusBar) rekeyQR(rawKey string) {
 }
 
 func (sb *statusBar) doRedrawGrid() {
+	if sb.headless {
+		return
+	}
 	lines := sb.gridLines()
 	fmt.Fprintf(sb.out, "\033[s")
 	for i, line := range lines {
@@ -239,10 +283,37 @@ func (sb *statusBar) refresh() {
 }
 
 func (sb *statusBar) writeLine(format string, args ...interface{}) {
+	if sb.headless {
+		// The escape codes and box drawing mean nothing in a log file. Strip
+		// the layout and let the logger own the line.
+		log.Info(strings.TrimSpace(stripANSI(fmt.Sprintf(format, args...))))
+		return
+	}
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	fmt.Fprintf(sb.out, "%s\n", fmt.Sprintf(format, args...))
 	sb.doRedrawGrid()
+}
+
+// stripANSI removes the colour and cursor escapes the dashboard uses, so the
+// same message can be written to a log file.
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
+			i += 2
+			for i < len(s) && s[i] != 'm' && s[i] != 'H' {
+				i++
+			}
+			if i < len(s) {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }
 
 type logWriter struct{ sb *statusBar }
@@ -256,24 +327,57 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 
 func main() {
 	devMode := flag.Bool("dev", false, "serve web assets from filesystem for live reload")
+	showVersion := flag.Bool("version", false, "print the version and exit")
+	headless := flag.Bool("headless", false, "run without the terminal dashboard, for autostart")
+	flag.Usage = printUsage
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(versionLine())
+		return
+	}
+
+	// Subcommands run and exit without starting the monitor: they administer
+	// the installation rather than being part of it.
+	if args := flag.Args(); len(args) > 0 {
+		os.Exit(runSubcommand(args))
+	}
 
 	log.SetFormatter(&log.TextFormatter{
 		TimestampFormat: "15:04:05",
 		FullTimestamp:   true,
 	})
 
-	maximizeConsole()
-	time.Sleep(200 * time.Millisecond)
+	if !*headless {
+		maximizeConsole()
+		time.Sleep(200 * time.Millisecond)
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		log.Warnf("Failed to load config, using defaults: %v", err)
 	}
 
-	// First-run: ask connection mode if not yet configured
+	// A hand-edited config is the normal way to change most of these settings,
+	// and a typo should not produce a monitor that never heartbeats.
+	for _, note := range cfg.Validate() {
+		log.Warnf("Config: %s", note)
+	}
+
+	// First-run: ask connection mode if not yet configured. There is nobody at
+	// a headless start to answer, and blocking on stdin there would hang the
+	// service forever, so it takes the safe answer: local network only.
 	if cfg.RemoteAccess == nil {
-		promptRemoteAccess(cfg)
+		if *headless {
+			local := false
+			cfg.RemoteAccess = &local
+			if err := config.Save(cfg); err != nil {
+				log.Warnf("Failed to save config: %v", err)
+			}
+			log.Info("First headless start: remote access left off. Run LeaveSafe in a terminal to change it.")
+		} else {
+			promptRemoteAccess(cfg)
+		}
 	}
 
 	// Migrate a cleartext PIN left by an older version: hash it and rewrite the
@@ -292,11 +396,29 @@ func main() {
 
 	remoteEnabled := cfg.RemoteAccess != nil && *cfg.RemoteAccess
 
-	authMgr, err := auth.NewManagerWithOptions(auth.Options{
+	authOpts := auth.Options{
 		MaxSessions:   cfg.MaxSessions,
 		MaxAttempts:   cfg.MaxAuthAttempts,
 		LockoutPeriod: time.Duration(cfg.LockoutSeconds) * time.Second,
-	})
+		SessionTTL:    time.Duration(cfg.SessionTTLMinutes) * time.Minute,
+		SessionIdle:   time.Duration(cfg.SessionIdleMinutes) * time.Minute,
+	}
+
+	// A headless start has no screen to show a QR code on, so a freshly
+	// generated key would be a secret nobody could read — and a phone paired
+	// before the reboot would be locked out by a key it never saw. The
+	// persisted key is what makes the pairing survive the restart.
+	keyPath := ""
+	if *headless {
+		keyPath = filepath.Join(config.ConfigDir(), auth.KeyFileName)
+		persisted, err := auth.LoadOrCreateKeyFile(keyPath)
+		if err != nil {
+			log.Fatalf("Failed to prepare the stored pairing key: %v", err)
+		}
+		authOpts.PairingKey = persisted
+	}
+
+	authMgr, err := auth.NewManagerWithOptions(authOpts)
 	if err != nil {
 		log.Fatalf("Failed to initialize auth: %v", err)
 	}
@@ -311,7 +433,7 @@ func main() {
 		time.Duration(cfg.DisconnectGraceSeconds)*time.Second,
 	)
 
-	evLogPath := filepath.Join(config.ConfigDir(), "events.jsonl")
+	evLogPath := filepath.Join(config.ConfigDir(), eventLogFileName)
 	if err := os.MkdirAll(config.ConfigDir(), 0o700); err != nil {
 		log.Warnf("Failed to create config dir: %v", err)
 	}
@@ -322,9 +444,37 @@ func main() {
 		defer evLog.Close()
 	}
 
+	// Read what the previous run left behind before anything can overwrite it.
+	// If that run ended while armed, the machine has been unwatched ever since
+	// and the user is about to be told so.
+	stateStore := state.NewStore(config.ConfigDir(), version)
+	prevState, prevStateErr := stateStore.Load()
+	hub.SetStateStore(stateStore)
+
+	// The terminal log scrolls away and the window eventually closes. The file
+	// is what is left to answer "why did nothing happen last Tuesday".
+	logHook, err := newFileHook(config.ConfigDir())
+	if err != nil {
+		log.Warnf("Failed to open the log file, logging to the terminal only: %v", err)
+	} else {
+		log.AddHook(logHook)
+		defer logHook.Close()
+	}
+
 	port := cfg.Port
 	if v := os.Getenv("PORT"); v != "" {
-		port, _ = strconv.Atoi(v)
+		parsed, err := strconv.Atoi(v)
+		switch {
+		case err != nil:
+			// Silently falling back used to mean the server came up on a port
+			// the user did not ask for, with a QR code they would scan and
+			// wonder about. Say what happened instead.
+			log.Warnf("Ignoring PORT=%q: not a number. Using port %d from the config.", v, port)
+		case parsed < 0 || parsed > 65535:
+			log.Warnf("Ignoring PORT=%d: outside the valid range 0-65535. Using port %d from the config.", parsed, port)
+		default:
+			port = parsed
+		}
 	}
 
 	// Remote access: set up TLS, UPnP, and public IP
@@ -380,9 +530,34 @@ func main() {
 		}
 	}
 
-	sb := buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, publicIP, certFP)
+	var sb *statusBar
+	if *headless {
+		sb = newHeadlessStatusBar(hub, sensorMgr, authMgr.PairingKey(),
+			reachableURLs(srv, publicIP), certFP, keyPath)
+		logHeadlessStartup(sb, srv, certFP)
+	} else {
+		sb = buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, publicIP, certFP)
+		// The dashboard owns the terminal, so log lines have to be routed
+		// through it to land inside its scrolling region rather than on top of
+		// the QR code. Headless has no such constraint.
+		log.SetOutput(&logWriter{sb: sb})
+	}
 
-	log.SetOutput(&logWriter{sb: sb})
+	// A recovered panic is still a bug, and one that happened while the machine
+	// was supposed to be watching itself. safe already logged the stack; this
+	// puts it in the event history next to arm and disarm, and on the dashboard
+	// where the user will actually see it.
+	safe.SetPanicHandler(func(name string, value any, _ []byte) {
+		if el := hub.EventLogger(); el != nil {
+			el.Log(eventlog.Event{
+				Type:    eventlog.EventPanic,
+				Sensor:  name,
+				Message: fmt.Sprintf("Recovered from a panic in %s: %v", name, value),
+			})
+		}
+		sb.writeLine("  %s[BUG]%s Recovered from a panic in %s: %v — please report this at %s",
+			cRed, cReset, name, value, issuesURL)
+	})
 
 	localAlarm := alarm.New(cfg.Alarm)
 
@@ -393,6 +568,8 @@ func main() {
 		sensorMgr.StartEnabled()
 		log.Info("Auto-arm on screen lock enabled — screen sensor started")
 	}
+
+	reportInterruptedMonitoring(sb, hub, stateStore, prevState, prevStateErr, cfg.RestoreArmedState)
 
 	hub.SetAlarmTriggerCallback(func() {
 		localAlarm.Start()
@@ -413,23 +590,29 @@ func main() {
 
 	hub.SetLocationTracker(ctx, buildLocationTracker(cfg))
 
-	go hub.RunAlertDispatcher(ctx)
-	go hub.RunHeartbeat(ctx)
-	go runStatusTicker(ctx, sb)
-	go runConsole(hub, sb, localAlarm, authMgr)
+	// Every long-lived loop is supervised. A panic in any one of them used to
+	// take the whole process down, which for an armed machine means the user
+	// walks back to a laptop that stopped watching itself and never said so.
+	safe.Supervise(ctx, "alert-dispatcher", hub.RunAlertDispatcher)
+	safe.Supervise(ctx, "heartbeat", hub.RunHeartbeat)
+	if !*headless {
+		safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, sb) })
+		// No terminal means no stdin to read commands from.
+		safe.Supervise(ctx, "console", func(context.Context) { runConsole(hub, sb, localAlarm, authMgr) })
+	}
 
 	if portMapping != nil {
-		go portMapping.KeepAlive(ctx)
+		safe.Supervise(ctx, "upnp-keepalive", portMapping.KeepAlive)
 	}
 
 	connMode := cfg.ConnectionMode
 	if connMode == "bluetooth" || connMode == "both" {
 		bleServer := ble.NewServer(hub)
-		go func() {
-			if err := bleServer.Start(ctx); err != nil {
+		safe.Supervise(ctx, "ble-server", func(c context.Context) {
+			if err := bleServer.Start(c); err != nil {
 				log.Errorf("BLE server error: %v", err)
 			}
-		}()
+		})
 	}
 
 	cleanup := func() {
@@ -453,15 +636,98 @@ func main() {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
+	safe.Go("shutdown", func() {
 		<-sigCh
 		cleanup()
 		os.Exit(0)
-	}()
+	})
 
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+// reachableURLs returns every address a phone could connect to, public one
+// first when remote access is up.
+func reachableURLs(srv *server.Server, publicIP string) []string {
+	urls := srv.URLs()
+	if publicIP == "" {
+		return urls
+	}
+	scheme := "http"
+	if srv.IsTLS() {
+		scheme = "https"
+	}
+	return append([]string{fmt.Sprintf("%s://%s:%d", scheme, publicIP, srv.Port())}, urls...)
+}
+
+// logHeadlessStartup writes what the dashboard would have shown.
+//
+// Started from an autostart entry there is no screen and no QR code, so the log
+// file is the only place the user can find the address to open and the
+// certificate to check. Not the pairing key: that is in its own owner-only file
+// rather than in a log that gets pasted into bug reports.
+func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP string) {
+	log.Infof("LeaveSafe %s started headless — no dashboard on this run", version)
+	for _, u := range sb.urls {
+		log.Infof("Reachable at %s", u)
+	}
+	if certFP != "" {
+		log.Infof("TLS certificate SHA-256: %s", certFP)
+	} else if srv.IsTLS() {
+		log.Info("TLS is on but the certificate fingerprint is unknown")
+	}
+	if sb.keyPath != "" {
+		log.Infof("Pairing key is stored in %s — it is not written to this log", sb.keyPath)
+	}
+}
+
+// reportInterruptedMonitoring tells the user when the previous run ended while
+// the machine was armed.
+//
+// That is the case worth shouting about: LeaveSafe was watching, then it
+// stopped — a crash, a flat battery, a reboot, or someone closing the window
+// precisely because it was watching them — and nothing has been watched since.
+// Coming back up quietly disarmed would present that gap as a normal start.
+//
+// Re-arming automatically is opt-in, because the first thing a freshly booted
+// laptop does is open its lid and accept keystrokes from whoever turned it on.
+func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store, prev state.State, loadErr error, restore bool) {
+	if loadErr != nil {
+		log.Warnf("Could not read the last recorded state: %v", loadErr)
+		return
+	}
+	if !prev.Armed {
+		return
+	}
+
+	since := "an unknown time"
+	if !prev.ChangedAt.IsZero() {
+		since = prev.ChangedAt.Format("2006-01-02 15:04:05")
+	}
+	sb.writeLine("  %s%s[!] LeaveSafe was ARMED when it last stopped (armed at %s).%s",
+		cRed, cBold, since, cReset)
+	sb.writeLine("  %s    This machine has not been monitored since then.%s", cRed, cReset)
+
+	if !restore {
+		sb.writeLine("  %s    Starting disarmed. Set \"restore_armed_state\": true in the config to re-arm automatically.%s",
+			cDim, cReset)
+		if el := hub.EventLogger(); el != nil {
+			el.Log(eventlog.Event{
+				Type:    eventlog.EventDisarm,
+				Message: "Previous run ended while armed; started disarmed",
+			})
+		}
+		// Clear the stale record so the warning fires once for the run it
+		// describes rather than on every start from here on.
+		if err := store.Save(false); err != nil {
+			log.Warnf("Could not clear the recorded armed state: %v", err)
+		}
+		return
+	}
+
+	sb.writeLine("  %s    Re-arming, as restore_armed_state is enabled.%s", cYellow, cReset)
+	hub.RestoreArmed()
 }
 
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
@@ -497,17 +763,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	fmt.Fprintf(out, "\n")
 	row++
 
-	urls := srv.URLs()
-
-	// If remote access is active, prepend the public URL
-	if publicIP != "" {
-		scheme := "http"
-		if srv.IsTLS() {
-			scheme = "https"
-		}
-		remoteURL := fmt.Sprintf("%s://%s:%d", scheme, publicIP, srv.Port())
-		urls = append([]string{remoteURL}, urls...)
-	}
+	urls := reachableURLs(srv, publicIP)
 
 	// A QR code is rendered for every reachable URL, not just the first. With
 	// remote access on, the public URL only works from outside the network:
@@ -673,7 +929,7 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 				sb.writeLine("  No alarm is currently active")
 			}
 		case line == "history":
-			evts, err := eventlog.ReadLast(filepath.Join(config.ConfigDir(), "events.jsonl"), 20)
+			evts, err := eventlog.ReadLast(filepath.Join(config.ConfigDir(), eventLogFileName), 20)
 			if err != nil {
 				sb.writeLine("  No event history available")
 			} else if len(evts) == 0 {
@@ -696,6 +952,13 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 				sb.key = newKey
 				sb.refresh()
 				sb.rekeyQR(authMgr.RawPairingKey())
+				// Without this the stored key still holds the one just
+				// invalidated, and the next start would come back with it.
+				if sb.keyPath != "" {
+					if err := auth.SaveKeyFile(sb.keyPath, authMgr.RawPairingKey()); err != nil {
+						sb.writeLine("  %s[KEY]%s Rotated, but the stored key could not be updated: %v", cRed, cReset, err)
+					}
+				}
 				sb.writeLine("  %s[KEY]%s Pairing key rotated. New key: %s%s%s", cGreen, cReset, cBold, newKey, cReset)
 				sb.writeLine("  %s[KEY]%s All existing sessions invalidated. The QR code now encodes the new key.", cYellow, cReset)
 			}

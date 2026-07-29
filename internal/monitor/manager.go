@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/leavesafe/leavesafe/internal/safe"
 )
 
 // Manager handles sensor registration, lifecycle, and alert routing.
@@ -91,15 +93,21 @@ func (m *Manager) StartEnabled() {
 		m.cancels[s.Name()] = cancel
 		alertCh := m.alertCh
 
-		go func(sensor Sensor) {
+		// Supervised rather than a bare goroutine: a sensor driver reads from
+		// the OS — sysfs files, WMI, IOKit, netlink — and a panic in one of
+		// those parsers must not take the process down while the user is away
+		// believing the machine is watched. The loop comes back on its own and
+		// the panic is logged.
+		sensor := s
+		safe.Supervise(ctx, "sensor:"+sensor.Name(), func(runCtx context.Context) {
 			log.WithField("sensor", sensor.Name()).Info("Sensor started")
-			if err := sensor.Start(ctx, alertCh); err != nil {
-				if ctx.Err() == nil {
+			if err := sensor.Start(runCtx, alertCh); err != nil {
+				if runCtx.Err() == nil {
 					log.WithField("sensor", sensor.Name()).Errorf("Sensor error: %v", err)
 				}
 			}
 			log.WithField("sensor", sensor.Name()).Info("Sensor stopped")
-		}(s)
+		})
 	}
 }
 
