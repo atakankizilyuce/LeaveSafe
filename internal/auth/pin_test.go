@@ -102,7 +102,7 @@ func TestNeedsRehash(t *testing.T) {
 		t.Error("an empty hash was not reported as needing a rehash")
 	}
 	if !NeedsRehash("garbage") {
-		t.Error("an unparseable hash was not reported as needing a rehash")
+		t.Error("an unparsable hash was not reported as needing a rehash")
 	}
 	// Weaker parameters than the current preset must be upgraded too.
 	if !NeedsRehash("scrypt$1024$8$1$aabb$ccdd") {
