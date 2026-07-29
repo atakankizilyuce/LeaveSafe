@@ -276,6 +276,20 @@ func main() {
 		promptRemoteAccess(cfg)
 	}
 
+	// Migrate a cleartext PIN left by an older version: hash it and rewrite the
+	// config so the digits themselves no longer live on disk.
+	if cfg.PinProtection.Pin != "" {
+		if hash, err := auth.HashPin(cfg.PinProtection.Pin); err != nil {
+			log.Warnf("Failed to hash stored PIN: %v", err)
+		} else {
+			cfg.PinProtection.PinHash = hash
+			cfg.PinProtection.Pin = ""
+			if err := config.Save(cfg); err != nil {
+				log.Warnf("Failed to save config after PIN migration: %v", err)
+			}
+		}
+	}
+
 	remoteEnabled := cfg.RemoteAccess != nil && *cfg.RemoteAccess
 
 	authMgr, err := auth.NewManagerWithOptions(auth.Options{
@@ -372,7 +386,7 @@ func main() {
 
 	localAlarm := alarm.New(cfg.Alarm)
 
-	hub.SetPinProtection(cfg.PinProtection.Enabled, cfg.PinProtection.Pin)
+	hub.SetPinProtection(cfg.PinProtection.Enabled, cfg.PinProtection.PinHash)
 	hub.SetAutoArmOnLock(cfg.AutoArmOnLock)
 	if cfg.AutoArmOnLock {
 		sensorMgr.Enable("screen")

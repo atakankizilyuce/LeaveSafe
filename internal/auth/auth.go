@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -135,7 +136,7 @@ func (m *Manager) Authenticate(addr, key string) (string, int, error) {
 		return "", m.opts.MaxAttempts - rec.failures, fmt.Errorf("maximum connections reached")
 	}
 
-	if stripDashes(key) != m.pairingKey {
+	if subtle.ConstantTimeCompare([]byte(stripDashes(key)), []byte(m.pairingKey)) != 1 {
 		rec.failures++
 		if rec.failures >= m.opts.MaxAttempts {
 			rec.lockedUntil = now.Add(m.opts.LockoutPeriod)
@@ -154,6 +155,37 @@ func (m *Manager) Authenticate(addr, key string) (string, int, error) {
 	}
 	m.sessions[token] = true
 	return token, m.opts.MaxAttempts, nil
+}
+
+// CheckPin verifies a disarm PIN against its stored hash, applying the same
+// per-address lockout as pairing-key attempts. PIN and key failures share one
+// bucket on purpose: both are guesses at a secret from the same source, and a
+// short numeric PIN is the easier of the two to sweep without a limit.
+func (m *Manager) CheckPin(addr, pin, pinHash string) error {
+	host := normalizeAddr(addr)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	rec := m.record(host, now)
+
+	if now.Before(rec.lockedUntil) {
+		return fmt.Errorf("locked out for %.0f seconds", time.Until(rec.lockedUntil).Seconds())
+	}
+
+	if !VerifyPinHash(pin, pinHash) {
+		rec.failures++
+		if rec.failures >= m.opts.MaxAttempts {
+			rec.lockedUntil = now.Add(m.opts.LockoutPeriod)
+			rec.failures = 0
+			return fmt.Errorf("invalid PIN, locked out for %v", m.opts.LockoutPeriod)
+		}
+		return fmt.Errorf("invalid PIN")
+	}
+
+	delete(m.byAddr, host)
+	return nil
 }
 
 // record returns the failure record for host, creating it if needed and
