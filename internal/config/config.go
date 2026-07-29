@@ -83,14 +83,19 @@ type Config struct {
 	// on the next boot, see its own lid open and its own user type — and start
 	// screaming at the person who just turned it on. With it off the interrupted
 	// monitoring is still reported prominently, which is the part that matters.
-	RestoreArmedState bool            `json:"restore_armed_state"`
-	Alarm             AlarmConfig     `json:"alarm"`
-	PinProtection     PinProtection   `json:"pin_protection"`
-	ConnectionMode    string          `json:"connection_mode,omitempty"`
-	EnabledSensors    map[string]bool `json:"enabled_sensors,omitempty"`
-	RemoteAccess      *bool           `json:"remote_access,omitempty"`
-	RemotePort        int             `json:"remote_port,omitempty"`
-	Location          Location        `json:"location"`
+	RestoreArmedState bool `json:"restore_armed_state"`
+	// UpdateCheck asks GitHub once at startup whether a newer release exists
+	// and reports it on the dashboard. Nothing is downloaded and nothing is
+	// replaced. It is a pointer so an existing config without the field can be
+	// told apart from one where the user switched it off; nil means on.
+	UpdateCheck    *bool           `json:"update_check,omitempty"`
+	Alarm          AlarmConfig     `json:"alarm"`
+	PinProtection  PinProtection   `json:"pin_protection"`
+	ConnectionMode string          `json:"connection_mode,omitempty"`
+	EnabledSensors map[string]bool `json:"enabled_sensors,omitempty"`
+	RemoteAccess   *bool           `json:"remote_access,omitempty"`
+	RemotePort     int             `json:"remote_port,omitempty"`
+	Location       Location        `json:"location"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -135,6 +140,13 @@ func Default() *Config {
 			WiFiEnabled: false,
 		},
 	}
+}
+
+// UpdateCheckEnabled reports whether the startup update check should run.
+// Absent from the config means yes: a security program that never mentions its
+// own updates is one people keep running with known flaws.
+func (c *Config) UpdateCheckEnabled() bool {
+	return c.UpdateCheck == nil || *c.UpdateCheck
 }
 
 // ConfigDir returns the platform-appropriate config directory.

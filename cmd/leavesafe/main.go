@@ -32,6 +32,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/state"
+	"github.com/leavesafe/leavesafe/internal/update"
 	"github.com/leavesafe/leavesafe/internal/ws"
 )
 
@@ -575,6 +576,10 @@ func main() {
 
 	reportInterruptedMonitoring(sb, hub, stateStore, prevState, prevStateErr, cfg.RestoreArmedState)
 
+	if cfg.UpdateCheckEnabled() {
+		safe.Go("update-check", func() { reportAvailableUpdate(sb) })
+	}
+
 	hub.SetAlarmTriggerCallback(func() {
 		localAlarm.Start()
 	})
@@ -703,6 +708,37 @@ func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP string) {
 	if sb.keyPath != "" {
 		log.Infof("Pairing key is stored in %s — it is not written to this log", sb.keyPath)
 	}
+}
+
+// reportAvailableUpdate says so if a newer release exists.
+//
+// Nothing is downloaded and nothing is replaced: a security program that
+// silently rewrites itself from the network is a larger trust decision than the
+// user made when they downloaded a single file. But a single file is also a
+// file nothing updates, and the whole point of hearing about a fix is hearing
+// about it before you need it. A failed check is not worth a warning — GitHub
+// being unreachable says nothing about this machine — so it goes to the log at
+// debug level and no further.
+func reportAvailableUpdate(sb *statusBar) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	result, err := update.Checker{}.Check(ctx, version)
+	if err != nil {
+		log.Debugf("Update check failed: %v", err)
+		return
+	}
+	if !result.Available {
+		return
+	}
+
+	sb.writeLine("  %s[UPDATE]%s %s is available — you are running %s", cCyan, cReset, result.Latest, version)
+	url := result.URL
+	if url == "" {
+		url = repoURL + "/releases/latest"
+	}
+	sb.writeLine("  %s         %s%s", cDim, url, cReset)
+	sb.writeLine("  %s         Set \"update_check\": false in the config to stop checking.%s", cDim, cReset)
 }
 
 // reportInterruptedMonitoring tells the user when the previous run ended while
