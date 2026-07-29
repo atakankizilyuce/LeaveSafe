@@ -261,3 +261,185 @@ func TestStripDashes(t *testing.T) {
 		t.Errorf("stripDashes = %q, want 1234567890123456", got)
 	}
 }
+
+// atTime swaps the manager's clock so expiry can be exercised without sleeping
+// through a session lifetime.
+func atTime(m *Manager, t *time.Time) {
+	m.now = func() time.Time { return *t }
+}
+
+func TestSessionExpiresOnAbsoluteLifetime(t *testing.T) {
+	m, err := NewManagerWithOptions(Options{SessionTTL: time.Hour})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	clock := time.Now()
+	atTime(m, &clock)
+
+	token, _, err := m.Authenticate("10.0.0.1:1", m.PairingKey())
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+
+	// Activity does not extend the absolute lifetime — that is the point of
+	// having one alongside the idle timeout.
+	clock = clock.Add(59 * time.Minute)
+	if !m.TouchSession(token) {
+		t.Fatal("session expired before its lifetime was up")
+	}
+	clock = clock.Add(2 * time.Minute)
+	if m.ValidateSession(token) {
+		t.Error("session survived past its absolute lifetime")
+	}
+}
+
+func TestSessionExpiresWhenIdle(t *testing.T) {
+	m, err := NewManagerWithOptions(Options{SessionIdle: 30 * time.Minute})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	clock := time.Now()
+	atTime(m, &clock)
+
+	token, _, err := m.Authenticate("10.0.0.1:1", m.PairingKey())
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+
+	clock = clock.Add(20 * time.Minute)
+	if !m.TouchSession(token) {
+		t.Fatal("session expired before the idle timeout")
+	}
+	// The touch above restarted the clock, so another 20 minutes is still fine.
+	clock = clock.Add(20 * time.Minute)
+	if !m.ValidateSession(token) {
+		t.Fatal("activity did not restart the idle timer")
+	}
+	clock = clock.Add(31 * time.Minute)
+	if m.ValidateSession(token) {
+		t.Error("session survived past the idle timeout")
+	}
+}
+
+// ValidateSession is what the server's own periodic sweep calls. If it counted
+// as activity, an abandoned session would be kept alive by the very check meant
+// to retire it.
+func TestValidateSessionDoesNotCountAsActivity(t *testing.T) {
+	m, err := NewManagerWithOptions(Options{SessionIdle: 30 * time.Minute})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	clock := time.Now()
+	atTime(m, &clock)
+
+	token, _, err := m.Authenticate("10.0.0.1:1", m.PairingKey())
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+
+	// Poll it the way a heartbeat would, right up to the deadline.
+	for range 5 {
+		clock = clock.Add(5 * time.Minute)
+		m.ValidateSession(token)
+	}
+	clock = clock.Add(6 * time.Minute)
+	if m.ValidateSession(token) {
+		t.Error("polling kept an idle session alive")
+	}
+}
+
+func TestSessionsNeverExpireWhenLimitsAreZero(t *testing.T) {
+	m, err := NewManagerWithOptions(Options{})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	clock := time.Now()
+	atTime(m, &clock)
+
+	token, _, err := m.Authenticate("10.0.0.1:1", m.PairingKey())
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+
+	clock = clock.Add(365 * 24 * time.Hour)
+	if !m.ValidateSession(token) {
+		t.Error("session expired despite both limits being switched off")
+	}
+}
+
+// A phone whose session timed out overnight must not still be holding one of
+// the three connection slots the owner needs now.
+func TestExpiredSessionsFreeTheirSlot(t *testing.T) {
+	m, err := NewManagerWithOptions(Options{MaxSessions: 1, SessionTTL: time.Hour})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	clock := time.Now()
+	atTime(m, &clock)
+
+	if _, _, err := m.Authenticate("10.0.0.1:1", m.PairingKey()); err != nil {
+		t.Fatalf("first Authenticate: %v", err)
+	}
+	if _, _, err := m.Authenticate("10.0.0.2:1", m.PairingKey()); err == nil {
+		t.Fatal("a second session was accepted past the cap")
+	}
+
+	clock = clock.Add(2 * time.Hour)
+	if _, _, err := m.Authenticate("10.0.0.2:1", m.PairingKey()); err != nil {
+		t.Errorf("the expired session did not free its slot: %v", err)
+	}
+}
+
+func TestSweepSessionsReportsWhatItRemoved(t *testing.T) {
+	m, err := NewManagerWithOptions(Options{MaxSessions: 3, SessionTTL: time.Hour})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	clock := time.Now()
+	atTime(m, &clock)
+
+	for i := range 2 {
+		if _, _, err := m.Authenticate(fmt.Sprintf("10.0.0.%d:1", i+1), m.PairingKey()); err != nil {
+			t.Fatalf("Authenticate %d: %v", i, err)
+		}
+	}
+
+	if removed := m.SweepSessions(); removed != 0 {
+		t.Errorf("swept %d live sessions", removed)
+	}
+	clock = clock.Add(2 * time.Hour)
+	if removed := m.SweepSessions(); removed != 2 {
+		t.Errorf("swept %d expired sessions, want 2", removed)
+	}
+	if got := m.SessionCount(); got != 0 {
+		t.Errorf("SessionCount after sweep = %d, want 0", got)
+	}
+}
+
+func TestSuppliedPairingKeyIsUsed(t *testing.T) {
+	// Generated the same way the program does, so it carries a valid check digit.
+	seed, err := NewManager()
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	want := seed.RawPairingKey()
+
+	m, err := NewManagerWithOptions(Options{PairingKey: want})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	if got := m.RawPairingKey(); got != want {
+		t.Errorf("RawPairingKey = %q, want the supplied %q", got, want)
+	}
+	if _, _, err := m.Authenticate("10.0.0.1:1", want); err != nil {
+		t.Errorf("the supplied key did not authenticate: %v", err)
+	}
+}
+
+func TestSuppliedPairingKeyIsRejectedWhenInvalid(t *testing.T) {
+	for _, key := range []string{"1234", "12345678901234567890", "abcdefghijklmnop", "1111111111111111"} {
+		if _, err := NewManagerWithOptions(Options{PairingKey: key}); err == nil {
+			t.Errorf("invalid pairing key %q was accepted", key)
+		}
+	}
+}

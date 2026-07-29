@@ -90,6 +90,8 @@ export interface ServerMessage {
     ts?: number;
     config?: AppConfig;
     location?: LocationPayload;
+    /** SHA-256 fingerprint of the server's TLS certificate, sent with `hello`. */
+    cert_fp?: string;
 }
 
 export interface ClientMessage {

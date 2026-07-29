@@ -8,6 +8,7 @@ import { PinDialog } from './components/PinDialog';
 import { Position } from './components/Position';
 import { SettingsSheet } from './components/SettingsSheet';
 import { StateHeader } from './components/StateHeader';
+import { checkFingerprint, normalizeFingerprint } from './lib/fingerprint';
 import { captureAnchor } from './lib/geo';
 import type { ServerMessage } from './lib/protocol';
 import { startSiren, warnDisconnected } from './lib/siren';
@@ -18,6 +19,7 @@ import {
     armedSince,
     closeTransport,
     config,
+    fingerprintVerdict,
     hasToken,
     link,
     loadLog,
@@ -28,6 +30,7 @@ import {
     screen,
     send,
     sensors,
+    serverFingerprint,
     serverVersion,
     setToken,
     setTransport,
@@ -41,7 +44,44 @@ import { connectBluetooth, connectWebSocket } from './lib/transport';
 const PING_MS = 15000;
 const RECONNECT_MS = 3000;
 
+/**
+ * How long to wait for the server's greeting before giving up.
+ *
+ * Only applies when the QR code named a certificate to check. Until the
+ * greeting arrives the pairing key is held back, so a server that never sends
+ * one leaves the phone waiting rather than talking — which is the safe way
+ * round, but it has to end in a message instead of a spinner.
+ */
+const HELLO_TIMEOUT_MS = 6000;
+
 let pingTimer: number | null = null;
+
+/**
+ * The fingerprint the QR code named, if it named one. Null for a key typed by
+ * hand and for the plain-HTTP local path, where there is no certificate to
+ * check and nothing is held back.
+ */
+let expectedFingerprint: string | null = null;
+
+/** The key waiting on the fingerprint check, held rather than sent. */
+let pendingKey: string | null = null;
+
+let helloTimer: number | null = null;
+
+function clearHelloTimer() {
+    if (helloTimer !== null) {
+        window.clearTimeout(helloTimer);
+        helloTimer = null;
+    }
+}
+
+/** Sends the held key, if there is one still waiting. */
+function sendPendingKey() {
+    if (pendingKey === null) return;
+    const key = pendingKey;
+    pendingKey = null;
+    send({ type: 'auth', key });
+}
 
 export function App() {
     const [counting, setCounting] = useState<number | null>(null);
@@ -57,19 +97,50 @@ export function App() {
     useEffect(() => {
         loadLog();
 
-        // A scanned QR code lands here with the key in the query string. Take
-        // it, then scrub it out of the address bar so it does not sit in
-        // history.
-        const fromQr = new URLSearchParams(window.location.search).get('key');
+        // A scanned QR code lands here with the key in the query string, and —
+        // when the laptop is serving HTTPS — the fingerprint of the certificate
+        // it is serving. Take both, then scrub them out of the address bar so
+        // they do not sit in history.
+        const params = new URLSearchParams(window.location.search);
+        const fromQr = params.get('key');
+        const fp = params.get('fp');
+        if (fp) expectedFingerprint = normalizeFingerprint(fp);
+        if (fromQr || fp) {
+            window.history.replaceState({}, document.title, '/');
+        }
         if (fromQr) {
             setAutoKey(fromQr);
-            window.history.replaceState({}, document.title, '/');
             window.setTimeout(() => pair(fromQr.replace(/\D/g, ''), 'websocket'), 400);
         }
     }, []);
 
     function handle(msg: ServerMessage) {
         switch (msg.type) {
+            case 'hello': {
+                clearHelloTimer();
+                serverFingerprint.value = msg.cert_fp ?? null;
+
+                const verdict = checkFingerprint(expectedFingerprint, msg.cert_fp);
+                fingerprintVerdict.value = verdict;
+
+                if (verdict === 'mismatch') {
+                    // The code was printed for a different certificate. Whatever
+                    // is on the other end of this socket, it is not the laptop
+                    // the user scanned — so it does not get the key.
+                    pendingKey = null;
+                    pairing.value = false;
+                    pairError.value =
+                        'This is not the laptop your code came from: it presented a different ' +
+                        'certificate. The pairing key was not sent. Scan the code again from the ' +
+                        'laptop itself.';
+                    closeTransport();
+                    return;
+                }
+
+                sendPendingKey();
+                break;
+            }
+
             case 'auth_ok':
                 setToken(msg.token ?? null);
                 serverVersion.value = msg.version ?? null;
@@ -175,11 +246,33 @@ export function App() {
     function pair(key: string, over: 'websocket' | 'bluetooth') {
         pairing.value = true;
         pairError.value = null;
+        pendingKey = key;
 
         const handlers = {
             onMessage: handle,
-            onOpen: () => send({ type: 'auth', key }),
+            onOpen: () => {
+                // With a fingerprint to check, the key waits for the server to
+                // say which certificate it is serving. Sending it first and
+                // checking afterwards would mean the check protects nothing.
+                if (!expectedFingerprint) {
+                    sendPendingKey();
+                    return;
+                }
+                helloTimer = window.setTimeout(() => {
+                    helloTimer = null;
+                    if (!hasToken()) {
+                        pendingKey = null;
+                        pairing.value = false;
+                        pairError.value =
+                            'The laptop did not identify itself, so the pairing key was not sent. ' +
+                            'It may be running an older version — rescan the code from a laptop ' +
+                            'running this one.';
+                        closeTransport();
+                    }
+                }, HELLO_TIMEOUT_MS);
+            },
             onClose: () => {
+                clearHelloTimer();
                 if (hasToken()) {
                     link.value = 'lost';
                     warnDisconnected();
@@ -189,6 +282,8 @@ export function App() {
                 }
             },
             onError: (reason: string) => {
+                clearHelloTimer();
+                pendingKey = null;
                 pairing.value = false;
                 if (!hasToken()) pairError.value = reason;
             },

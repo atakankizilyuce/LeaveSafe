@@ -59,7 +59,7 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	s.httpServer = &http.Server{
-		Handler:           securityHeaders(mux),
+		Handler:           securityHeaders(mux, cfg.TLSCert != nil),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -164,12 +164,39 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	s.hub.HandleConnection(r.Context(), conn, r.RemoteAddr)
 }
 
+// hstsMaxAge is how long a browser should refuse to talk to this origin over
+// plain HTTP. Six months, with no preload directive: preloading is for public
+// domains, and this is a laptop's address on somebody's LAN.
+const hstsMaxAge = 15552000 // 180 days in seconds
+
 // securityHeaders wraps a handler with response headers that pin down what the
 // served pages may do. The UI is self-contained — its own scripts, styles and
 // socket, plus the opt-in OpenStreetMap embed — so everything else is refused.
-func securityHeaders(next http.Handler) http.Handler {
+//
+// tls reports whether the server is actually serving HTTPS. HSTS is only sent
+// in that case: sent over plain HTTP it is ignored by browsers per the spec,
+// and on the LAN-only path there is no HTTPS listener for a browser to be
+// upgraded to, so pinning the origin to HTTPS would lock the user out of their
+// own alarm until the pin expired.
+func securityHeaders(next http.Handler, tls bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
+		if tls {
+			h.Set("Strict-Transport-Security", fmt.Sprintf("max-age=%d", hstsMaxAge))
+		}
+		// The page needs none of these. Denying them means a bug in the UI, or
+		// anything that ever manages to inject into it, cannot quietly reach
+		// the camera, microphone or position of the phone holding it.
+		h.Set("Permissions-Policy",
+			"accelerometer=(), ambient-light-sensor=(), autoplay=(self), camera=(), "+
+				"display-capture=(), encrypted-media=(), fullscreen=(self), geolocation=(self), "+
+				"gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), "+
+				"picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(self), "+
+				"usb=(), xr-spatial-tracking=()")
+		// The phone's own position is the location anchor, so geolocation stays
+		// allowed for this origin — it is the one capability the UI genuinely
+		// asks for, and only when the user turns the feature on.
+
 		// ws:/wss: are listed alongside 'self' because some browsers do not
 		// let 'self' match a scheme change from http(s) to ws(s).
 		h.Set("Content-Security-Policy",
