@@ -22,6 +22,13 @@ const (
 	defaultDisconnectGracePeriod = 30 * time.Second
 )
 
+// authDeadline is how long a fresh connection has to present a valid pairing
+// key before it is dropped. Only authenticated clients count against
+// max_sessions, so without this an unauthenticated peer could hold connections
+// open indefinitely and exhaust the server's sockets. It is a var so tests can
+// shorten it.
+var authDeadline = 20 * time.Second
+
 // Hub manages all WebSocket connections and dispatches alerts.
 type Hub struct {
 	mu              sync.RWMutex
@@ -286,8 +293,22 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
 
+	// Until the client authenticates, every read shares one absolute deadline,
+	// so a peer cannot keep a socket open forever by dribbling out unauthenticated
+	// frames. client.authenticated is touched only in this goroutine (handleAuth
+	// runs synchronously below), so reading it here needs no lock.
+	deadline := time.Now().Add(authDeadline)
+
 	for {
-		_, data, err := conn.Read(ctx)
+		readCtx := ctx
+		var cancel context.CancelFunc
+		if !client.authenticated {
+			readCtx, cancel = context.WithDeadline(ctx, deadline)
+		}
+		_, data, err := conn.Read(readCtx)
+		if cancel != nil {
+			cancel()
+		}
 		if err != nil {
 			return
 		}
@@ -303,13 +324,20 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 
 // PushAlert sends an alert to all connected authenticated clients.
 func (h *Hub) PushAlert(alert ServerMessage) {
+	// Collect targets under the lock, then send with it released. A blocking
+	// write to one slow client must not stall arm/disarm or delay the alarm
+	// reaching everyone else — for an alarm system that delay is the attack.
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	targets := make([]*Client, 0, len(h.clients))
 	for client := range h.clients {
 		if client.authenticated {
-			client.send(alert)
+			targets = append(targets, client)
 		}
+	}
+	h.mu.RUnlock()
+
+	for _, client := range targets {
+		client.send(alert)
 	}
 }
 
@@ -937,8 +965,6 @@ func (h *Hub) removeClient(client *Client) {
 
 func (h *Hub) broadcastStatus() {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
 	states := make(map[string]*SensorState)
 	for _, s := range h.sensorMgr.Sensors() {
 		status := "ok"
@@ -952,9 +978,16 @@ func (h *Hub) broadcastStatus() {
 	}
 
 	msg := NewStatus(h.armed, states)
+	targets := make([]*Client, 0, len(h.clients))
 	for client := range h.clients {
 		if client.authenticated {
-			client.send(msg)
+			targets = append(targets, client)
 		}
+	}
+	h.mu.RUnlock()
+
+	// Writes happen with the lock released; see PushAlert.
+	for _, client := range targets {
+		client.send(msg)
 	}
 }
