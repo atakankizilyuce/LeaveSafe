@@ -12,6 +12,17 @@
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="description" content="Arm your laptop from your phone." />
+        <!--
+            Installing this to the home screen is not a nicety here. A page kept
+            open in a tab is a page the phone is free to discard, and a
+            discarded page is one that is not there when the alarm fires. The
+            manifest is what lets it be installed, and what makes notification
+            permission survive being closed.
+        -->
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-title" content="LeaveSafe" />
+        <meta name="application-name" content="LeaveSafe" />
         <!-- Inline so the icon costs no request and works with no network. -->
         <link
             rel="icon"

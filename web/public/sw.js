@@ -16,6 +16,11 @@ self.addEventListener('message', function (e) {
             requireInteraction: true,
             renotify: true,
             vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500],
+            // Without an icon the notification carries whatever the browser
+            // picks — often its own logo, which is the wrong thing to see on a
+            // lock screen when your laptop is being taken.
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-192.png',
         });
     }
 });

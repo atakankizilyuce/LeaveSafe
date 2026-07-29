@@ -26,6 +26,10 @@ const (
 )
 
 const (
+	// MsgTypeHello is the first thing the server says on a new connection. It
+	// carries the certificate fingerprint so a client that arrived by QR code
+	// can check it before offering the pairing key.
+	MsgTypeHello             = "hello"
 	MsgTypeAuthOK            = "auth_ok"
 	MsgTypeAuthFail          = "auth_fail"
 	MsgTypeAlert             = "alert"
@@ -105,6 +109,9 @@ type ServerMessage struct {
 	Timestamp         int64                   `json:"ts,omitempty"`
 	Config            *ConfigPayload          `json:"config,omitempty"`
 	Location          *LocationPayload        `json:"location,omitempty"`
+	// CertFP is the SHA-256 fingerprint of this server's TLS certificate,
+	// empty on the plain-HTTP local path where there is no certificate.
+	CertFP string `json:"cert_fp,omitempty"`
 }
 
 // ConfigPayload is a sanitized configuration for client exchange.
@@ -163,6 +170,19 @@ func NewAlert(sensor, level, message string) ServerMessage {
 			Level:   level,
 			Message: message,
 		},
+		Timestamp: time.Now().Unix(),
+	}
+}
+
+// NewHello creates the greeting a fresh connection receives before it has
+// authenticated. It carries no secrets: the fingerprint is public by
+// definition, since it is derived from the certificate every connecting client
+// is handed anyway.
+func NewHello(certFP, version string) ServerMessage {
+	return ServerMessage{
+		Type:      MsgTypeHello,
+		Version:   version,
+		CertFP:    certFP,
 		Timestamp: time.Now().Unix(),
 	}
 }

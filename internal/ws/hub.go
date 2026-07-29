@@ -49,6 +49,7 @@ type Hub struct {
 	alertChan       chan ServerMessage
 	eventLog        *eventlog.Logger
 	stateStore      *state.Store
+	certFP          string
 
 	heartbeatInterval     time.Duration
 	disconnectGracePeriod time.Duration
@@ -218,6 +219,15 @@ func (h *Hub) IsArmed() bool {
 	return h.armed
 }
 
+// SetCertFingerprint records the SHA-256 fingerprint of the TLS certificate
+// this server presents, so it can be announced to connecting clients. Empty
+// when the server runs over plain HTTP and there is no certificate.
+func (h *Hub) SetCertFingerprint(fp string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.certFP = fp
+}
+
 // SetStateStore attaches the store that records the armed state across
 // restarts. A nil store turns the feature off, and every call site tolerates
 // that, so tests and non-persistent embeddings need not supply one.
@@ -342,6 +352,14 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 		h.removeClient(client)
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
+
+	// Identify the server before asking for anything. A client that arrived by
+	// QR code knows which certificate it should be talking to, and this is what
+	// it compares against — before it sends the pairing key, not after.
+	h.mu.RLock()
+	certFP := h.certFP
+	h.mu.RUnlock()
+	client.send(NewHello(certFP, h.version))
 
 	// Until the client authenticates, every read shares one absolute deadline,
 	// so a peer cannot keep a socket open forever by dribbling out unauthenticated
@@ -542,6 +560,44 @@ func (h *Hub) GetSensorInfos() []SensorInfo {
 	return infos
 }
 
+// upgradePinHash rewrites a stored PIN hash that uses an older scheme.
+//
+// Hashes cannot be upgraded in the background: the PIN itself is needed, and it
+// only exists in memory for the moment a client presents a correct one. So the
+// migration happens here, once, on the first successful disarm after the
+// upgrade — and a user who never disarms keeps the old hash, which still
+// verifies. pin is the cleartext PIN and is not stored anywhere.
+func (h *Hub) upgradePinHash(pin, current string) {
+	if current == "" || !auth.NeedsRehash(current) {
+		return
+	}
+
+	updated, err := auth.HashPin(pin)
+	if err != nil {
+		log.Warnf("Could not upgrade the stored PIN hash: %v", err)
+		return
+	}
+
+	h.mu.Lock()
+	h.pinHash = updated
+	cfg := h.cfg
+	var snapshot config.Config
+	if cfg != nil {
+		cfg.PinProtection.PinHash = updated
+		snapshot = *cfg
+	}
+	h.mu.Unlock()
+
+	if cfg == nil {
+		return
+	}
+	if err := config.Save(&snapshot); err != nil {
+		log.Warnf("Could not save the upgraded PIN hash: %v", err)
+		return
+	}
+	log.Info("Stored PIN hash upgraded to the current scheme")
+}
+
 // The alarm callbacks reach into the platform audio and volume backends, which
 // speak to WinMM, PulseAudio and CoreAudio. A panic down there must not stop
 // the hub from telling the phone what happened — the phone alert is the part
@@ -614,6 +670,9 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 					h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "Disarm refused: " + err.Error()})
 					return
 				}
+				// A correct PIN is the only moment the digits are in hand, and
+				// therefore the only moment an old hash can be upgraded.
+				h.upgradePinHash(msg.Pin, pinHash)
 			}
 			h.Disarm()
 		case MsgTypeConfigure:

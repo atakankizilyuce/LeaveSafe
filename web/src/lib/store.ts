@@ -1,4 +1,5 @@
 import { computed, signal } from '@preact/signals';
+import type { FingerprintVerdict } from './fingerprint';
 import type { AlertLevel, AppConfig, ClientMessage, LocationPayload, SensorInfo } from './protocol';
 import type { Transport } from './transport';
 
@@ -19,6 +20,14 @@ export const armed = signal(false);
 export const serverVersion = signal<string | null>(null);
 export const pairError = signal<string | null>(null);
 export const pairing = signal(false);
+
+/**
+ * The certificate fingerprint the server reported, and how it compared against
+ * the one the QR code carried. Shown on the pairing screen so the value the
+ * user is asked to trust is on the same screen as the warning about it.
+ */
+export const serverFingerprint = signal<string | null>(null);
+export const fingerprintVerdict = signal<FingerprintVerdict>('unverified');
 
 export const sensors = signal<SensorInfo[]>([]);
 export const config = signal<AppConfig | null>(null);

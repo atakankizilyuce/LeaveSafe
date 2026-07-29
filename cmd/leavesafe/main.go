@@ -253,7 +253,7 @@ func (sb *statusBar) rekeyQR(rawKey string) {
 		return
 	}
 	for i, u := range sb.urls {
-		lines, err := qr.Lines(u + "?key=" + rawKey)
+		lines, err := qr.Lines(pairingURL(u, rawKey, sb.certFP))
 		if err != nil {
 			continue
 		}
@@ -503,6 +503,10 @@ func main() {
 			srvCfg.TLSCert = &cert
 			srvCfg.CertFP = fp
 			certFP = fp
+			// Announced to every connecting client, so a phone that arrived by
+			// QR code can check it reached the server the code was printed for
+			// before it offers the pairing key.
+			hub.SetCertFingerprint(fp)
 		}
 	}
 
@@ -647,6 +651,25 @@ func main() {
 	}
 }
 
+// pairingURL builds the address a QR code encodes: the server, the pairing key,
+// and — when there is a certificate — its fingerprint.
+//
+// The fingerprint rides along so the phone can check which server it reached
+// before it offers the key, and so the value is on the phone's own screen to
+// compare against the browser's certificate warning. Previously it was only on
+// the laptop, which is the one place nobody looks while holding a phone. The
+// colons are dropped to keep the QR code small; both ends compare on the hex.
+//
+// This does not turn a self-signed certificate into a verified one. See
+// SECURITY.md for what it does and does not catch.
+func pairingURL(base, rawKey, certFP string) string {
+	url := base + "?key=" + rawKey
+	if certFP != "" {
+		url += "&fp=" + strings.ToLower(strings.ReplaceAll(certFP, ":", ""))
+	}
+	return url
+}
+
 // reachableURLs returns every address a phone could connect to, public one
 // first when remote access is up.
 func reachableURLs(srv *server.Server, publicIP string) []string {
@@ -771,7 +794,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	// plenty of routers do not do. `qr <n>` switches to the local URL instead.
 	qrCodes := make([][]string, 0, len(urls))
 	for _, u := range urls {
-		lines, err := qr.Lines(u + "?key=" + authMgr.RawPairingKey())
+		lines, err := qr.Lines(pairingURL(u, authMgr.RawPairingKey(), certFP))
 		if err != nil {
 			log.Warnf("Could not render QR code for %s: %v", u, err)
 			lines = nil
