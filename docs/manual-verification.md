@@ -39,6 +39,22 @@ run publishes to its job summary.
 | 9 | Trigger an alarm and let it escalate | any | Volume rises through the configured levels and is audible |
 | 10 | Pair over Bluetooth instead of Wi-Fi | any | Pairing succeeds and alerts arrive over BLE |
 | 11 | Arm, then carry the phone out of Wi-Fi range | any | Alarm fires after the disconnect grace period |
+| 12 | Trigger an alarm with headphones on, stop it, then play anything else | any | Sound still comes out of both ears, at the volume set before the alarm |
+
+Check 12 has an automated counterpart on Windows that a hosted runner cannot
+run, because it needs a real output device:
+
+```
+LEAVESAFE_AUDIO_HW_TEST=1 go test ./internal/alarm/ -run ChannelBalance -v
+```
+
+It briefly forces the machine to full volume, then restores it, and fails if
+the alarm moved anything but the master level. It exists because a mistyped COM
+vtable slot once turned the "unmute" step into a per-channel volume write,
+which silenced the left channel of the default output device permanently — the
+alarm restored the master volume on stop and left the balance where it fell. If
+a machine is still stuck that way, Windows resets it under Settings → System →
+Sound → the output device → Volume, where left and right are set separately.
 
 ## Why each of these is absent from CI
 
@@ -74,14 +90,14 @@ The Linux VM measured that injected key events leave the mtime of
 mtime at creation and do not update as events flow through them, so the Linux
 input sensor may not detect a real keyboard either.
 
-Until someone confirms it on real hardware, treat check 12 below as the one that
+Until someone confirms it on real hardware, treat check 13 below as the one that
 matters most on Linux. This was left as a finding rather than a fix: changing how
 a sensor detects input is a product decision, not part of setting up the test
 environment.
 
 | # | Check | Platform | Expected |
 | - | ----- | -------- | -------- |
-| 12 | Arm, wait past the grace period, then type on the built-in keyboard | Linux | Phone alerts; if it does not, the sensor needs a different signal than file mtimes |
+| 13 | Arm, wait past the grace period, then type on the built-in keyboard | Linux | Phone alerts; if it does not, the sensor needs a different signal than file mtimes |
 
 ## Closing the gaps
 

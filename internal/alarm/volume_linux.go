@@ -123,8 +123,11 @@ func setVolume(level float64) (float64, error) {
 	purego.SyscallN(sndMixerSelemGetPlaybackVolume, elem, 0, uintptr(unsafe.Pointer(&currentVol)))
 	prevLevel := float64(currentVol-minVol) / float64(maxVol-minVol)
 
-	targetVol := int64(level*float64(maxVol-minVol)) + minVol
+	targetVol := int64(clampLevel(level)*float64(maxVol-minVol)) + minVol
 	purego.SyscallN(sndMixerSelemSetPlaybackVolumeAll, elem, uintptr(targetVol))
+	// SetPlaybackSwitchAll(1) unmutes every channel of the element. Both this and
+	// SetPlaybackVolumeAll apply to all channels alike, so neither one can leave
+	// the user's left/right balance lopsided.
 	purego.SyscallN(sndMixerSelemSetPlaybackSwitchAll, elem, 1)
 
 	return prevLevel, nil
@@ -141,7 +144,11 @@ func restoreVolume(level float64) error {
 	purego.SyscallN(sndMixerSelemGetPlaybackVolumeRange, elem,
 		uintptr(unsafe.Pointer(&minVol)), uintptr(unsafe.Pointer(&maxVol)))
 
-	targetVol := int64(level*float64(maxVol-minVol)) + minVol
+	if maxVol <= minVol {
+		return fmt.Errorf("invalid volume range")
+	}
+
+	targetVol := int64(clampLevel(level)*float64(maxVol-minVol)) + minVol
 	purego.SyscallN(sndMixerSelemSetPlaybackVolumeAll, elem, uintptr(targetVol))
 	return nil
 }

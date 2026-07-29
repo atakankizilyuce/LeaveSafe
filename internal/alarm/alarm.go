@@ -15,6 +15,19 @@ const (
 	switchMs = 400 // frequency alternation interval in ms
 )
 
+// clampLevel keeps a volume scalar inside the 0..1 range every platform's audio
+// API expects. Out-of-range values are rejected by some backends and silently
+// wrapped by others, so they are clamped once here rather than trusted.
+func clampLevel(level float64) float64 {
+	if level < 0 {
+		return 0
+	}
+	if level > 1 {
+		return 1
+	}
+	return level
+}
+
 // Alarm manages the siren sound on the host machine.
 type Alarm struct {
 	mu      sync.Mutex
