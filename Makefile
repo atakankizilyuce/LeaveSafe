@@ -2,7 +2,7 @@ BINARY_NAME=leavesafe
 VERSION=1.0.0
 LDFLAGS=-ldflags="-s -w -X main.version=$(VERSION)"
 
-.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test test-e2e test-realtrigger test-sandbox fmt vet lint typos web-install web-build web-lint web-verify vuln check
+.PHONY: all build build-windows build-darwin build-darwin-arm build-linux clean test test-e2e test-realtrigger test-sandbox fmt vet lint typos web-install web-build web-lint web-verify vuln sbom manifests check
 
 all: build-windows build-darwin build-darwin-arm build-linux
 
@@ -74,7 +74,21 @@ web-verify: web-build
 vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+# A CycloneDX inventory of every dependency, published with each release so a
+# user can check what is in the binary without building it themselves.
+sbom:
+	go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0 \
+		mod -json -licenses -std -output leavesafe-sbom.cdx.json
+	@echo "Wrote leavesafe-sbom.cdx.json"
+
+# Package manager manifests for an already-published release. It downloads the
+# published assets to hash them, so the tag has to exist.
+#   make manifests TAG=v1.2.0
+manifests:
+	@test -n "$(TAG)" || (echo "usage: make manifests TAG=v1.2.0" && exit 1)
+	./packaging/generate.sh $(TAG) dist-manifests
+
 check: fmt vet lint web-lint web-verify vuln test
 
 clean:
-	rm -rf dist/ $(BINARY_NAME) $(BINARY_NAME).exe
+	rm -rf dist/ dist-manifests/ leavesafe-sbom.cdx.json $(BINARY_NAME) $(BINARY_NAME).exe
