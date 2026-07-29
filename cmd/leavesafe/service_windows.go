@@ -76,7 +76,7 @@ func runSchtasks(args ...string) (string, error) {
 }
 
 // taskMissing reports whether schtasks failed because the task does not exist,
-// which is a state to report rather than an error. The message is localised, so
+// which is a state to report rather than an error. The message is localized, so
 // this matches on the error code Windows includes alongside it.
 func taskMissing(out string) bool {
 	lower := strings.ToLower(out)

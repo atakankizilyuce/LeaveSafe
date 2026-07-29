@@ -143,11 +143,11 @@ func TestHelloRevealsNothingBeforeAuthentication(t *testing.T) {
 // is closed on the auth deadline, so unauthenticated peers cannot pin
 // connections open and exhaust the server.
 func TestUnauthenticatedConnectionDropped(t *testing.T) {
-	prev := authDeadline
-	authDeadline = 250 * time.Millisecond
-	defer func() { authDeadline = prev }()
+	const deadline = 250 * time.Millisecond
 
-	srv := hubServer(t, testHub(t))
+	hub := testHub(t)
+	hub.SetAuthDeadline(deadline)
+	srv := hubServer(t, hub)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -168,18 +168,17 @@ func TestUnauthenticatedConnectionDropped(t *testing.T) {
 		t.Fatal("connection stayed open past the auth deadline")
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Errorf("connection closed after %v, expected near the %v deadline", elapsed, authDeadline)
+		t.Errorf("connection closed after %v, expected near the %v deadline", elapsed, deadline)
 	}
 }
 
 // TestAuthenticatedConnectionSurvivesDeadline proves the deadline only applies
 // before authentication: a paired client stays connected well past it.
 func TestAuthenticatedConnectionSurvivesDeadline(t *testing.T) {
-	prev := authDeadline
-	authDeadline = 250 * time.Millisecond
-	defer func() { authDeadline = prev }()
+	const deadline = 250 * time.Millisecond
 
 	hub := testHub(t)
+	hub.SetAuthDeadline(deadline)
 	srv := hubServer(t, hub)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -201,7 +200,7 @@ func TestAuthenticatedConnectionSurvivesDeadline(t *testing.T) {
 	}
 
 	// Past the (short) deadline, an authenticated socket must still be usable.
-	time.Sleep(2 * authDeadline)
+	time.Sleep(2 * deadline)
 	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"ping"}`)); err != nil {
 		t.Fatalf("write ping after deadline: %v", err)
 	}

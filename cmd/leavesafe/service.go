@@ -9,10 +9,6 @@ import (
 	"github.com/leavesafe/leavesafe/internal/config"
 )
 
-// serviceLabel identifies the autostart entry on every platform. Changing it
-// would orphan entries installed by older versions.
-const serviceLabel = "leavesafe"
-
 // runInstallService registers this binary to start when the user logs in.
 //
 // A theft monitor that does not survive a reboot is a monitor with a hole in

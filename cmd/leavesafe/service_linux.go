@@ -9,8 +9,9 @@ import (
 	"strings"
 )
 
-// unitName is the systemd user unit LeaveSafe installs.
-const unitName = serviceLabel + ".service"
+// unitName is the systemd user unit LeaveSafe installs. Changing it would
+// orphan units installed by older versions.
+const unitName = "leavesafe.service"
 
 // unitTemplate is the systemd user unit. A *user* unit rather than a system
 // one, deliberately: LeaveSafe watches one person's laptop, needs that person's
@@ -50,19 +51,22 @@ func installAutostart(exe string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// 0700: this lives under the user's own config directory and only their
+	// systemd instance reads it.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("create unit directory: %w", err)
 	}
 	unit := fmt.Sprintf(unitTemplate, repoURL, exe)
-	if err := os.WriteFile(path, []byte(unit), 0o644); err != nil { // #nosec G306 -- a unit file is not a secret and systemd expects it world-readable
+	if err := os.WriteFile(path, []byte(unit), 0o600); err != nil {
 		return "", fmt.Errorf("write unit: %w", err)
 	}
 
 	detail := "Unit file: " + path
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		// Plenty of systems run something other than systemd. The unit is
-		// written either way so it is ready if systemd appears, and the user is
-		// told plainly that nothing was enabled.
+	// Plenty of systems run something other than systemd. The unit is written
+	// either way so it is ready if systemd appears, and the user is told
+	// plainly that nothing was enabled — which is a state to report, not an
+	// error to fail the install over.
+	if !haveSystemctl() {
 		return detail + "\n\nsystemctl was not found, so nothing was enabled. Start LeaveSafe\n" +
 			"however your desktop session starts background programs.", nil
 	}
@@ -88,7 +92,7 @@ func uninstallAutostart() error {
 	if err != nil {
 		return err
 	}
-	if _, err := exec.LookPath("systemctl"); err == nil {
+	if haveSystemctl() {
 		// Failures here are reported but not fatal: the unit file removal below
 		// is what actually stops it coming back.
 		if out, err := runSystemctl("disable", "--now", unitName); err != nil {
@@ -98,7 +102,7 @@ func uninstallAutostart() error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove unit: %w", err)
 	}
-	if _, err := exec.LookPath("systemctl"); err == nil {
+	if haveSystemctl() {
 		if out, err := runSystemctl("daemon-reload"); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: systemctl daemon-reload: %v: %s\n", err, out)
 		}
@@ -118,7 +122,9 @@ func autostartStatus() (bool, string, error) {
 	}
 
 	detail := "Unit file: " + path
-	if _, err := exec.LookPath("systemctl"); err != nil {
+	// Not an error: the unit is installed either way, and its running state is
+	// simply something this system cannot be asked about.
+	if !haveSystemctl() {
 		return true, detail + "\nsystemctl is not available, so its running state is unknown.", nil
 	}
 
@@ -130,6 +136,14 @@ func autostartStatus() (bool, string, error) {
 	detail += "\nRunning:   " + orUnknown(active)
 	detail += "\nLogs:      journalctl --user -u " + unitName + " -f"
 	return true, detail, nil
+}
+
+// haveSystemctl reports whether systemctl is on PATH. Its absence is a fact
+// about the system rather than a failure, so it is a boolean here and never an
+// error the callers have to decide how to swallow.
+func haveSystemctl() bool {
+	_, err := exec.LookPath("systemctl")
+	return err == nil
 }
 
 func runSystemctl(args ...string) (string, error) {

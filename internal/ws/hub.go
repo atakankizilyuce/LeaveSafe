@@ -24,12 +24,11 @@ const (
 	defaultDisconnectGracePeriod = 30 * time.Second
 )
 
-// authDeadline is how long a fresh connection has to present a valid pairing
-// key before it is dropped. Only authenticated clients count against
+// defaultAuthDeadline is how long a fresh connection has to present a valid
+// pairing key before it is dropped. Only authenticated clients count against
 // max_sessions, so without this an unauthenticated peer could hold connections
-// open indefinitely and exhaust the server's sockets. It is a var so tests can
-// shorten it.
-var authDeadline = 20 * time.Second
+// open indefinitely and exhaust the server's sockets.
+const defaultAuthDeadline = 20 * time.Second
 
 // Hub manages all WebSocket connections and dispatches alerts.
 type Hub struct {
@@ -53,6 +52,9 @@ type Hub struct {
 
 	heartbeatInterval     time.Duration
 	disconnectGracePeriod time.Duration
+	// authDeadline is per-hub rather than a package variable so a test can
+	// shorten it without racing the connection goroutines that read it.
+	authDeadline time.Duration
 
 	tracker    *location.Tracker
 	trackerCtx context.Context //nolint:containedctx // scopes tracker goroutines to the app lifetime
@@ -76,6 +78,17 @@ func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *
 		suppressedSensors:     make(map[string]time.Time),
 		heartbeatInterval:     defaultHeartbeatInterval,
 		disconnectGracePeriod: defaultDisconnectGracePeriod,
+		authDeadline:          defaultAuthDeadline,
+	}
+}
+
+// SetAuthDeadline sets how long a fresh connection has to present a valid
+// pairing key. Zero or negative leaves the current setting alone.
+func (h *Hub) SetAuthDeadline(d time.Duration) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if d > 0 {
+		h.authDeadline = d
 	}
 }
 
@@ -358,6 +371,7 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 	// it compares against — before it sends the pairing key, not after.
 	h.mu.RLock()
 	certFP := h.certFP
+	deadlineAfter := h.authDeadline
 	h.mu.RUnlock()
 	client.send(NewHello(certFP, h.version))
 
@@ -365,7 +379,7 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 	// so a peer cannot keep a socket open forever by dribbling out unauthenticated
 	// frames. client.authenticated is touched only in this goroutine (handleAuth
 	// runs synchronously below), so reading it here needs no lock.
-	deadline := time.Now().Add(authDeadline)
+	deadline := time.Now().Add(deadlineAfter)
 
 	for {
 		readCtx := ctx
