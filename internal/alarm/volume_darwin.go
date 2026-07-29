@@ -4,7 +4,6 @@ package alarm
 
 import (
 	"fmt"
-	"math"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -108,7 +107,7 @@ func setVolume(level float64) (float64, error) {
 		uintptr(unsafe.Pointer(&currentVolume)),
 	)
 
-	vol := float32(math.Min(level, 1.0))
+	vol := float32(clampLevel(level))
 	dataSize = uint32(unsafe.Sizeof(vol))
 	ret, _, _ := purego.SyscallN(audioObjectSetPropertyData,
 		uintptr(deviceID), uintptr(unsafe.Pointer(&volumeAddr)), 0, 0,
@@ -127,7 +126,7 @@ func restoreVolume(level float64) error {
 		return err
 	}
 
-	vol := float32(math.Min(level, 1.0))
+	vol := float32(clampLevel(level))
 	dataSize := uint32(unsafe.Sizeof(vol))
 	ret, _, _ := purego.SyscallN(audioObjectSetPropertyData,
 		uintptr(deviceID), uintptr(unsafe.Pointer(&volumeAddr)), 0, 0,
