@@ -74,7 +74,9 @@ winget install --manifest manifests/l/LeaveSafe/LeaveSafe/1.2.0
 ```
 
 Their automated checks run SmartScreen against the installer URL, so an unsigned
-binary can be held up in review. See [`docs/release-signing.md`](../docs/release-signing.md).
+binary can be held up in review. Signing is configured through the repository
+secrets read by the signing steps in
+[`.github/workflows/release.yml`](../.github/workflows/release.yml).
 
 ## Changing a manifest
 

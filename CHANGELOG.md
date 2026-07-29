@@ -57,8 +57,9 @@ diff is small.
   `gh attestation verify <file> --repo atakankizilyuce/LeaveSafe`.
 - **Code signing pipeline.** The release workflow signs and notarizes macOS
   builds and Authenticode-signs Windows builds when the certificates are
-  configured, and skips itself cleanly when they are not. See
-  `docs/release-signing.md`.
+  configured, and skips itself cleanly when they are not. The secrets it reads
+  are the `env` keys of the signing steps in
+  `.github/workflows/release.yml`.
 - **Package manager manifests.** Homebrew, Scoop and winget manifests are
   generated from the published artifacts on each release. See `packaging/`.
 - **SECURITY.md.** A vulnerability disclosure policy, a supported-versions

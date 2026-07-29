@@ -100,8 +100,14 @@ jobs:
       # that would have caught a tampered copy. Both steps below are skipped
       # when their secrets are absent, so a fork — or this repository before a
       # certificate is bought — still produces a working release rather than a
-      # red run. docs/release-signing.md lists what to set.
+      # red run. The secrets to set are the env keys of each step below.
       # -----------------------------------------------------------------------
+
+      # MACOS_CERTIFICATE is a Developer ID Application .p12, base64-encoded
+      # (`base64 -i cert.p12`); Apple issues those to paid members only.
+      # MACOS_SIGN_IDENTITY is the full identity name that
+      # `security find-identity -v -p codesigning` prints, and
+      # MACOS_NOTARY_PASSWORD is an app-specific password, not an Apple ID one.
       - name: Sign and notarize (macOS)
         if: matrix.goos == 'darwin'
         env:
@@ -121,7 +127,7 @@ jobs:
               echo "### :warning: Unsigned macOS build"
               echo
               echo "\`${BINARY##*/}\` is unsigned, so Gatekeeper will refuse it on first run."
-              echo "See \`docs/release-signing.md\` for the secrets that turn signing on."
+              echo "The secrets that turn signing on are the \`env\` keys of the signing step in \`.github/workflows/release.yml\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -168,6 +174,13 @@ jobs:
 
           security delete-keychain "$KEYCHAIN"
 
+      # WINDOWS_CERTIFICATE is a .pfx, base64-encoded (`base64 -w0 cert.pfx`),
+      # which means an OV certificate. An EV one cannot be used here: since June
+      # 2023 its private key must live on a hardware token or HSM, so it can
+      # never be handed to a hosted runner as a file. Signing with EV needs a
+      # cloud-HSM service (Azure Trusted Signing, DigiCert KeyLocker, SSL.com
+      # eSigner) or a self-hosted runner with the token attached — replace this
+      # step with the provider's action and leave everything around it alone.
       - name: Sign (Windows)
         if: matrix.goos == 'windows'
         env:
@@ -183,7 +196,7 @@ jobs:
               echo "### :warning: Unsigned Windows build"
               echo
               echo "\`${BINARY##*/}\` is unsigned, so SmartScreen will warn on first run."
-              echo "See \`docs/release-signing.md\` for the secrets that turn signing on."
+              echo "The secrets that turn signing on are the \`env\` keys of the signing step in \`.github/workflows/release.yml\`."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
