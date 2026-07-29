@@ -36,7 +36,7 @@ type Hub struct {
 	onAlarmDismiss  func()
 	autoArmOnLock   bool
 	pinEnabled      bool
-	pinCode         string
+	pinHash         string
 	alertChan       chan ServerMessage
 	eventLog        *eventlog.Logger
 
@@ -82,12 +82,13 @@ func (h *Hub) SetTimings(heartbeat, disconnectGrace time.Duration) {
 	}
 }
 
-// SetPinProtection configures optional PIN-based disarm protection.
-func (h *Hub) SetPinProtection(enabled bool, pin string) {
+// SetPinProtection configures optional PIN-based disarm protection. pinHash is
+// the salted hash produced by auth.HashPin, never the PIN itself.
+func (h *Hub) SetPinProtection(enabled bool, pinHash string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.pinEnabled = enabled
-	h.pinCode = pin
+	h.pinHash = pinHash
 }
 
 // SetAutoArmOnLock enables automatic arm/disarm on screen lock/unlock.
@@ -467,7 +468,7 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 			h.Arm()
 		case MsgTypeDisarm:
 			h.mu.RLock()
-			pinRequired := h.pinEnabled && h.pinCode != ""
+			pinRequired := h.pinEnabled && h.pinHash != ""
 			h.mu.RUnlock()
 			if pinRequired {
 				client.send(ServerMessage{Type: MsgTypePinRequired})
@@ -476,11 +477,17 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 			h.Disarm()
 		case MsgTypeDisarmPin:
 			h.mu.RLock()
-			pinOK := !h.pinEnabled || h.pinCode == "" || msg.Pin == h.pinCode
+			pinEnabled := h.pinEnabled
+			pinHash := h.pinHash
 			h.mu.RUnlock()
-			if !pinOK {
-				client.send(ServerMessage{Type: MsgTypeAuthFail, Reason: "invalid PIN"})
-				return
+			if pinEnabled && pinHash != "" {
+				// The PIN guards the alarm from whoever is holding the phone,
+				// so guesses are rate-limited like pairing-key attempts.
+				if err := h.authManager.CheckPin(client.remoteAddr, msg.Pin, pinHash); err != nil {
+					client.send(ServerMessage{Type: MsgTypeAuthFail, Reason: err.Error()})
+					h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "Disarm refused: " + err.Error()})
+					return
+				}
 			}
 			h.Disarm()
 		case MsgTypeConfigure:
@@ -566,6 +573,7 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	token, remaining, err := h.authManager.Authenticate(client.remoteAddr, msg.Key)
 	if err != nil {
 		client.send(NewAuthFail(err.Error(), remaining))
+		h.logEvent(eventlog.Event{Type: eventlog.EventAuthFail, Message: "Pairing refused: " + err.Error()})
 		return
 	}
 
@@ -676,11 +684,12 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 
 	// If PIN protection is currently enabled, require the current PIN
 	// to modify PIN settings (disable, change PIN).
-	pinActive := cfg.PinProtection.Enabled && cfg.PinProtection.Pin != ""
+	pinActive := cfg.PinProtection.Enabled && cfg.PinProtection.PinHash != ""
 	changingPin := !p.PinProtection.Enabled != !cfg.PinProtection.Enabled || p.PinProtection.Pin != ""
 	if pinActive && changingPin {
-		if msg.Pin != cfg.PinProtection.Pin {
+		if err := h.authManager.CheckPin(client.remoteAddr, msg.Pin, cfg.PinProtection.PinHash); err != nil {
 			h.mu.Unlock()
+			h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "PIN settings change refused: " + err.Error()})
 			client.send(ServerMessage{Type: MsgTypePinRequired})
 			return
 		}
@@ -707,11 +716,18 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	cfg.Alarm = p.Alarm
 
 	if p.PinProtection.Pin != "" {
-		cfg.PinProtection.Pin = p.PinProtection.Pin
+		// Only the hash is kept. The PIN itself exists in memory for the
+		// duration of this call and never touches the disk.
+		if hash, err := auth.HashPin(p.PinProtection.Pin); err != nil {
+			log.Errorf("Failed to hash PIN: %v", err)
+		} else {
+			cfg.PinProtection.PinHash = hash
+			cfg.PinProtection.Pin = ""
+		}
 	}
 	cfg.PinProtection.Enabled = p.PinProtection.Enabled
 	pinEnabled := cfg.PinProtection.Enabled
-	pinCode := cfg.PinProtection.Pin
+	pinHash := cfg.PinProtection.PinHash
 	autoArm := cfg.AutoArmOnLock
 
 	ra := p.RemoteAccess
@@ -738,8 +754,22 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	if p.Location.PollSeconds > 0 {
 		cfg.Location.PollSeconds = p.Location.PollSeconds
 	}
-	if p.Location.GeolocateURL != "" {
-		cfg.Location.GeolocateURL = p.Location.GeolocateURL
+	geoURLRejected := false
+	if p.Location.GeolocateURL != "" && p.Location.GeolocateURL != cfg.Location.GeolocateURL {
+		if strings.HasPrefix(p.Location.GeolocateURL, "https://") {
+			// A new endpoint must not inherit the stored API key: a client
+			// could otherwise point the laptop at a server it controls and
+			// collect the key on the next Wi-Fi resolve. Changing the endpoint
+			// means supplying the key that goes with it.
+			if p.Location.GeolocateKey == "" {
+				cfg.Location.GeolocateKey = ""
+			}
+			cfg.Location.GeolocateURL = p.Location.GeolocateURL
+		} else {
+			// The API key travels in this URL's query string, so plain HTTP
+			// would put it on the wire in cleartext.
+			geoURLRejected = true
+		}
 	}
 	if p.Location.GeolocateKey != "" {
 		cfg.Location.GeolocateKey = p.Location.GeolocateKey
@@ -752,7 +782,7 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		log.Errorf("Failed to save config: %v", err)
 	}
 
-	h.SetPinProtection(pinEnabled, pinCode)
+	h.SetPinProtection(pinEnabled, pinHash)
 	h.SetAutoArmOnLock(autoArm)
 
 	if p.EnabledSensors != nil {
@@ -769,6 +799,9 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 
 	if needsRestart {
 		h.PushAlert(NewAlert("system", "warning", "Port changed — restart required to take effect"))
+	}
+	if geoURLRejected {
+		h.PushAlert(NewAlert("system", "warning", "Geolocation endpoint must use https:// — change ignored"))
 	}
 	if locationChanged {
 		// The tracker's providers are built once at startup from this config,
@@ -790,9 +823,10 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	}
 
 	// Require current PIN to reset config when PIN protection is active.
-	if cfg.PinProtection.Enabled && cfg.PinProtection.Pin != "" {
-		if msg.Pin != cfg.PinProtection.Pin {
+	if cfg.PinProtection.Enabled && cfg.PinProtection.PinHash != "" {
+		if err := h.authManager.CheckPin(client.remoteAddr, msg.Pin, cfg.PinProtection.PinHash); err != nil {
 			h.mu.Unlock()
+			h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "Config reset refused: " + err.Error()})
 			client.send(ServerMessage{Type: MsgTypePinRequired})
 			return
 		}
@@ -811,7 +845,7 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 		log.Errorf("Failed to save config: %v", err)
 	}
 
-	h.SetPinProtection(defaults.PinProtection.Enabled, defaults.PinProtection.Pin)
+	h.SetPinProtection(defaults.PinProtection.Enabled, defaults.PinProtection.PinHash)
 	h.SetAutoArmOnLock(defaults.AutoArmOnLock)
 
 	payload := configToPayload(cfg)
@@ -846,7 +880,7 @@ func configToPayload(cfg *config.Config) ConfigPayload {
 		Alarm:                  cfg.Alarm,
 		PinProtection: PinProtectionPayload{
 			Enabled: cfg.PinProtection.Enabled,
-			HasPin:  cfg.PinProtection.Pin != "",
+			HasPin:  cfg.PinProtection.PinHash != "",
 		},
 		EnabledSensors: cfg.EnabledSensors,
 		RemoteAccess:   remoteAccess,

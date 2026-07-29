@@ -33,6 +33,7 @@ type Server struct {
 	hub        *ws.Hub
 	tlsCert    *tls.Certificate
 	certFP     string
+	devMode    bool
 }
 
 // New creates a new HTTP server.
@@ -42,6 +43,7 @@ func New(cfg Config) *Server {
 		port:    cfg.Port,
 		tlsCert: cfg.TLSCert,
 		certFP:  cfg.CertFP,
+		devMode: cfg.DevMode,
 	}
 
 	mux := http.NewServeMux()
@@ -57,7 +59,7 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	s.httpServer = &http.Server{
-		Handler:           mux,
+		Handler:           securityHeaders(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -142,7 +144,17 @@ func (s *Server) Port() int {
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // Allow connections from any origin (same LAN)
+		// The default check accepts requests with no Origin header (native
+		// clients, tests) and browser requests whose Origin matches the Host —
+		// which is always true for the embedded UI, since the page and the
+		// socket are served from the same address. What it refuses is exactly
+		// the attack: some other website open in a browser on this network (or
+		// pointed here by DNS rebinding) quietly opening a socket to this
+		// server and spending pairing attempts from the victim's own address.
+		//
+		// Dev mode is the one legitimate cross-origin case: Vite serves the UI
+		// on its own port and proxies /ws here with the browser's Origin intact.
+		InsecureSkipVerify: s.devMode,
 	})
 	if err != nil {
 		log.Errorf("WebSocket accept: %v", err)
@@ -150,6 +162,26 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.hub.HandleConnection(r.Context(), conn, r.RemoteAddr)
+}
+
+// securityHeaders wraps a handler with response headers that pin down what the
+// served pages may do. The UI is self-contained — its own scripts, styles and
+// socket, plus the opt-in OpenStreetMap embed — so everything else is refused.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		// ws:/wss: are listed alongside 'self' because some browsers do not
+		// let 'self' match a scheme change from http(s) to ws(s).
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; connect-src 'self' ws: wss:; "+
+				"frame-src https://www.openstreetmap.org; "+
+				"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual

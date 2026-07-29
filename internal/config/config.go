@@ -22,8 +22,12 @@ type AlarmConfig struct {
 
 // PinProtection controls optional PIN-based disarm protection.
 type PinProtection struct {
-	Enabled bool   `json:"enabled"`
-	Pin     string `json:"pin,omitempty"`
+	Enabled bool `json:"enabled"`
+	// Pin is the legacy cleartext field. It is read for migration only: on
+	// startup a non-empty value is hashed into PinHash and cleared.
+	Pin string `json:"pin,omitempty"`
+	// PinHash is the salted hash of the disarm PIN, produced by auth.HashPin.
+	PinHash string `json:"pin_hash,omitempty"`
 }
 
 // Location controls whether and how the monitored machine reports where it is.

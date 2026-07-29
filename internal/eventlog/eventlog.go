@@ -18,6 +18,8 @@ const (
 	EventAlert      EventType = "alert"
 	EventConnect    EventType = "connect"
 	EventDisconnect EventType = "disconnect"
+	EventAuthFail   EventType = "auth_fail"
+	EventPinFail    EventType = "pin_fail"
 )
 
 // Event represents a single logged event.
