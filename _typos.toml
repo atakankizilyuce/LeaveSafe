@@ -11,3 +11,5 @@ AttributePermissionsWriteable = "AttributePermissionsWriteable"
 [default.extend-words]
 # "UPnP" splits into U/Pn/P, and "Pn" reads as a typo for "On".
 Pn = "Pn"
+# schtasks spells its output-format flag "/fo", which reads as a typo for "of".
+fo = "fo"

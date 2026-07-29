@@ -203,7 +203,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// backupCorruptConfig renames an unparseable config out of the way and returns
+// backupCorruptConfig renames an unparsable config out of the way and returns
 // the new path.
 func backupCorruptConfig(path string) (string, error) {
 	backup := fmt.Sprintf("%s.corrupt-%d", path, time.Now().Unix())

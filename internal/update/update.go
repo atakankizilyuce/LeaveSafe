@@ -53,7 +53,7 @@ type release struct {
 	TagName  string `json:"tag_name"`
 	HTMLURL  string `json:"html_url"`
 	Draft    bool   `json:"draft"`
-	Prelease bool   `json:"prerelease"`
+	Prerelease bool   `json:"prerelease"`
 }
 
 // Check reports whether a release newer than current exists.
@@ -101,7 +101,7 @@ func (c Checker) Check(ctx context.Context, current string) (Result, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
 		return Result{}, fmt.Errorf("decode release: %w", err)
 	}
-	if rel.Draft || rel.Prelease || rel.TagName == "" {
+	if rel.Draft || rel.Prerelease || rel.TagName == "" {
 		return Result{}, nil
 	}
 

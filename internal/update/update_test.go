@@ -116,7 +116,7 @@ func TestMalformedResponseIsReported(t *testing.T) {
 	srv := releaseServer(t, http.StatusOK, `not json`)
 
 	if _, err := (Checker{URL: srv.URL}).Check(context.Background(), "v1.0.0"); err == nil {
-		t.Error("an unparseable response returned no error")
+		t.Error("an unparsable response returned no error")
 	}
 }
 
