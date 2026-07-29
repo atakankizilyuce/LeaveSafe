@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Three steps: scan the QR code on the laptop, arm from the phone, and get an alert the moment a sensor changes.">
+  <title>Scan · Arm · Get told</title>
+
+  <defs>
+    <linearGradient id="fbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c1019"/>
+      <stop offset="1" stop-color="#070a11"/>
+    </linearGradient>
+    <clipPath id="fframe"><rect width="1200" height="300" rx="20"/></clipPath>
+    <filter id="fglow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <g clip-path="url(#fframe)" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">
+    <rect width="1200" height="300" fill="url(#fbg)"/>
+
+    <!-- ── 1. scan ──────────────────────────────────────────────── -->
+    <g>
+      <rect x="40" y="54" width="300" height="176" rx="14" fill="#101623" stroke="#8ea0ff" stroke-opacity=".16"/>
+      <text x="60" y="86" font-size="12" letter-spacing="3" fill="#6c7cff">01 · SCAN</text>
+
+      <!-- laptop -->
+      <rect x="96" y="104" width="132" height="84" rx="7" fill="#0a0e17" stroke="#8ea0ff" stroke-opacity=".3"/>
+      <rect x="80" y="192" width="164" height="8" rx="4" fill="#1b2436"/>
+
+      <!-- qr -->
+      <g fill="#c9d4f0" transform="translate(126 118)">
+        <rect width="18" height="18" fill="none" stroke="#c9d4f0" stroke-width="4"/>
+        <rect x="54" width="18" height="18" fill="none" stroke="#c9d4f0" stroke-width="4"/>
+        <rect y="54" width="18" height="18" fill="none" stroke="#c9d4f0" stroke-width="4"/>
+        <rect x="28" y="6" width="6" height="6"/><rect x="34" y="20" width="6" height="6"/>
+        <rect x="22" y="30" width="6" height="6"/><rect x="40" y="34" width="6" height="6"/>
+        <rect x="28" y="46" width="6" height="6"/><rect x="52" y="30" width="6" height="6"/>
+        <rect x="62" y="38" width="6" height="6"/><rect x="44" y="56" width="6" height="6"/>
+        <rect x="56" y="62" width="6" height="6"/><rect x="66" y="52" width="6" height="6"/>
+        <rect x="6" y="28" width="6" height="6"/><rect x="14" y="42" width="6" height="6"/>
+      </g>
+      <!-- scan line -->
+      <rect x="122" y="116" width="80" height="2" fill="#6c7cff" opacity=".9" filter="url(#fglow)">
+        <animate attributeName="y" values="116;178;116" dur="3.2s" repeatCount="indefinite"/>
+      </rect>
+
+      <text x="60" y="222" font-size="13" letter-spacing="1.4" fill="#8b96a9">Run it. A QR code appears.</text>
+    </g>
+
+    <!-- connector 1 -->
+    <g>
+      <path d="M356 142h84" stroke="#8ea0ff" stroke-opacity=".22" stroke-width="1.5" stroke-dasharray="5 6"/>
+      <circle r="3.5" fill="#6c7cff">
+        <animateMotion path="M356 142h84" dur="1.9s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;1;1;0" dur="1.9s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- ── 2. arm ───────────────────────────────────────────────── -->
+    <g>
+      <rect x="456" y="54" width="300" height="176" rx="14" fill="#101623" stroke="#8ea0ff" stroke-opacity=".16">
+        <animate attributeName="stroke" values="#8ea0ff;#8ea0ff;#ff4d3d;#ff4d3d;#8ea0ff"
+                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
+      </rect>
+      <text x="476" y="86" font-size="12" letter-spacing="3" fill="#6c7cff">
+        <animate attributeName="fill" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
+                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>02 · ARM</text>
+
+      <!-- phone -->
+      <rect x="558" y="100" width="96" height="100" rx="12" fill="#0a0e17" stroke="#8ea0ff" stroke-opacity=".32">
+        <animate attributeName="stroke" values="#8ea0ff;#8ea0ff;#ff4d3d;#ff4d3d;#8ea0ff"
+                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
+      </rect>
+      <text x="606" y="146" text-anchor="middle" font-size="15" font-weight="700" letter-spacing="1"
+            font-family="Helvetica Neue,Helvetica,Arial,sans-serif" fill="#dfe6f5" opacity="1">STANDBY
+        <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.30;0.38;0.94;1"
+                 dur="9s" repeatCount="indefinite"/></text>
+      <text x="606" y="146" text-anchor="middle" font-size="17" font-weight="700" letter-spacing="1"
+            font-family="Helvetica Neue,Helvetica,Arial,sans-serif" fill="#ff4d3d" opacity="0">ARMED
+        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.38;0.46;0.9;0.96;1"
+                 dur="9s" repeatCount="indefinite"/></text>
+      <rect x="572" y="166" width="68" height="18" rx="9" fill="#6c7cff" opacity=".9">
+        <animate attributeName="fill" values="#6c7cff;#6c7cff;#2a1a1c;#2a1a1c;#6c7cff"
+                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
+      </rect>
+
+      <text x="476" y="222" font-size="13" letter-spacing="1.4" fill="#8b96a9">Scan it. Tap arm. Walk away.</text>
+    </g>
+
+    <!-- connector 2 -->
+    <g>
+      <path d="M772 142h84" stroke="#8ea0ff" stroke-opacity=".22" stroke-width="1.5" stroke-dasharray="5 6"/>
+      <circle r="3.5" fill="#ff4d3d">
+        <animateMotion path="M856 142h-84" dur="1.9s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;1;1;0" dur="1.9s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- ── 3. told ──────────────────────────────────────────────── -->
+    <g>
+      <rect x="872" y="54" width="288" height="176" rx="14" fill="#101623" stroke="#8ea0ff" stroke-opacity=".16"/>
+      <text x="892" y="86" font-size="12" letter-spacing="3" fill="#ff4d3d">03 · GET TOLD</text>
+
+      <g>
+        <rect x="892" y="104" width="80" height="38" rx="8" fill="#1a1113" stroke="#ff4d3d" stroke-opacity=".35">
+          <animate attributeName="fill" values="#141a28;#141a28;#3a1512;#141a28;#141a28"
+                   keyTimes="0;0.42;0.5;0.72;1" dur="3.4s" repeatCount="indefinite"/>
+          <animate attributeName="stroke-opacity" values=".25;.25;.95;.25;.25" keyTimes="0;0.42;0.5;0.72;1"
+                   dur="3.4s" repeatCount="indefinite"/>
+        </rect>
+        <text x="904" y="128" font-size="11" letter-spacing="1.4" fill="#e4bdb7">POWER</text>
+
+        <rect x="982" y="104" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
+        <text x="994" y="128" font-size="11" letter-spacing="1.4" fill="#7c8798">LID</text>
+
+        <rect x="1072" y="104" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
+        <text x="1084" y="128" font-size="11" letter-spacing="1.4" fill="#7c8798">USB</text>
+
+        <rect x="892" y="150" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
+        <text x="904" y="174" font-size="11" letter-spacing="1.4" fill="#7c8798">SCREEN</text>
+
+        <rect x="982" y="150" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
+        <text x="994" y="174" font-size="11" letter-spacing="1.4" fill="#7c8798">NET</text>
+
+        <rect x="1072" y="150" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
+        <text x="1084" y="174" font-size="11" letter-spacing="1.4" fill="#7c8798">INPUT</text>
+      </g>
+
+      <text x="892" y="222" font-size="13" letter-spacing="1.4" fill="#8b96a9">Your phone knows instantly.</text>
+    </g>
+
+    <text x="600" y="272" text-anchor="middle" font-size="11.5" letter-spacing="3" fill="#4d5769">
+      NO INTERNET REQUIRED · THE PHONE TALKS STRAIGHT TO THE LAPTOP
+    </text>
+
+    <rect x=".5" y=".5" width="1199" height="299" rx="20" fill="none" stroke="#8ea0ff" stroke-opacity=".14"/>
+  </g>
+</svg>
