@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Run the full CI gate — format, typos, lint, tests, frontend, build,
+  # vulncheck — before a single artifact is published.
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    name: Release (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    needs: ci
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            runner: ubuntu-latest
+            ext: .exe
+            cgo: "0"
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+            ext: ""
+            cgo: "0"
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+            ext: ""
+            cgo: "0"
+          - goos: darwin
+            goarch: amd64
+            runner: macos-latest
+            ext: ""
+            cgo: "1"
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+            ext: ""
+            cgo: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          mkdir -p dist
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
+            ./cmd/leavesafe
+
+      - name: Checksum
+        shell: bash
+        run: |
+          cd dist
+          shasum -a 256 leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
+            > leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}.sha256
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+            dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}.sha256
+          generate_release_notes: true
