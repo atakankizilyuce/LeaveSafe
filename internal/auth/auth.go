@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -37,6 +38,16 @@ type Options struct {
 	// MaxTrackedAddrs bounds the failure table so that a stream of attempts
 	// from spoofed addresses cannot grow it without limit.
 	MaxTrackedAddrs int
+	// SessionTTL is how long a session stays valid after it is created,
+	// regardless of activity. Zero means sessions never expire on age.
+	SessionTTL time.Duration
+	// SessionIdle is how long a session may go unused before it is dropped.
+	// Zero means idle sessions are kept.
+	SessionIdle time.Duration
+	// PairingKey fixes the key instead of generating a fresh one. It must be 16
+	// digits with a valid Luhn check; anything else is rejected. Used when the
+	// key is persisted so a phone stays paired across restarts.
+	PairingKey string
 }
 
 func (o Options) withDefaults() Options {
@@ -62,18 +73,28 @@ type attempts struct {
 	lastSeen    time.Time
 }
 
+// session is one paired client's authorisation to act.
+type session struct {
+	createdAt time.Time
+	lastSeen  time.Time
+}
+
 // Manager handles pairing key generation, validation, rate limiting, and sessions.
 type Manager struct {
 	mu         sync.Mutex
 	opts       Options
-	pairingKey string          // 16-digit key with Luhn check
-	sessions   map[string]bool // active session tokens
+	pairingKey string              // 16-digit key with Luhn check
+	sessions   map[string]*session // active session tokens
 
 	// byAddr holds failures per remote address rather than one global counter.
 	// A global counter is a remote kill switch once the port is reachable from
 	// the internet: anyone can spend five wrong keys and lock the owner out for
 	// as long as they care to keep doing it.
 	byAddr map[string]*attempts
+
+	// now is time.Now, replaced in tests so expiry can be exercised without
+	// sleeping through a session lifetime.
+	now func() time.Time
 }
 
 // NewManager creates a new auth manager with default policy and a fresh
@@ -84,15 +105,23 @@ func NewManager() (*Manager, error) {
 
 // NewManagerWithOptions creates a new auth manager with the given policy.
 func NewManagerWithOptions(opts Options) (*Manager, error) {
-	key, err := generatePairingKey()
-	if err != nil {
-		return nil, fmt.Errorf("generate pairing key: %w", err)
+	key := strings.ReplaceAll(opts.PairingKey, "-", "")
+	if key == "" {
+		generated, err := generatePairingKey()
+		if err != nil {
+			return nil, fmt.Errorf("generate pairing key: %w", err)
+		}
+		key = generated
+	} else if len(key) != 16 || !luhnValid(key) {
+		return nil, fmt.Errorf("supplied pairing key is not a valid 16-digit key")
 	}
+
 	return &Manager{
 		opts:       opts.withDefaults(),
 		pairingKey: key,
-		sessions:   make(map[string]bool),
+		sessions:   make(map[string]*session),
 		byAddr:     make(map[string]*attempts),
+		now:        time.Now,
 	}, nil
 }
 
@@ -122,12 +151,16 @@ func (m *Manager) Authenticate(addr, key string) (string, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	now := time.Now()
+	now := m.now()
 	rec := m.record(host, now)
 
 	if now.Before(rec.lockedUntil) {
-		return "", 0, fmt.Errorf("locked out for %.0f seconds", time.Until(rec.lockedUntil).Seconds())
+		return "", 0, fmt.Errorf("locked out for %.0f seconds", now.Sub(rec.lockedUntil).Abs().Seconds())
 	}
+
+	// Expired sessions are swept before the cap is measured, so a phone whose
+	// session timed out overnight does not occupy a slot the owner needs now.
+	m.sweepSessionsLocked(now)
 
 	// The session cap protects a real resource and stays global. It is checked
 	// before the key so that a full server does not leak whether a key was
@@ -153,7 +186,7 @@ func (m *Manager) Authenticate(addr, key string) (string, int, error) {
 	if err != nil {
 		return "", m.opts.MaxAttempts, fmt.Errorf("generate session token: %w", err)
 	}
-	m.sessions[token] = true
+	m.sessions[token] = &session{createdAt: now, lastSeen: now}
 	return token, m.opts.MaxAttempts, nil
 }
 
@@ -167,11 +200,11 @@ func (m *Manager) CheckPin(addr, pin, pinHash string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	now := time.Now()
+	now := m.now()
 	rec := m.record(host, now)
 
 	if now.Before(rec.lockedUntil) {
-		return fmt.Errorf("locked out for %.0f seconds", time.Until(rec.lockedUntil).Seconds())
+		return fmt.Errorf("locked out for %.0f seconds", now.Sub(rec.lockedUntil).Abs().Seconds())
 	}
 
 	if !VerifyPinHash(pin, pinHash) {
@@ -231,12 +264,92 @@ func (m *Manager) evictLocked(now time.Time) {
 	}
 }
 
-// ValidateSession checks if a session token is valid.
+// ValidateSession reports whether a session token is still valid, without
+// counting the check itself as activity. An expired token is dropped as it is
+// found, so a caller polling this also does the cleanup.
+//
+// A token is a bearer credential: whoever holds it can arm, disarm and read the
+// machine's position without ever presenting the pairing key. Before the
+// lifetime limits, one lived until the process restarted or the key was rotated
+// by hand — so a token captured from a phone left on a desk stayed useful
+// indefinitely. Both limits are configurable and either can be switched off by
+// setting it to zero.
 func (m *Manager) ValidateSession(token string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.sessions[token]
+	return m.validSessionLocked(token, m.now())
 }
+
+// TouchSession validates a token and, if it is still good, restarts its idle
+// timer. Call it for real client activity — a message the paired phone sent —
+// and never for the server's own periodic checks, which would otherwise keep an
+// abandoned session alive forever.
+func (m *Manager) TouchSession(token string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := m.now()
+	if !m.validSessionLocked(token, now) {
+		return false
+	}
+	m.sessions[token].lastSeen = now
+	return true
+}
+
+// validSessionLocked reports whether token names a live session, deleting it if
+// it has expired. Callers must hold m.mu.
+func (m *Manager) validSessionLocked(token string, now time.Time) bool {
+	sess, ok := m.sessions[token]
+	if !ok {
+		return false
+	}
+	if m.sessionExpiredLocked(sess, now) {
+		delete(m.sessions, token)
+		return false
+	}
+	return true
+}
+
+// sessionExpiredLocked reports whether sess has passed either limit. Callers
+// must hold m.mu.
+func (m *Manager) sessionExpiredLocked(sess *session, now time.Time) bool {
+	if m.opts.SessionTTL > 0 && now.Sub(sess.createdAt) >= m.opts.SessionTTL {
+		return true
+	}
+	if m.opts.SessionIdle > 0 && now.Sub(sess.lastSeen) >= m.opts.SessionIdle {
+		return true
+	}
+	return false
+}
+
+// sweepSessionsLocked drops every expired session. Callers must hold m.mu.
+func (m *Manager) sweepSessionsLocked(now time.Time) {
+	if m.opts.SessionTTL <= 0 && m.opts.SessionIdle <= 0 {
+		return
+	}
+	for token, sess := range m.sessions {
+		if m.sessionExpiredLocked(sess, now) {
+			delete(m.sessions, token)
+		}
+	}
+}
+
+// SweepSessions drops expired sessions and returns how many were removed. The
+// hub calls it on its heartbeat so a session that goes stale while its socket
+// stays open is noticed without waiting for the next message.
+func (m *Manager) SweepSessions() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	before := len(m.sessions)
+	m.sweepSessionsLocked(m.now())
+	return before - len(m.sessions)
+}
+
+// SessionTTL returns the configured absolute session lifetime, zero if none.
+func (m *Manager) SessionTTL() time.Duration { return m.opts.SessionTTL }
+
+// SessionIdle returns the configured idle timeout, zero if none.
+func (m *Manager) SessionIdle() time.Duration { return m.opts.SessionIdle }
 
 // RemoveSession removes a session token.
 func (m *Manager) RemoveSession(token string) {
@@ -256,7 +369,7 @@ func (m *Manager) Regenerate() (string, error) {
 		return "", fmt.Errorf("generate pairing key: %w", err)
 	}
 	m.pairingKey = key
-	m.sessions = make(map[string]bool)
+	m.sessions = make(map[string]*session)
 	m.byAddr = make(map[string]*attempts)
 
 	k := m.pairingKey

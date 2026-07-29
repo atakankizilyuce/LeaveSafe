@@ -27,6 +27,18 @@ type Client struct {
 	token         string
 }
 
+// close tears down the underlying connection, whichever transport it uses.
+// Errors are ignored: the caller is already dropping this client.
+func (c *Client) close() {
+	if c.transport != nil {
+		_ = c.transport.Close()
+		return
+	}
+	if c.conn != nil {
+		_ = c.conn.Close(websocket.StatusNormalClosure, "session expired")
+	}
+}
+
 // send marshals and writes a message to the client.
 func (c *Client) send(msg ServerMessage) {
 	data, err := json.Marshal(msg)

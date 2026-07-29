@@ -14,6 +14,8 @@ import (
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
+	"github.com/leavesafe/leavesafe/internal/safe"
+	"github.com/leavesafe/leavesafe/internal/state"
 	"nhooyr.io/websocket"
 )
 
@@ -46,6 +48,7 @@ type Hub struct {
 	pinHash         string
 	alertChan       chan ServerMessage
 	eventLog        *eventlog.Logger
+	stateStore      *state.Store
 
 	heartbeatInterval     time.Duration
 	disconnectGracePeriod time.Duration
@@ -215,6 +218,49 @@ func (h *Hub) IsArmed() bool {
 	return h.armed
 }
 
+// SetStateStore attaches the store that records the armed state across
+// restarts. A nil store turns the feature off, and every call site tolerates
+// that, so tests and non-persistent embeddings need not supply one.
+func (h *Hub) SetStateStore(store *state.Store) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.stateStore = store
+}
+
+// RestoreArmed puts the hub back into the armed state without re-running the
+// side effects of a fresh arm — no event is logged as if the user had just
+// tapped Arm, because they did not. Used at startup when the previous run ended
+// while armed and the config asks for the state to be restored.
+func (h *Hub) RestoreArmed() {
+	h.mu.Lock()
+	h.armed = true
+	tracker := h.tracker
+	trackerCtx := h.trackerCtx
+	h.mu.Unlock()
+
+	h.sensorMgr.StartEnabled()
+	if tracker != nil && trackerCtx != nil {
+		tracker.Start(trackerCtx)
+	}
+	h.broadcastStatus()
+	h.logEvent(eventlog.Event{Type: eventlog.EventArm, Message: "Armed state restored after restart"})
+}
+
+// persistArmed records the armed state for the next run to read. A failure here
+// costs the restart warning, not the monitoring itself, so it is logged rather
+// than propagated.
+func (h *Hub) persistArmed(armed bool) {
+	h.mu.RLock()
+	store := h.stateStore
+	h.mu.RUnlock()
+	if store == nil {
+		return
+	}
+	if err := store.Save(armed); err != nil {
+		log.Warnf("Could not record the armed state: %v", err)
+	}
+}
+
 // Arm activates monitoring.
 func (h *Hub) Arm() {
 	h.mu.Lock()
@@ -222,6 +268,8 @@ func (h *Hub) Arm() {
 	tracker := h.tracker
 	trackerCtx := h.trackerCtx
 	h.mu.Unlock()
+
+	h.persistArmed(true)
 
 	h.sensorMgr.StartEnabled()
 
@@ -244,6 +292,8 @@ func (h *Hub) Disarm() {
 	h.alarmSensor = ""
 	tracker := h.tracker
 	h.mu.Unlock()
+
+	h.persistArmed(false)
 
 	h.sensorMgr.StopAll()
 	if tracker != nil {
@@ -442,8 +492,38 @@ func (h *Hub) RunHeartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			h.dropExpiredSessions()
 			h.broadcastStatus()
 		}
+	}
+}
+
+// dropExpiredSessions disconnects clients whose session has timed out.
+//
+// A session that expires while its socket is still open would otherwise stay
+// usable until the phone next sent a message — which, for a phone sitting idle
+// in a pocket, could be hours after the limit passed. Checking on the heartbeat
+// makes the timeout mean what it says.
+func (h *Hub) dropExpiredSessions() {
+	if h.authManager.SessionTTL() <= 0 && h.authManager.SessionIdle() <= 0 {
+		return
+	}
+
+	h.mu.RLock()
+	stale := make([]*Client, 0)
+	for client := range h.clients {
+		if client.authenticated && !h.authManager.ValidateSession(client.token) {
+			stale = append(stale, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, client := range stale {
+		log.Info("Session expired, disconnecting client")
+		client.send(NewAuthFail("session expired, pair again", h.authManager.MaxAttempts()))
+		h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Session expired"})
+		client.close()
+		h.removeClient(client)
 	}
 }
 
@@ -462,12 +542,16 @@ func (h *Hub) GetSensorInfos() []SensorInfo {
 	return infos
 }
 
+// The alarm callbacks reach into the platform audio and volume backends, which
+// speak to WinMM, PulseAudio and CoreAudio. A panic down there must not stop
+// the hub from telling the phone what happened — the phone alert is the part
+// the user actually receives when they are not at the machine.
 func (h *Hub) fireAlarmTrigger() {
 	h.mu.RLock()
 	cb := h.onAlarmTrigger
 	h.mu.RUnlock()
 	if cb != nil {
-		cb()
+		safe.Do("alarm-trigger", cb)
 	}
 }
 
@@ -476,11 +560,25 @@ func (h *Hub) fireAlarmDismiss() {
 	cb := h.onAlarmDismiss
 	h.mu.RUnlock()
 	if cb != nil {
-		cb()
+		safe.Do("alarm-dismiss", cb)
 	}
 }
 
 func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
+	// Anything an authenticated client sends is activity, and activity is what
+	// the idle timeout measures. Pairing itself is excluded: there is no
+	// session to touch yet.
+	if client.authenticated && msg.Type != MsgTypeAuth {
+		if !h.authManager.TouchSession(client.token) {
+			log.Info("Session expired mid-connection, refusing the message")
+			client.send(NewAuthFail("session expired, pair again", h.authManager.MaxAttempts()))
+			h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Session expired"})
+			client.close()
+			h.removeClient(client)
+			return
+		}
+	}
+
 	switch msg.Type {
 	case MsgTypeAuth:
 		h.handleAuth(client, msg)
@@ -558,14 +656,15 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 			}
 			if sensor != "" {
 				h.sensorMgr.Disable(sensor)
-				go func(name string, d int) {
+				name, d := sensor, duration
+				safe.Go("sensor-unpause:"+name, func() {
 					time.Sleep(time.Duration(d) * time.Second)
 					h.sensorMgr.Enable(name)
 					if h.IsArmed() {
 						h.sensorMgr.StartEnabled()
 					}
 					h.broadcastStatus()
-				}(sensor, duration)
+				})
 			}
 			h.broadcastStatus()
 			log.WithField("sensor", sensor).Infof("Alarm dismissed, sensor paused for %ds", duration)
@@ -803,8 +902,18 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		cfg.Location.GeolocateKey = p.Location.GeolocateKey
 	}
 
+	// The phone is a client like any other and its numbers are not trusted any
+	// further than a hand-edited file's would be. A zero heartbeat here would
+	// be a ticker panic on the next restart; a million-second lockout would be
+	// the owner locked out of their own alarm.
+	adjustments := cfg.Validate()
+
 	snapshot := *cfg
 	h.mu.Unlock()
+
+	for _, note := range adjustments {
+		log.Warnf("Config from client adjusted: %s", note)
+	}
 
 	if err := config.Save(&snapshot); err != nil {
 		log.Errorf("Failed to save config: %v", err)
@@ -950,7 +1059,7 @@ func (h *Hub) removeClient(client *Client) {
 
 	if armed && clientCount == 0 && disconnectCb != nil {
 		log.Warn("All clients disconnected while armed - triggering alarm")
-		go func() {
+		safe.Go("disconnect-alarm", func() {
 			time.Sleep(grace)
 			h.mu.RLock()
 			count := len(h.clients)
@@ -959,7 +1068,7 @@ func (h *Hub) removeClient(client *Client) {
 			if count == 0 && isArmed {
 				disconnectCb()
 			}
-		}()
+		})
 	}
 }
 

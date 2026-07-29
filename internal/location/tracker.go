@@ -6,6 +6,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/leavesafe/leavesafe/internal/safe"
 )
 
 const (
@@ -144,7 +146,10 @@ func (t *Tracker) Start(ctx context.Context) {
 	poll := t.poll
 	t.mu.Unlock()
 
-	go t.loop(runCtx, poll)
+	// Supervised: the providers shell out to platform Wi-Fi tools and parse
+	// their output, so a malformed scan line must not end position reporting
+	// for the rest of the armed session.
+	safe.Supervise(runCtx, "location-tracker", func(ctx context.Context) { t.loop(ctx, poll) })
 }
 
 // Stop halts polling. The last fix is deliberately kept, so the phone can still
