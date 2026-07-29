@@ -50,9 +50,9 @@ type Checker struct {
 
 // release is the subset of the GitHub release payload this needs.
 type release struct {
-	TagName  string `json:"tag_name"`
-	HTMLURL  string `json:"html_url"`
-	Draft    bool   `json:"draft"`
+	TagName    string `json:"tag_name"`
+	HTMLURL    string `json:"html_url"`
+	Draft      bool   `json:"draft"`
 	Prerelease bool   `json:"prerelease"`
 }
 
