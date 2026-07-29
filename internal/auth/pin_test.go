@@ -79,7 +79,7 @@ func TestVerifyAcceptsLegacySHA256Hashes(t *testing.T) {
 		"1f2a1d4bd4b1d1bd8c1cbe6b71ad2ee27b47ee1e04b3b2b47e0dd0b1a54a2ff5"
 
 	// The digest above is a placeholder; compute the real one the same way the
-	// old code did so the test asserts on behaviour rather than a copied string.
+	// old code did so the test asserts on behavior rather than a copied string.
 	real := legacySHA256Hash(t, "000102030405060708090a0b0c0d0e0f", "4271")
 
 	if VerifyPinHash("4271", legacy) {

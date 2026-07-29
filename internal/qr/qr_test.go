@@ -7,7 +7,7 @@ import (
 )
 
 // The dashboard draws the code into a fixed box and positions the status panel
-// beside it. A row of a different width than its neighbours would shear the
+// beside it. A row of a different width than its neighbors would shear the
 // layout, so equal visual width is a real constraint rather than a nicety.
 func TestEveryRowHasTheSameWidth(t *testing.T) {
 	lines, err := Lines("https://192.168.1.24:9443?key=1234567890123456")

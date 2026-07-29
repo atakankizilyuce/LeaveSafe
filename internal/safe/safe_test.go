@@ -21,6 +21,10 @@ func TestMain(m *testing.M) {
 
 // restartBackoffForTest swaps the supervision backoff so a restart test does
 // not have to wait the production delay, and returns the previous value.
+//
+// Only ever called from the test goroutine, before Supervise and again in
+// cleanup. Supervise reads the value on the caller's goroutine for exactly this
+// reason: reading it from the supervised goroutine would race with the restore.
 func restartBackoffForTest(d time.Duration) time.Duration {
 	old := restartBackoff
 	restartBackoff = d

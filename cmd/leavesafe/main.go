@@ -296,7 +296,7 @@ func (sb *statusBar) writeLine(format string, args ...interface{}) {
 	sb.doRedrawGrid()
 }
 
-// stripANSI removes the colour and cursor escapes the dashboard uses, so the
+// stripANSI removes the color and cursor escapes the dashboard uses, so the
 // same message can be written to a log file.
 func stripANSI(s string) string {
 	var b strings.Builder

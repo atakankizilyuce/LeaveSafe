@@ -58,7 +58,11 @@ func installAutostart(exe string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// 0700 on a directory in the user's own Library, and 0600 on the plist
+	// below. launchd reads user agents as root, so tightening these costs
+	// nothing; it refuses group- or world-writable plists outright, which these
+	// are not.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("create LaunchAgents directory: %w", err)
 	}
 
@@ -68,7 +72,7 @@ func installAutostart(exe string) (string, error) {
 	stderrPath := LogFilePath() + ".launchd.err"
 
 	plist := fmt.Sprintf(plistTemplate, agentLabel, exe, stdoutPath, stderrPath)
-	if err := os.WriteFile(path, []byte(plist), 0o644); err != nil { // #nosec G306 -- launchd requires the plist to be readable
+	if err := os.WriteFile(path, []byte(plist), 0o600); err != nil {
 		return "", fmt.Errorf("write LaunchAgent: %w", err)
 	}
 

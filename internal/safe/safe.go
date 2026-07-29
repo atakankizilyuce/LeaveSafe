@@ -116,6 +116,11 @@ func Go(name string, fn func()) {
 // This is what the long-lived loops use — the alert dispatcher, the heartbeat,
 // sensor polling. Those must still be running when the user comes back.
 func Supervise(ctx context.Context, name string, fn func(context.Context)) {
+	// Read once, here on the caller's goroutine, rather than on every restart.
+	// The supervised goroutine outlives the call, so reading a package variable
+	// from inside it would race with a test swapping the value.
+	backoff := restartBackoff
+
 	go func() {
 		for {
 			if ctx.Err() != nil {
@@ -124,11 +129,11 @@ func Supervise(ctx context.Context, name string, fn func(context.Context)) {
 			if completed := runOnce(ctx, name, fn); completed {
 				return
 			}
-			log.Warnf("Restarting %s in %v after a panic", name, restartBackoff)
+			log.Warnf("Restarting %s in %v after a panic", name, backoff)
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(restartBackoff):
+			case <-time.After(backoff):
 			}
 		}
 	}()

@@ -193,7 +193,9 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		backup, backupErr := backupCorruptConfig(path)
 		if backupErr != nil {
-			return Default(), fmt.Errorf("config is not valid JSON (%w), and it could not be backed up: %v", err, backupErr)
+			// The parse failure is what the caller acts on; the backup failure
+			// is why the file is still sitting there, so both are wrapped.
+			return Default(), fmt.Errorf("config is not valid JSON (%w), and it could not be backed up (%w)", err, backupErr)
 		}
 		return Default(), fmt.Errorf("config is not valid JSON (%w); the previous file was kept as %s", err, backup)
 	}
@@ -211,7 +213,7 @@ func backupCorruptConfig(path string) (string, error) {
 	return backup, nil
 }
 
-// Validate clamps values that would break the program if honoured literally and
+// Validate clamps values that would break the program if honored literally and
 // returns a description of every adjustment it made.
 //
 // A hand-edited config is the normal way to change most of these, and a typo
