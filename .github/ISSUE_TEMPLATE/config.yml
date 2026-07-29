@@ -1,0 +1,14 @@
+# A security flaw here does not leak data — it lets a machine be taken while its
+# owner believes it is watched. That report must not land in a public issue, so
+# the only way to file one is through the private advisory form.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/atakankizilyuce/LeaveSafe/security/advisories/new
+    about: >-
+      Anything that lets someone pair without the key, suppress an alarm, or read
+      a secret. Private, and it reaches the maintainers only. Please do not open
+      a public issue for it — see SECURITY.md.
+  - name: Ask a question or share what you built
+    url: https://github.com/atakankizilyuce/LeaveSafe/discussions
+    about: For anything that is not a bug report or a feature request.

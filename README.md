@@ -64,28 +64,25 @@ Grab the binary for your machine from the [Releases page](https://github.com/ata
 |----------|------|
 | Windows 64-bit | `leavesafe-windows-amd64.exe` |
 | Linux 64-bit | `leavesafe-linux-amd64` |
+| Linux ARM64 | `leavesafe-linux-arm64` |
 | macOS Intel | `leavesafe-darwin-amd64` |
 | macOS Apple Silicon | `leavesafe-darwin-arm64` |
 
 <details>
-<summary><b>macOS: three commands before the first run</b></summary>
+<summary><b>macOS: two commands before the first run</b></summary>
 
 <br/>
 
-macOS blocks unsigned binaries by default:
-
 ```bash
-# 1. Grant execute permission
 chmod +x leavesafe-darwin-arm64
-
-# 2. Remove the quarantine attribute added by macOS Gatekeeper
-xattr -d com.apple.quarantine leavesafe-darwin-arm64
-
-# 3. Run it
 ./leavesafe-darwin-arm64
 ```
 
-Replace `leavesafe-darwin-arm64` with `leavesafe-darwin-amd64` on an Intel Mac. If you still see a "cannot be opened" warning, open **System Settings → Privacy & Security** and click **Open Anyway** next to the LeaveSafe entry.
+Replace `leavesafe-darwin-arm64` with `leavesafe-darwin-amd64` on an Intel Mac.
+
+If macOS says the binary "cannot be opened because the developer cannot be verified", this release was published without a signing certificate. Open **System Settings → Privacy & Security** and click **Open Anyway** next to the LeaveSafe entry.
+
+Older instructions here told you to run `xattr -d com.apple.quarantine`. Do not — and be wary of any security tool that tells you to. That command disarms exactly the check that would catch a tampered download. If you want to confirm a binary is genuine, [verify its provenance](#verifying-a-download) instead.
 
 </details>
 
@@ -98,6 +95,27 @@ Replace `leavesafe-darwin-arm64` with `leavesafe-darwin-amd64` on an Intel Mac. 
 chmod +x leavesafe-linux-amd64
 ./leavesafe-linux-amd64
 ```
+
+</details>
+
+<details>
+<summary><b>Verifying a download</b></summary>
+
+<br/>
+
+Every release artifact carries a signed attestation naming the workflow and the commit that produced it. This is a stronger claim than a checksum, which only proves a file matches a number published beside it by whoever published both:
+
+```bash
+gh attestation verify leavesafe-linux-amd64 --repo atakankizilyuce/LeaveSafe
+```
+
+A `.sha256` ships beside each file as well:
+
+```bash
+shasum -a 256 -c leavesafe-linux-amd64.sha256
+```
+
+A [CycloneDX SBOM](https://cyclonedx.org/) listing every dependency is attached to each release, so you can check what is inside the binary against a vulnerability database without building it yourself.
 
 </details>
 
@@ -299,8 +317,10 @@ Each one is implemented natively per platform — `/sys` and `/proc` on Linux, W
 ### Security
 - **Rate limiting & lockout** — 5 failed attempts from one address means a 60-second lockout
 - **Session limit** — At most 3 authenticated phones at a time
-- **256-bit session tokens** — Random hex, never reused
-- **Event audit log** — Every security event recorded as JSONL with timestamps
+- **Sessions that expire** — 256-bit random tokens, with an absolute lifetime and an idle timeout
+- **Certificate check at pairing** — The QR code carries the certificate fingerprint; the key is withheld if the server presents a different one
+- **scrypt disarm PIN** — Hashed, never stored in cleartext
+- **Event audit log** — Every security event recorded as JSONL, size-rotated
 
 ### Interface
 - **Live terminal dashboard** — QR code, status and log on one screen
@@ -310,7 +330,10 @@ Each one is implemented natively per platform — `/sys` and `/proc` on Linux, W
 ### Deployment
 - **Cross-platform** — Native sensor implementations for Windows, Linux and macOS
 - **Single binary** — Nothing to install, nothing to configure to get started
-- **Settings that persist** — Stored as JSON, editable from the phone or by hand
+- **Starts when you log in** — `leavesafe install-service`, on all three platforms
+- **Survives its own bugs** — A panicking sensor is restarted and reported, not fatal
+- **Says when it stopped watching** — A start after a crash or a reboot reports the gap
+- **Signed provenance** — Every release artifact attests which workflow and commit built it
 
 </td>
 </tr>
@@ -350,7 +373,11 @@ Understand what you are turning on: remote access makes the port reachable from 
 
 ### The certificate warning
 
-The certificate is self-signed, so your phone will warn you the first time. That warning is expected — but it looks exactly the same as a real interception. Run `cert` in the terminal and compare the fingerprint with the one your browser shows before you accept it.
+The certificate is self-signed, so your phone will warn you the first time. That warning is expected — and it looks exactly the same as a real interception.
+
+The QR code carries the certificate's fingerprint, so the pairing screen shows you the value to check without walking back to the laptop. Compare it against the one in your browser's warning before accepting. The phone also refuses to send the pairing key at all if the server reports a fingerprint other than the one the code named.
+
+That catches a connection that landed somewhere unintended. It is not proof against a determined interceptor — a browser gives page JavaScript no way to see the certificate of its own connection, so the automatic check is on what the server says about itself. [`SECURITY.md`](SECURITY.md) sets out the limit in full. `cert` in the terminal still prints the fingerprint if you want to check from the other end.
 
 ### If your router has no UPnP
 
@@ -402,6 +429,39 @@ The panel shows coordinates, an accuracy radius, the source, and the distance mo
 
 <br/>
 
+## Start it when you log in
+
+A theft monitor that does not survive a reboot has a hole in it: the machine restarts — a flat battery, an update, someone holding the power button — and comes back watching nothing.
+
+```bash
+leavesafe install-service     # start automatically at login
+leavesafe service-status      # is it registered, is it running
+leavesafe uninstall-service   # stop doing that
+```
+
+It registers a systemd user unit on Linux, a LaunchAgent on macOS, and a Scheduled Task on Windows. No administrator rights are needed on any of them, and nothing runs as root — LeaveSafe needs your session to read the screen lock and input state, and has no reason to be more privileged than you.
+
+The background copy runs with `-headless`: no dashboard, no QR code, and its output goes to `leavesafe.log` in the config directory. Since there is no screen to read a fresh key from, **it stores its pairing key** in `pairing.key`, readable only by you. That is what lets your phone reconnect after the restart the whole feature exists to cover. Delete the file to force a new key on the next start.
+
+> **On Linux**, a user unit is torn down at logout and will not start on an unattended boot until you allow lingering: `sudo loginctl enable-linger $USER`. `install-service` prints this.
+
+<br/>
+
+## When it stops watching
+
+LeaveSafe records whether it was armed. If a run ends while armed — a crash, a flat battery, a reboot, or someone closing the window precisely because it was watching them — the next start says so, and when:
+
+```
+[!] LeaveSafe was ARMED when it last stopped (armed at 2026-07-28 14:02:11).
+    This machine has not been monitored since then.
+```
+
+It starts disarmed by default. A freshly booted laptop opens its own lid and accepts its owner's keystrokes, so re-arming automatically would mean screaming at the person who just turned it on. Set `"restore_armed_state": true` if you would rather it re-arm anyway.
+
+A panic in a sensor used to take the whole process down with it. Those loops are supervised now: the failure is logged, written to the event history, shown on the dashboard, and the loop restarts. The rest of the sensors keep watching while it does.
+
+<br/>
+
 ## Configuration
 
 Settings are stored in a JSON file and persist across sessions:
@@ -411,7 +471,9 @@ Settings are stored in a JSON file and persist across sessions:
 | Windows | `%APPDATA%\LeaveSafe\config.json` |
 | Linux / macOS | `~/.leavesafe/config.json` |
 
-You can change everything from the phone UI, or edit the file directly.
+Alongside it: `events.jsonl` (the security event history), `leavesafe.log` (the application log), `state.json` (whether the machine was armed), and `tls/` (the self-signed certificate). Both logs rotate on size and keep a couple of generations, so nothing here grows without bound.
+
+You can change everything from the phone UI, or edit the file directly. A file that does not parse is moved aside as `config.json.corrupt-<timestamp>` rather than silently overwritten, and values that would break the program — a zero heartbeat, a year-long lockout — are clamped with a line in the log saying so.
 
 <details>
 <summary><b>All configuration options</b></summary>
@@ -427,6 +489,10 @@ You can change everything from the phone UI, or edit the file directly.
 | `heartbeat_seconds` | `15` | Status broadcast interval |
 | `disconnect_grace_seconds` | `30` | Delay before alarm on full disconnect |
 | `auto_arm_on_lock` | `false` | Arm automatically when the screen locks |
+| `restore_armed_state` | `false` | Re-arm on startup if the last run ended while armed |
+| `session_ttl_minutes` | `1440` | How long a paired session lasts; `0` means forever |
+| `session_idle_minutes` | `480` | Drop a session idle this long; `0` means never |
+| `update_check` | `true` | Ask GitHub once at startup whether a newer release exists |
 | `connection_mode` | `wifi` | Transport mode (`wifi`, `bluetooth`, or `both`) |
 | `remote_access` | asked on first run | Publish the port beyond the local network |
 | `remote_port` | `9443` | Port used when remote access is enabled |
@@ -448,14 +514,18 @@ You can change everything from the phone UI, or edit the file directly.
 
 | Layer | Detail |
 |-------|--------|
-| **Pairing key** | 16 digits with a Luhn check digit, generated fresh each run |
-| **Session tokens** | 256-bit random hex strings, never reused |
+| **Pairing key** | 16 digits with a Luhn check digit, generated fresh each run — or stored owner-only when running headless, which is what lets a phone reconnect after a reboot |
+| **Session tokens** | 256-bit random hex strings, never reused, expiring after 24 hours or 8 hours idle |
 | **Rate limiting** | 60-second lockout after 5 failed attempts, counted **per source address** so a stranger cannot lock you out |
 | **Session limit** | Maximum 3 concurrent connections |
+| **Disarm PIN** | Optional, hashed with scrypt, guessed against the same lockout as the pairing key |
 | **Disconnect alarm** | Triggers after a 30-second grace period if all clients drop while armed |
 | **Transport** | Local network by default. With remote access enabled the port is published to the internet over HTTPS — never plain HTTP |
+| **Certificate** | Self-signed, with its fingerprint carried in the QR code so the phone can check which server it reached before sending the key |
 
-All four rate-limiting and session values above are configurable; the defaults are shown. Nothing is uploaded to any server: even in remote access mode the phone talks directly to your laptop.
+All the rate-limiting and session values above are configurable; the defaults are shown. Nothing is uploaded to any server: even in remote access mode the phone talks directly to your laptop.
+
+[`SECURITY.md`](SECURITY.md) sets out what is in scope, what is deliberately not, and how to report a flaw privately. It is worth reading the section on what pairing does and does not prove before you rely on remote access.
 
 <br/>
 
@@ -553,11 +623,16 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 3. Commit your changes
 4. Open a Pull Request
 
-Run tests before submitting:
+Run the checks before submitting:
 
 ```bash
-go test ./... -v -race
+go test ./... -race     # the fast loop
+make check              # what CI runs: format, vet, lint, frontend, vulncheck, tests
 ```
+
+Two things CI will catch that are easy to forget: if you changed anything under `web/src`, run `npm run build` in `web/` and commit `web/dist` — the binary embeds it, so a stale build ships a UI that does not match its source. And if you changed something a user would notice, add a line to [`CHANGELOG.md`](CHANGELOG.md) under Unreleased.
+
+**Found a security flaw?** Do not open an issue. [`SECURITY.md`](SECURITY.md) has the private reporting route.
 
 <br/>
 

@@ -1,0 +1,120 @@
+name: Bug report
+description: Something LeaveSafe does that it should not, or does not do that it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this.
+
+        **If this is a security flaw** — anything that lets someone pair without
+        the key, suppress an alarm, or read a secret — please close this and use
+        the [private advisory form](https://github.com/atakankizilyuce/LeaveSafe/security/advisories/new)
+        instead. A public issue tells everyone before there is a fix.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did LeaveSafe do, and what did you expect it to do?
+      placeholder: |
+        I armed it, unplugged the charger, and my phone never made a sound.
+        The laptop siren did start.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: >-
+        The steps that get there from a fresh start. If it only happens
+        sometimes, say roughly how often — an intermittent fault is still worth
+        reporting, and knowing it is intermittent changes where to look.
+      placeholder: |
+        1. Run leavesafe
+        2. Pair from the phone over Wi-Fi
+        3. Tap Arm and wait for the countdown
+        4. Unplug the charger
+        5. Nothing arrives on the phone; happens about half the time
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `leavesafe -version`.
+      placeholder: LeaveSafe v1.2.0 (darwin/arm64, go1.25.12) commit 4b9217a1c2de
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: Operating system version
+      placeholder: macOS 15.2, Windows 11 23H2, Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sensors
+    attributes:
+      label: Which sensor is involved
+      description: Leave blank if it is not about a particular sensor.
+      multiple: true
+      options:
+        - Power / charger
+        - Lid
+        - USB
+        - Screen lock
+        - Network
+        - Input
+        - Not sensor-related
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How the phone was connected
+      options:
+        - Local Wi-Fi
+        - Remote access (over mobile data)
+        - Bluetooth
+        - Not connected / could not pair
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: >-
+        The relevant part of `leavesafe.log` from the config directory
+        (`~/.leavesafe` on macOS and Linux, `%APPDATA%\LeaveSafe` on Windows).
+        This is pasted into a public issue, so **remove your pairing key and any
+        API key first** — the log does not contain them, but the terminal above
+        it might.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am running the latest release, and the problem is still there.
+          required: true
+        - label: I searched the existing issues for this.
+          required: true
+        - label: This is not a security flaw (those go through the private advisory form).
+          required: true
