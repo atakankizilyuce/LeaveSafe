@@ -312,9 +312,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Package manager manifests, generated from the published artifacts so their
   # checksums always describe the files that actually shipped. They are attached
-  # to the release rather than pushed anywhere: publishing to a tap or to winget
-  # is a decision with its own review, and doing it automatically from a tag
-  # push would make every tag a publish.
+  # to the release here; the job below asks the tap repository to publish them.
   #
   # This one cannot be rehearsed: generate.sh hashes the files as published, and
   # on a branch there is no release to download them from.
@@ -337,3 +335,66 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: dist-manifests/*
+
+  # ---------------------------------------------------------------------------
+  # Ask the tap repository to publish this release to Homebrew, Scoop and winget.
+  #
+  # A tag push still does not publish anything. What this starts ends in a pull
+  # request against atakankizilyuce/homebrew-tap, and merging that is the publish
+  # — so the decision stays a deliberate one while the work of making it stops
+  # being manual. That repository's main branch is protected, so nothing here can
+  # reach users without someone reading a diff first.
+  #
+  # Two guards: tags only, so a rehearsal on a branch cannot fire it, and stable
+  # tags only, because a beta must never be what `brew install leavesafe`
+  # produces. The tap repository re-checks both rather than trusting the payload.
+  # ---------------------------------------------------------------------------
+  dispatch-packages:
+    name: Ask the tap to publish
+    runs-on: ubuntu-latest
+    needs: packaging
+    if: startsWith(github.ref, 'refs/tags/')
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Skip prereleases
+        id: gate
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            *-*)
+              echo "::notice::$TAG is a prerelease — package managers publish stable releases only"
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Dispatch
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          # A fine-grained token scoped to the tap repository alone. Contents:
+          # write is what the dispatch endpoint requires; it is used to trigger
+          # and never to push, because the workflow there writes with its own
+          # GITHUB_TOKEN.
+          GH_TOKEN: ${{ secrets.TAP_DISPATCH_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::TAP_DISPATCH_TOKEN is not set — nothing was asked to publish."
+            echo "::warning::Run publish.yml by hand in atakankizilyuce/homebrew-tap with tag $TAG."
+            exit 0
+          fi
+          # app and repo travel with the request so the tap repository can serve
+          # more than one package without this contract changing.
+          gh api repos/atakankizilyuce/homebrew-tap/dispatches \
+            --method POST \
+            -f event_type=release-published \
+            -F "client_payload[app]=leavesafe" \
+            -F "client_payload[repo]=${GITHUB_REPOSITORY}" \
+            -F "client_payload[tag]=${TAG}"
+          echo "::notice::Asked the tap to publish $TAG — a pull request there is the next step."
