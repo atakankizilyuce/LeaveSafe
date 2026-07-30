@@ -24,6 +24,16 @@ const failureRetry = time.Hour
 // script would query at the same moment. Sparkle and Omaha both do this.
 const jitterFraction = 10
 
+// jitterCap bounds that delay in absolute terms.
+//
+// A tenth of a daily interval is nearly two and a half hours, which would mean a
+// copy just started says nothing about a waiting fix for most of the afternoon —
+// worse, in the case that matters most, than the startup-only check this replaced.
+// A few minutes spreads a reboot's worth of installations perfectly well, and the
+// user who just launched the program still hears about a fix while they are
+// sitting in front of it.
+const jitterCap = 5 * time.Minute
+
 // Watcher runs update checks on a schedule and reports what it finds.
 //
 // The schedule survives restarts through the Ledger: a copy caught in a crash
@@ -172,7 +182,7 @@ func (w Watcher) jitter(interval time.Duration) time.Duration {
 	if w.Jitter != nil {
 		return w.Jitter(interval)
 	}
-	span := interval / jitterFraction
+	span := min(interval/jitterFraction, jitterCap)
 	if span <= 0 {
 		return 0
 	}
