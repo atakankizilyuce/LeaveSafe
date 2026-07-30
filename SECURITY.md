@@ -50,6 +50,34 @@ before going public.
 There is one supported line. Before reporting, check that the problem is still
 present in the latest release — and in `main` if you can build it.
 
+## The update check, and what it tells GitHub
+
+Because there is one supported line, a copy left running on an old one is a real
+risk — so LeaveSafe asks GitHub whether a newer release exists and reports it on
+the dashboard and to the paired phone. It asks **once a day** by default, not
+once per start: a copy installed with `install-service` runs for weeks, and
+checking only at startup means the installations most in need of a fix are the
+least likely to hear about one.
+
+What this discloses is one request a day to `api.github.com`, from which GitHub
+can see your IP address and — from the `User-Agent` — that it is LeaveSafe and
+which version. Nothing else is sent: no identifier, no configuration, no sensor
+data, and no record of whether you are armed. There is no server of ours involved
+and no telemetry of any kind.
+
+**Nothing is downloaded and nothing is replaced.** The check reports; upgrading
+stays a thing you do. A security program that silently rewrites itself from the
+network is a larger trust decision than the one made by downloading a single file.
+
+Everything the endpoint returns is treated as untrusted: a version tag that does
+not look like a version is discarded, a link that does not point at `github.com`
+is replaced with the releases page, and the upgrade command shown to you comes
+from a fixed table in the binary rather than from anything GitHub sent.
+
+To switch it off entirely, set `"update_check": false` in the config or turn it
+off from the phone's settings screen. `"update_check_hours"` changes how often it
+asks, and `"update_channel": "beta"` opts into prereleases.
+
 ## What is in scope
 
 Anything that lets someone:
