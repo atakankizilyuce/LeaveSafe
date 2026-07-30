@@ -84,18 +84,28 @@ type Config struct {
 	// screaming at the person who just turned it on. With it off the interrupted
 	// monitoring is still reported prominently, which is the part that matters.
 	RestoreArmedState bool `json:"restore_armed_state"`
-	// UpdateCheck asks GitHub once at startup whether a newer release exists
-	// and reports it on the dashboard. Nothing is downloaded and nothing is
-	// replaced. It is a pointer so an existing config without the field can be
-	// told apart from one where the user switched it off; nil means on.
-	UpdateCheck    *bool           `json:"update_check,omitempty"`
-	Alarm          AlarmConfig     `json:"alarm"`
-	PinProtection  PinProtection   `json:"pin_protection"`
-	ConnectionMode string          `json:"connection_mode,omitempty"`
-	EnabledSensors map[string]bool `json:"enabled_sensors,omitempty"`
-	RemoteAccess   *bool           `json:"remote_access,omitempty"`
-	RemotePort     int             `json:"remote_port,omitempty"`
-	Location       Location        `json:"location"`
+	// UpdateCheck asks GitHub whether a newer release exists and reports it on
+	// the dashboard and to the paired phone. Nothing is downloaded and nothing
+	// is replaced. It is a pointer so an existing config without the field can
+	// be told apart from one where the user switched it off; nil means on.
+	UpdateCheck *bool `json:"update_check,omitempty"`
+	// UpdateChannel selects which releases count: "stable" hears about full
+	// releases only, "beta" hears about prereleases as well. Empty means stable,
+	// because someone who has not asked for prereleases has asked for the
+	// opposite.
+	UpdateChannel string `json:"update_channel,omitempty"`
+	// UpdateCheckHours is how often to ask, in hours. Zero means the default.
+	// The check has to repeat: a copy installed as a service runs for weeks, and
+	// asking only at startup means the longest-running installations are the
+	// least likely to hear that a fix exists.
+	UpdateCheckHours int             `json:"update_check_hours,omitempty"`
+	Alarm            AlarmConfig     `json:"alarm"`
+	PinProtection    PinProtection   `json:"pin_protection"`
+	ConnectionMode   string          `json:"connection_mode,omitempty"`
+	EnabledSensors   map[string]bool `json:"enabled_sensors,omitempty"`
+	RemoteAccess     *bool           `json:"remote_access,omitempty"`
+	RemotePort       int             `json:"remote_port,omitempty"`
+	Location         Location        `json:"location"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -142,11 +152,26 @@ func Default() *Config {
 	}
 }
 
-// UpdateCheckEnabled reports whether the startup update check should run.
+// UpdateCheckEnabled reports whether the update check should run.
 // Absent from the config means yes: a security program that never mentions its
 // own updates is one people keep running with known flaws.
 func (c *Config) UpdateCheckEnabled() bool {
 	return c.UpdateCheck == nil || *c.UpdateCheck
+}
+
+// DefaultUpdateCheckHours is how often the update check runs when the config
+// does not say. Once a day is often enough that a fix is heard about promptly,
+// and rare enough to be invisible against GitHub's rate limit.
+const DefaultUpdateCheckHours = 24
+
+// UpdateCheckInterval reports how often to ask. Callers never interpret the
+// zero value themselves.
+func (c *Config) UpdateCheckInterval() time.Duration {
+	hours := c.UpdateCheckHours
+	if hours <= 0 {
+		hours = DefaultUpdateCheckHours
+	}
+	return time.Duration(hours) * time.Hour
 }
 
 // ConfigDir returns the platform-appropriate config directory.
@@ -258,6 +283,23 @@ func (c *Config) Validate() []string {
 			notes = append(notes, fmt.Sprintf("connection_mode was %q, which is not one of wifi, bluetooth or both — using wifi", c.ConnectionMode))
 			c.ConnectionMode = "wifi"
 		}
+	}
+
+	if c.UpdateChannel != "" {
+		switch c.UpdateChannel {
+		case "stable", "beta":
+		default:
+			// A typo here must not stop a security monitor from starting, and it
+			// must not silently opt someone into prereleases either.
+			notes = append(notes, fmt.Sprintf("update_channel was %q, which is not one of stable or beta — using stable", c.UpdateChannel))
+			c.UpdateChannel = "stable"
+		}
+	}
+
+	if c.UpdateCheckHours != 0 {
+		// A six-hour floor keeps a hand-edited config from hammering GitHub's
+		// rate limit; a week's ceiling keeps the check meaningful.
+		clampInt("update_check_hours", &c.UpdateCheckHours, 6, 24*7, DefaultUpdateCheckHours)
 	}
 
 	for i := range c.Alarm.Levels {
