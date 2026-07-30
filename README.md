@@ -634,6 +634,10 @@ In the Linux VM the charger is genuinely unplugged through the `test_power` kern
 
 Run the layers locally with `make test-e2e`, `make test-realtrigger` and `make test-sandbox`; plain `make test` stays fast and touches no hardware.
 
+### Cutting a release
+
+[`docs/releasing.md`](docs/releasing.md) is the order to do it in: what to rehearse before tagging, what to watch during the run, and why merging a pull request in the tap repository — rather than pushing the tag — is the moment a version reaches Homebrew and Scoop. It also covers testing the update check against releases that already exist, without publishing anything.
+
 <br/>
 
 ## Contributing
