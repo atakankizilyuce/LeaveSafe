@@ -62,6 +62,13 @@ diff is small.
   `.github/workflows/release.yml`.
 - **Package manager manifests.** Homebrew, Scoop and winget manifests are
   generated from the published artifacts on each release. See `packaging/`.
+- **Install from a package manager.** `brew install leavesafe`,
+  `scoop install leavesafe` and `winget install LeaveSafe.LeaveSafe` now have
+  somewhere to come from. A stable tag asks
+  [`atakankizilyuce/homebrew-tap`](https://github.com/atakankizilyuce/homebrew-tap)
+  to publish, and a pull request opens there; **merging it is the publish**, which
+  also submits the winget manifests to `microsoft/winget-pkgs`. A tag push still
+  publishes nothing on its own, and prereleases never reach a package manager.
 - **SECURITY.md.** A vulnerability disclosure policy, a supported-versions
   statement, and an honest account of what is deliberately out of scope.
 - **Tests** for `config`, `eventlog`, `network`, `qr`, `safe`, `rotate`, `state`
