@@ -38,6 +38,7 @@ import {
     showToast,
     toast,
     tripSensor,
+    updateAvailable,
 } from './lib/store';
 import { connectBluetooth, connectWebSocket } from './lib/transport';
 
@@ -213,6 +214,13 @@ export function App() {
                 if (msg.location) position.value = msg.location;
                 break;
 
+            case 'update_available':
+                // Deliberately quiet: it marks the footer and nothing else. A
+                // laptop that needs upgrading is not an emergency, and the panel
+                // belongs to the sensors.
+                if (msg.update) updateAvailable.value = msg.update;
+                break;
+
             case 'pin_required':
                 pinPrompt.value = true;
                 break;
@@ -352,7 +360,21 @@ export function App() {
                 <Position />
                 <Log />
 
-                <footer class="foot readout">LeaveSafe {serverVersion.value ?? ''} · no cloud</footer>
+                {updateAvailable.value ? (
+                    <button
+                        type="button"
+                        class="foot readout foot-update"
+                        aria-label={`Version ${updateAvailable.value.latest} is available — open update settings`}
+                        onClick={() => {
+                            settingsOpen.value = true;
+                        }}
+                    >
+                        LeaveSafe {serverVersion.value ?? ''} <span class="foot-dot" aria-hidden="true" />{' '}
+                        update available
+                    </button>
+                ) : (
+                    <footer class="foot readout">LeaveSafe {serverVersion.value ?? ''} · no cloud</footer>
+                )}
             </div>
 
             <ArmControl counting={counting} onCountdown={setCounting} />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { AppConfig, ClientMessage } from '../lib/protocol';
-import { config, send, settingsOpen, showToast } from '../lib/store';
+import { config, send, serverVersion, settingsOpen, showToast, updateAvailable } from '../lib/store';
 import { Scrim } from './Scrim';
 
 /**
@@ -271,6 +271,30 @@ export function SettingsSheet() {
                             />
                         </Group>
 
+                        <Group
+                            title="Updates"
+                            note="LeaveSafe asks GitHub whether a newer release exists. It never downloads or replaces anything."
+                        >
+                            <Toggle
+                                label="Check for updates"
+                                value={draft.update_check}
+                                onChange={(update_check) => patch({ update_check })}
+                            />
+                            {draft.update_check && (
+                                <Select
+                                    label="Channel"
+                                    hint="Beta means prereleases as well, not instead."
+                                    value={draft.update_channel || 'stable'}
+                                    options={[
+                                        ['stable', 'Stable releases only'],
+                                        ['beta', 'Include betas'],
+                                    ]}
+                                    onChange={(update_channel) => patch({ update_channel })}
+                                />
+                            )}
+                            <UpdateStatus />
+                        </Group>
+
                         <div class="sheet-actions">
                             <button type="button" class="alarm-primary" onClick={save}>
                                 {saved ? 'Saved' : 'Save settings'}
@@ -283,6 +307,67 @@ export function SettingsSheet() {
                 )}
             </div>
         </Scrim>
+    );
+}
+
+/**
+ * What the last check found, and what to run about it.
+ *
+ * The command comes from the laptop, which is the only side that knows whether
+ * this copy arrived through Homebrew, Scoop, winget or a download. When it did
+ * not recognise the installation there is no command to give, and the releases
+ * page is offered instead of a guess.
+ */
+function UpdateStatus() {
+    const found = updateAvailable.value;
+    const [copied, setCopied] = useState(false);
+
+    if (!found) {
+        return (
+            <p class="group-note">
+                Running {serverVersion.value ?? 'an unknown version'}. Nothing newer has been found.
+            </p>
+        );
+    }
+
+    const copy = () => {
+        if (!found.command) return;
+        // Clipboard access needs a secure context, which the plain-HTTP local
+        // path is not. The command stays selectable either way, so a failure
+        // costs nothing worth reporting.
+        navigator.clipboard
+            ?.writeText(found.command)
+            .then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+            })
+            .catch(() => showToast('Could not copy — select the command instead'));
+    };
+
+    return (
+        <>
+            <Field label="Running">
+                <span class="field-readout figure">{found.running}</span>
+            </Field>
+            <Field label="Available">
+                <span class="field-readout figure">{found.latest}</span>
+            </Field>
+            {found.command ? (
+                <div class="setting setting-stack">
+                    <code class="update-command">{found.command}</code>
+                    <button type="button" class="chip" onClick={copy}>
+                        {copied ? 'Copied' : 'Copy'}
+                    </button>
+                </div>
+            ) : (
+                <p class="group-note">
+                    <a href={found.url} target="_blank" rel="noreferrer noopener">
+                        Open the releases page
+                    </a>{' '}
+                    to download it. Nothing is installed for you.
+                </p>
+            )}
+        </>
     );
 }
 

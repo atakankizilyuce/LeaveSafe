@@ -60,6 +60,21 @@ export interface AlarmConfig {
     escalation_enabled: boolean;
 }
 
+export type UpdateChannel = 'stable' | 'beta';
+
+/** What the laptop found when it last asked GitHub for a newer release. */
+export interface UpdatePayload {
+    running: string;
+    latest: string;
+    url: string;
+    channel: string;
+    /**
+     * The upgrade command for however this copy was installed. Absent when the
+     * laptop did not recognise the installation, and the URL is offered instead.
+     */
+    command?: string;
+}
+
 export interface AppConfig {
     port: number;
     max_sessions: number;
@@ -70,6 +85,9 @@ export interface AppConfig {
     auto_arm_on_lock: boolean;
     input_threshold: number;
     connection_mode: string;
+    update_check: boolean;
+    update_channel?: string;
+    update_check_hours?: number;
     remote_access: boolean;
     remote_port: number;
     alarm: AlarmConfig;
@@ -90,6 +108,7 @@ export interface ServerMessage {
     ts?: number;
     config?: AppConfig;
     location?: LocationPayload;
+    update?: UpdatePayload;
     /** SHA-256 fingerprint of the server's TLS certificate, sent with `hello`. */
     cert_fp?: string;
 }
