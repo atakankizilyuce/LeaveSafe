@@ -32,6 +32,8 @@ Output:
 ## Publishing is deliberately merged
 
 A tag push does not publish to a package manager. It asks.
+[`docs/releasing.md`](../docs/releasing.md) walks the whole sequence, including
+what to check at each step.
 
 ```
 git push --tags
