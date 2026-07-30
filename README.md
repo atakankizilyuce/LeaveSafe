@@ -58,7 +58,23 @@ No account. No server. No internet needed. Your phone talks straight to your lap
 
 ### 1 · Download it
 
-Grab the binary for your machine from the [Releases page](https://github.com/atakankizilyuce/LeaveSafe/releases). One file, no installer, no dependencies.
+Use a package manager if you have one — it puts `leavesafe` on your `PATH` and makes upgrading one command:
+
+```bash
+brew tap atakankizilyuce/tap
+brew install leavesafe
+```
+
+```powershell
+scoop bucket add atakankizilyuce https://github.com/atakankizilyuce/homebrew-tap
+scoop install leavesafe
+```
+
+```powershell
+winget install LeaveSafe.LeaveSafe
+```
+
+Or grab the binary for your machine from the [Releases page](https://github.com/atakankizilyuce/LeaveSafe/releases). One file, no installer, no dependencies.
 
 | Platform | File |
 |----------|------|
@@ -67,6 +83,8 @@ Grab the binary for your machine from the [Releases page](https://github.com/ata
 | Linux ARM64 | `leavesafe-linux-arm64` |
 | macOS Intel | `leavesafe-darwin-amd64` |
 | macOS Apple Silicon | `leavesafe-darwin-arm64` |
+
+However you install it, LeaveSafe tells you when a newer release exists — and names the command that upgrades *your* installation. Nothing is ever downloaded or replaced without you.
 
 <details>
 <summary><b>macOS: two commands before the first run</b></summary>

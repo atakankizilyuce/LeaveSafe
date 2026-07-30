@@ -25,58 +25,94 @@ Output:
 
 | File | Goes to |
 |------|---------|
-| `leavesafe.rb` | A Homebrew tap |
-| `leavesafe.json` | A Scoop bucket |
-| `LeaveSafe.LeaveSafe.yaml` + `.installer.yaml` + `.locale.en-US.yaml` | `microsoft/winget-pkgs` |
+| `leavesafe.rb` | `Formula/` in [`atakankizilyuce/homebrew-tap`](https://github.com/atakankizilyuce/homebrew-tap) |
+| `leavesafe.json` | `bucket/` in the same repository |
+| `LeaveSafe.LeaveSafe.yaml` + `.installer.yaml` + `.locale.en-US.yaml` | `microsoft/winget-pkgs`, by pull request |
 
-## Publishing is deliberately manual
+## Publishing is deliberately merged
 
-Nothing here pushes to a tap, a bucket or winget. Publishing to a package
-manager is a decision with its own review — and wiring it into the tag push
-would make every tag, including a tag pushed by mistake, a publish.
+A tag push does not publish to a package manager. It asks.
 
-### Homebrew
+```
+git push --tags
+  └─ release.yml: build, sign, attest, SBOM, release, these manifests
+       └─ dispatch-packages → atakankizilyuce/homebrew-tap   (stable tags only)
+                                   ↓
+            publish.yml there regenerates the manifests and opens a PR
+                                   ↓
+                  you merge it  ◄── this is the publish
+                                   ↓
+                      winget.yml submits to microsoft/winget-pkgs
+```
 
-Needs a tap repository, conventionally `atakankizilyuce/homebrew-tap`. Copy
-`leavesafe.rb` into its `Formula/` directory and push. Users then run:
+**Merging that pull request is the publish.** Homebrew and Scoop users have the
+new version at that moment. The tap repository's `main` is protected, so nothing
+reaches users without someone reading a diff — which is the property this section
+used to get by doing everything by hand.
+
+Prereleases never reach a package manager. `dispatch-packages` skips them, and
+the tap repository refuses them again rather than trusting the request.
+
+### One repository serves Homebrew and Scoop
+
+[`atakankizilyuce/homebrew-tap`](https://github.com/atakankizilyuce/homebrew-tap)
+holds `Formula/leavesafe.rb` and `bucket/leavesafe.json`.
+
+Homebrew requires the `homebrew-` prefix for the short `brew tap` form; Scoop
+imposes no naming rule at all, so it can share a repository named for Homebrew.
+That asymmetry is the whole reason for one repository rather than two.
 
 ```bash
 brew tap atakankizilyuce/tap
 brew install leavesafe
 ```
 
-Submitting to homebrew-core instead has a notability bar (a rough guide: 30
-forks, 30 watchers, 75 stars) and requires a stable, versioned release history.
-A tap works from day one.
-
-### Scoop
-
-Needs a bucket repository, conventionally `atakankizilyuce/scoop-bucket`. Copy
-`leavesafe.json` into its `bucket/` directory and push. Users then run:
-
 ```powershell
-scoop bucket add leavesafe https://github.com/atakankizilyuce/scoop-bucket
+scoop bucket add atakankizilyuce https://github.com/atakankizilyuce/homebrew-tap
 scoop install leavesafe
 ```
 
-The manifest carries `checkver` and `autoupdate`, so once the bucket exists
-Scoop's own tooling can raise the version bumps.
+Both manifests land in one commit, so the two channels cannot drift to different
+versions.
 
 ### winget
 
-Fork `microsoft/winget-pkgs`, put the three YAML files under
-`manifests/l/LeaveSafe/LeaveSafe/<version>/`, and open a pull request. Validate
-first:
-
-```powershell
-winget validate --manifest manifests/l/LeaveSafe/LeaveSafe/1.2.0
-winget install --manifest manifests/l/LeaveSafe/LeaveSafe/1.2.0
-```
+winget manifests always reach users through a pull request against
+`microsoft/winget-pkgs`. The merge in the tap repository starts it, submitting the
+YAML files generated here — the ones the pull request was reviewed as, rather than
+manifests rebuilt from scratch afterwards.
 
 Their automated checks run SmartScreen against the installer URL, so an unsigned
 binary can be held up in review. Signing is configured through the repository
 secrets read by the signing steps in
 [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+
+### The official channels, later
+
+Both would remove work rather than add it, and both are currently out of reach:
+
+- **homebrew-core** has a notability bar (a rough guide: 30 forks, 30 watchers,
+  75 stars) and wants a stable, versioned release history.
+- **Scoop's `main` bucket** asks for at least 500 stars and 150 forks, alongside
+  being a non-GUI developer tool.
+
+Worth revisiting. A tap works from day one.
+
+### Doing it by hand
+
+Still possible, and the fallback when the automation is unavailable. Run
+`packaging/generate.sh <tag> dist-manifests`, then copy `leavesafe.rb` into the
+tap's `Formula/`, `leavesafe.json` into its `bucket/`, and open a pull request
+there. For winget, validate first:
+
+```powershell
+winget validate --manifest <dir>
+winget install --manifest <dir>
+```
+
+`publish.yml` in the tap repository also takes a tag by hand, with a `dry_run`
+option that generates and diffs without opening anything — which is the way to
+rehearse a change to the pipeline itself.
 
 ## Changing a manifest
 
