@@ -40,6 +40,11 @@ const (
 	MsgTypePinRequired       = "pin_required"
 	MsgTypeConfigData        = "config_data"
 	MsgTypeLocation          = "location"
+	// MsgTypeUpdateAvailable says a newer release exists. It is sent after
+	// authentication when a result is already known, so a phone that pairs hours
+	// after the check still learns about it, and broadcast when a later check
+	// finds something new.
+	MsgTypeUpdateAvailable = "update_available"
 )
 
 // ClientMessage represents a message from the phone to the laptop.
@@ -109,9 +114,24 @@ type ServerMessage struct {
 	Timestamp         int64                   `json:"ts,omitempty"`
 	Config            *ConfigPayload          `json:"config,omitempty"`
 	Location          *LocationPayload        `json:"location,omitempty"`
+	Update            *UpdatePayload          `json:"update,omitempty"`
 	// CertFP is the SHA-256 fingerprint of this server's TLS certificate,
 	// empty on the plain-HTTP local path where there is no certificate.
 	CertFP string `json:"cert_fp,omitempty"`
+}
+
+// UpdatePayload tells the phone that a newer release exists.
+//
+// Command is built on the laptop, because that is the only side that knows how
+// this copy was installed — and it comes from a fixed table, never from anything
+// the releases endpoint returned. It is empty when the installation was not
+// recognized, and the phone then offers URL instead.
+type UpdatePayload struct {
+	Running string `json:"running"`
+	Latest  string `json:"latest"`
+	URL     string `json:"url"`
+	Channel string `json:"channel"`
+	Command string `json:"command,omitempty"`
 }
 
 // ConfigPayload is a sanitized configuration for client exchange.
@@ -125,6 +145,9 @@ type ConfigPayload struct {
 	AutoArmOnLock          bool                  `json:"auto_arm_on_lock"`
 	InputThreshold         int                   `json:"input_threshold"`
 	ConnectionMode         string                `json:"connection_mode,omitempty"`
+	UpdateCheck            bool                  `json:"update_check"`
+	UpdateChannel          string                `json:"update_channel,omitempty"`
+	UpdateCheckHours       int                   `json:"update_check_hours,omitempty"`
 	Alarm                  config.AlarmConfig    `json:"alarm"`
 	PinProtection          PinProtectionPayload  `json:"pin_protection"`
 	EnabledSensors         map[string]bool       `json:"enabled_sensors,omitempty"`
