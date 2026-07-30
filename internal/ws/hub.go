@@ -65,6 +65,11 @@ type Hub struct {
 	alarmActive       bool
 	alarmSensor       string
 	suppressedSensors map[string]time.Time
+
+	// updateAvailable is the newest release the update check found, kept so a
+	// phone that pairs after the check still hears about it. Nil until one is
+	// found, which is also the state of a copy with checking switched off.
+	updateAvailable *UpdatePayload
 }
 
 // NewHub creates a new WebSocket hub.
@@ -163,6 +168,21 @@ func (h *Hub) SetConfig(cfg *config.Config) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.cfg = cfg
+}
+
+// UpdateSettings reports whether update checking is on and which channel it
+// should use.
+//
+// The config is mutated by the phone under this lock, so a background checker has
+// to ask rather than read the struct: switching to beta or switching checking off
+// takes effect on the next check instead of on the next restart.
+func (h *Hub) UpdateSettings() (enabled bool, channel string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.cfg == nil {
+		return true, ""
+	}
+	return h.cfg.UpdateCheckEnabled(), h.cfg.UpdateChannel
 }
 
 // SetEventLogger sets the event logger for recording security events.
@@ -793,7 +813,42 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 
 	infos := h.GetSensorInfos()
 	client.send(NewAuthOK(token, infos, h.version))
+
+	// A phone can pair hours after the check ran, so the known result is told to
+	// it on arrival rather than only broadcast at the moment it was found.
+	h.mu.RLock()
+	pending := h.updateAvailable
+	h.mu.RUnlock()
+	if pending != nil {
+		client.send(ServerMessage{Type: MsgTypeUpdateAvailable, Update: pending})
+	}
+
 	h.logEvent(eventlog.Event{Type: eventlog.EventConnect, Message: "Client authenticated"})
+}
+
+// SetUpdateAvailable records that a newer release exists and tells every
+// authenticated client.
+//
+// The result is kept so a phone pairing later still hears about it. Calling this
+// with the same version twice is harmless but pointless — the caller suppresses
+// repeats, because being told once per release is information and once per check
+// is nagging.
+func (h *Hub) SetUpdateAvailable(p UpdatePayload) {
+	h.mu.Lock()
+	h.updateAvailable = &p
+	targets := make([]*Client, 0, len(h.clients))
+	for client := range h.clients {
+		if client.authenticated {
+			targets = append(targets, client)
+		}
+	}
+	h.mu.Unlock()
+
+	// Writes happen with the lock released; see PushAlert.
+	msg := ServerMessage{Type: MsgTypeUpdateAvailable, Update: &p}
+	for _, client := range targets {
+		client.send(msg)
+	}
 }
 
 func (h *Hub) handleConfigure(msg ClientMessage) {
@@ -914,6 +969,18 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	cfg.AutoArmOnLock = p.AutoArmOnLock
 	cfg.InputThreshold = p.InputThreshold
 	cfg.Alarm = p.Alarm
+
+	// The update check and its channel take effect on the next scheduled check
+	// rather than forcing one, so switching to beta from the phone is a quiet
+	// change. An unrecognized channel is dropped rather than stored: Validate
+	// would only reset it on the next start, and until then the phone would be
+	// showing a channel that is not in force.
+	uc := p.UpdateCheck
+	cfg.UpdateCheck = &uc
+	switch p.UpdateChannel {
+	case "stable", "beta":
+		cfg.UpdateChannel = p.UpdateChannel
+	}
 
 	if p.PinProtection.Pin != "" {
 		// Only the hash is kept. The PIN itself exists in memory for the
@@ -1087,6 +1154,9 @@ func configToPayload(cfg *config.Config) ConfigPayload {
 		AutoArmOnLock:          cfg.AutoArmOnLock,
 		InputThreshold:         cfg.InputThreshold,
 		ConnectionMode:         cfg.ConnectionMode,
+		UpdateCheck:            cfg.UpdateCheckEnabled(),
+		UpdateChannel:          cfg.UpdateChannel,
+		UpdateCheckHours:       cfg.UpdateCheckHours,
 		Alarm:                  cfg.Alarm,
 		PinProtection: PinProtectionPayload{
 			Enabled: cfg.PinProtection.Enabled,

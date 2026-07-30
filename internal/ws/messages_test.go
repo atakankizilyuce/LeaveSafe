@@ -1,6 +1,8 @@
 package ws
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -163,5 +165,73 @@ func TestMsgTypeConstants(t *testing.T) {
 	}
 	if MsgTypeDisconnectWarning != "disconnect_warning" {
 		t.Errorf("MsgTypeDisconnectWarning = %q, want %q", MsgTypeDisconnectWarning, "disconnect_warning")
+	}
+	if MsgTypeUpdateAvailable != "update_available" {
+		t.Errorf("MsgTypeUpdateAvailable = %q, want %q", MsgTypeUpdateAvailable, "update_available")
+	}
+}
+
+func TestUpdatePayloadEncoding(t *testing.T) {
+	msg := ServerMessage{
+		Type: MsgTypeUpdateAvailable,
+		Update: &UpdatePayload{
+			Running: "v1.2.0",
+			Latest:  "v1.3.0",
+			URL:     "https://github.com/atakankizilyuce/LeaveSafe/releases/tag/v1.3.0",
+			Channel: "stable",
+			Command: "brew upgrade leavesafe",
+		},
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var got ServerMessage
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Update == nil {
+		t.Fatal("the update payload did not survive the round trip")
+	}
+	if got.Update.Latest != "v1.3.0" || got.Update.Running != "v1.2.0" {
+		t.Errorf("payload = %+v, want the versions preserved", got.Update)
+	}
+	if got.Update.Command != "brew upgrade leavesafe" {
+		t.Errorf("Command = %q, want it preserved", got.Update.Command)
+	}
+}
+
+// Every other message must stay free of an update field, or the phone would show
+// a stale banner on every heartbeat.
+func TestUpdateIsAbsentFromOtherMessages(t *testing.T) {
+	for _, msg := range []ServerMessage{
+		NewStatus(false, nil),
+		NewAuthOK("tok", nil, "v1.2.0"),
+		{Type: MsgTypePong},
+	} {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", msg.Type, err)
+		}
+		if strings.Contains(string(data), `"update"`) {
+			t.Errorf("%s carried an update field: %s", msg.Type, data)
+		}
+	}
+}
+
+// An installation the laptop could not recognize sends no command, and the field
+// must then be absent rather than an empty string the phone would render.
+func TestUpdatePayloadOmitsAnEmptyCommand(t *testing.T) {
+	data, err := json.Marshal(ServerMessage{
+		Type:   MsgTypeUpdateAvailable,
+		Update: &UpdatePayload{Running: "v1.2.0", Latest: "v1.3.0", Channel: "stable"},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(data), `"command"`) {
+		t.Errorf("an empty command was encoded: %s", data)
 	}
 }
