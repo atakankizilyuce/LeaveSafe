@@ -576,9 +576,10 @@ func main() {
 
 	reportInterruptedMonitoring(sb, hub, stateStore, prevState, prevStateErr, cfg.RestoreArmedState)
 
-	if cfg.UpdateCheckEnabled() {
-		safe.Go("update-check", func() { reportAvailableUpdate(sb) })
-	}
+	// How this copy was installed decides what the user is told to run. Resolved
+	// once: the binary does not move while it is running.
+	installMethod := update.DetectSelf()
+	updateLedger := update.NewLedger(config.ConfigDir())
 
 	hub.SetAlarmTriggerCallback(func() {
 		localAlarm.Start()
@@ -607,12 +608,34 @@ func main() {
 	if !*headless {
 		safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, sb) })
 		// No terminal means no stdin to read commands from.
-		safe.Supervise(ctx, "console", func(context.Context) { runConsole(hub, sb, localAlarm, authMgr) })
+		safe.Supervise(ctx, "console", func(context.Context) {
+			runConsole(hub, sb, localAlarm, authMgr, installMethod, updateLedger)
+		})
 	}
 
 	if portMapping != nil {
 		safe.Supervise(ctx, "upnp-keepalive", portMapping.KeepAlive)
 	}
+
+	// Checking repeatedly, rather than once at startup, is the whole point: a copy
+	// installed as a service runs for weeks, and asking only at startup means the
+	// installations most in need of a fix are the least likely to hear about one.
+	// Nothing here can delay arming — it runs on its own supervised loop, behind
+	// its own timeout, and a failure goes no further than the debug log.
+	safe.Supervise(ctx, "update-check", func(c context.Context) {
+		update.Watcher{
+			Interval: cfg.UpdateCheckInterval(),
+			Settings: hub.UpdateSettings,
+			Ledger:   updateLedger,
+			Check: func(checkCtx context.Context, channel string) (update.Result, error) {
+				return update.Checker{Channel: channel}.Check(checkCtx, version)
+			},
+			Report: func(r update.Result) {
+				announceUpdate(sb, hub, r, installMethod)
+			},
+			OnError: func(err error) { log.Debugf("Update check failed: %v", err) },
+		}.Run(c)
+	})
 
 	connMode := cfg.ConnectionMode
 	if connMode == "bluetooth" || connMode == "both" {
@@ -710,35 +733,89 @@ func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP string) {
 	}
 }
 
-// reportAvailableUpdate says so if a newer release exists.
+// announceUpdate says a newer release exists, on the dashboard and on the phone.
 //
 // Nothing is downloaded and nothing is replaced: a security program that
 // silently rewrites itself from the network is a larger trust decision than the
 // user made when they downloaded a single file. But a single file is also a
 // file nothing updates, and the whole point of hearing about a fix is hearing
-// about it before you need it. A failed check is not worth a warning — GitHub
-// being unreachable says nothing about this machine — so it goes to the log at
-// debug level and no further.
-func reportAvailableUpdate(sb *statusBar) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+// about it before you need it.
+//
+// The phone matters more than the terminal here. A copy started by
+// `install-service` runs headless, where this line goes to leavesafe.log and
+// nobody reads it — while the phone is the screen the user actually carries.
+func announceUpdate(sb *statusBar, hub *ws.Hub, result update.Result, method update.Method) {
+	_, channel := hub.UpdateSettings()
+	channel = update.NormalizeChannel(channel)
 
-	result, err := update.Checker{}.Check(ctx, version)
-	if err != nil {
-		log.Debugf("Update check failed: %v", err)
-		return
-	}
-	if !result.Available {
-		return
-	}
-
-	sb.writeLine("  %s[UPDATE]%s %s is available — you are running %s", cCyan, cReset, result.Latest, version)
 	url := result.URL
 	if url == "" {
 		url = repoURL + "/releases/latest"
 	}
-	sb.writeLine("  %s         %s%s", cDim, url, cReset)
+	command := method.Command()
+
+	sb.writeLine("  %s[UPDATE]%s %s is available — you are running %s", cCyan, cReset, result.Latest, version)
+	if command != "" {
+		sb.writeLine("  %s         %s%s", cBold, command, cReset)
+	} else {
+		sb.writeLine("  %s         %s%s", cDim, url, cReset)
+	}
 	sb.writeLine("  %s         Set \"update_check\": false in the config to stop checking.%s", cDim, cReset)
+
+	hub.SetUpdateAvailable(ws.UpdatePayload{
+		Running: version,
+		Latest:  result.Latest,
+		URL:     url,
+		Channel: channel,
+		Command: command,
+	})
+}
+
+// checkForUpdateNow runs a check because the user asked for one, and reports the
+// answer either way.
+//
+// Being asked is different from the scheduled path in two ways: it ignores when
+// the last check ran, and it reports even a version already reported. It also
+// says when there is nothing to report, which the scheduled path never does — a
+// background line saying "still up to date" every day would be noise, but the
+// answer to a question is not.
+func checkForUpdateNow(sb *statusBar, hub *ws.Hub, method update.Method, ledger *update.Ledger) {
+	enabled, channel := hub.UpdateSettings()
+	channel = update.NormalizeChannel(channel)
+	if !enabled {
+		sb.writeLine("  Update checking is off. Set %s\"update_check\": true%s in the config to turn it back on.", cBold, cReset)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	sb.writeLine("  Checking for updates on the %s%s%s channel…", cBold, channel, cReset)
+	result, err := update.Checker{Channel: channel}.Check(ctx, version)
+	if err != nil {
+		sb.writeLine("  %s[UPDATE]%s Could not reach GitHub: %v", cYellow, cReset, err)
+		return
+	}
+
+	// An on-demand check still advances the schedule, so it replaces the next
+	// background check rather than running alongside it.
+	rec := ledger.Load()
+	rec.LastCheck = time.Now()
+	rec.LastSuccess = rec.LastCheck
+
+	if !result.Available {
+		if !update.IsRelease(version) {
+			sb.writeLine("  This is a development build (%s), so there is nothing to compare against.", version)
+		} else {
+			sb.writeLine("  %s[UPDATE]%s You are on the newest %s release (%s).", cGreen, cReset, channel, version)
+		}
+		_ = ledger.Save(rec)
+		return
+	}
+
+	rec.LastSeenLatest = result.Latest
+	_ = ledger.Save(rec)
+	announceUpdate(sb, hub, result, method)
 }
 
 // reportInterruptedMonitoring tells the user when the previous run ended while
@@ -965,7 +1042,9 @@ func promptRemoteAccess(cfg *config.Config) {
 	}
 }
 
-func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *auth.Manager) {
+func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *auth.Manager,
+	installMethod update.Method, updateLedger *update.Ledger,
+) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -1053,8 +1132,11 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 				sb.writeLine("  %sCompare the fingerprint above with the one the warning shows before accepting.%s", cDim, cReset)
 			}
 
+		case line == "update":
+			checkForUpdateNow(sb, hub, installMethod, updateLedger)
+
 		case line == "help":
-			sb.writeLine("  Commands: test, trigger <sensor>, stop, history, urls, qr <n>, cert, rotate-key, help")
+			sb.writeLine("  Commands: test, trigger <sensor>, stop, history, urls, qr <n>, cert, update, rotate-key, help")
 		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)
