@@ -82,7 +82,14 @@ func Detect(exePath string) Method {
 	}
 	// Compare on one separator in one case: the same installation can be
 	// reported with either slash depending on how the path was obtained.
-	p := strings.ToLower(filepath.ToSlash(exePath))
+	//
+	// The replacement is unconditional rather than filepath.ToSlash, which is a
+	// no-op anywhere its separator is already "/" — so a Windows path examined on
+	// Linux, which is what a test does, would keep its backslashes and match
+	// nothing. The cost is that a Unix directory named with a literal backslash
+	// could match; the consequence there is being offered `scoop update` instead
+	// of a URL, and such a path does not exist.
+	p := strings.ToLower(strings.ReplaceAll(exePath, `\`, "/"))
 	for _, m := range pathMarkers {
 		if strings.Contains(p, m.fragment) {
 			return m.method
