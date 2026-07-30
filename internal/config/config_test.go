@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // isolate points the config directory at a temporary location so tests never
@@ -250,6 +251,87 @@ func TestUpdateCheckDefaultsToOn(t *testing.T) {
 	cfg.UpdateCheck = &on
 	if !cfg.UpdateCheckEnabled() {
 		t.Error("the update check is off despite being switched on")
+	}
+}
+
+// An absent channel means stable. Existing configs have no such field, and
+// silently opting those users into prereleases would be the wrong default.
+func TestUpdateChannelDefaultsToStable(t *testing.T) {
+	cfg := Default()
+	if cfg.UpdateChannel != "" {
+		t.Errorf("UpdateChannel = %q, want it unset so stable is implied", cfg.UpdateChannel)
+	}
+	if notes := cfg.Validate(); len(notes) != 0 {
+		t.Errorf("Validate objected to the default channel: %v", notes)
+	}
+}
+
+func TestValidateAcceptsBothChannels(t *testing.T) {
+	for _, channel := range []string{"stable", "beta"} {
+		cfg := Default()
+		cfg.UpdateChannel = channel
+		if notes := cfg.Validate(); len(notes) != 0 {
+			t.Errorf("Validate rejected %q: %v", channel, notes)
+		}
+		if cfg.UpdateChannel != channel {
+			t.Errorf("UpdateChannel = %q, want %q", cfg.UpdateChannel, channel)
+		}
+	}
+}
+
+// A typo must not stop a security monitor from starting, and must not opt anyone
+// into prereleases either.
+func TestValidateResetsAnUnknownChannel(t *testing.T) {
+	cfg := Default()
+	cfg.UpdateChannel = "carrier-pigeon"
+
+	notes := cfg.Validate()
+
+	if cfg.UpdateChannel != "stable" {
+		t.Errorf("UpdateChannel = %q, want stable", cfg.UpdateChannel)
+	}
+	if len(notes) == 0 {
+		t.Error("the channel was reset without saying so")
+	}
+}
+
+func TestUpdateCheckIntervalDefaults(t *testing.T) {
+	cfg := Default()
+	if got, want := cfg.UpdateCheckInterval(), 24*time.Hour; got != want {
+		t.Errorf("UpdateCheckInterval() = %v, want %v", got, want)
+	}
+
+	cfg.UpdateCheckHours = 12
+	if got, want := cfg.UpdateCheckInterval(), 12*time.Hour; got != want {
+		t.Errorf("UpdateCheckInterval() = %v, want %v", got, want)
+	}
+
+	// A negative value in a hand-edited config must not produce a negative wait.
+	cfg.UpdateCheckHours = -5
+	if got, want := cfg.UpdateCheckInterval(), 24*time.Hour; got != want {
+		t.Errorf("UpdateCheckInterval() = %v, want the default %v", got, want)
+	}
+}
+
+// The floor protects GitHub's rate limit from a hand-edited config; the ceiling
+// keeps the check meaningful.
+func TestValidateClampsTheCheckInterval(t *testing.T) {
+	cases := []struct{ in, want int }{
+		{1, 24},       // below the floor, so the default
+		{5, 24},       // still below
+		{6, 6},        // exactly the floor
+		{24, 24},      // untouched
+		{168, 168},    // exactly the ceiling
+		{100000, 168}, // above the ceiling
+		{0, 0},        // unset means the default, and must be left alone
+	}
+	for _, c := range cases {
+		cfg := Default()
+		cfg.UpdateCheckHours = c.in
+		cfg.Validate()
+		if cfg.UpdateCheckHours != c.want {
+			t.Errorf("update_check_hours %d clamped to %d, want %d", c.in, cfg.UpdateCheckHours, c.want)
+		}
 	}
 }
 
