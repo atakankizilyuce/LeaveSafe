@@ -1,6 +1,13 @@
 import { computed, signal } from '@preact/signals';
 import type { FingerprintVerdict } from './fingerprint';
-import type { AlertLevel, AppConfig, ClientMessage, LocationPayload, SensorInfo } from './protocol';
+import type {
+    AlertLevel,
+    AppConfig,
+    ClientMessage,
+    LocationPayload,
+    SensorInfo,
+    UpdatePayload,
+} from './protocol';
 import type { Transport } from './transport';
 
 export type Screen = 'pair' | 'panel';
@@ -32,6 +39,16 @@ export const fingerprintVerdict = signal<FingerprintVerdict>('unverified');
 export const sensors = signal<SensorInfo[]>([]);
 export const config = signal<AppConfig | null>(null);
 export const location = signal<LocationPayload | null>(null);
+
+/**
+ * A newer release, once the laptop has found one. Null is the normal state: no
+ * check has reported yet, or this copy is current.
+ *
+ * Nothing about this is urgent, so it never interrupts. It marks the footer and
+ * fills in a section of the settings sheet, and the alarm keeps the whole screen
+ * to itself.
+ */
+export const updateAvailable = signal<UpdatePayload | null>(null);
 
 /** Sensors currently lit on the annunciator panel, with when they tripped. */
 export const tripped = signal<Record<string, number>>({});

@@ -502,6 +502,35 @@
     color: var(--faint);
 }
 
+/*
+ * The footer becomes a button when an update exists. It is the quietest place in
+ * the panel that is still always on screen, which is what an update deserves:
+ * worth knowing, never worth interrupting an alarm for.
+ */
+.foot-update {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    font: inherit;
+    cursor: pointer;
+    color: var(--quiet);
+}
+
+.foot-update:hover,
+.foot-update:focus-visible {
+    color: var(--text);
+}
+
+.foot-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    vertical-align: 1px;
+}
+
 /* ── Arm control ───────────────────────────────────────────────────────── */
 
 .dock {
@@ -720,6 +749,36 @@
     width: auto;
     padding: 8px 10px;
     font-size: 0.85rem;
+}
+
+/* A value the sheet reports rather than accepts: same row, no control. */
+.field-readout {
+    color: var(--text);
+    font-size: 0.88rem;
+    flex-shrink: 0;
+}
+
+/*
+ * The upgrade command sits on its own line with its copy button. Wrapping rather
+ * than truncating matters: a command the user cannot read in full is one they
+ * cannot retype if the clipboard is unavailable.
+ */
+.setting-stack {
+    align-items: center;
+    gap: 10px;
+}
+
+.update-command {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 11px;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
 }
 
 .switch {
