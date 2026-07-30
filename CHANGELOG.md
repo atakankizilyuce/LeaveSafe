@@ -50,6 +50,10 @@ diff is small.
   `update` on the dashboard checks on demand and answers either way. Everything is
   changeable from the phone's settings screen.
 
+  The first check is prompt: a few minutes of random delay spreads a reboot's
+  worth of installations without making someone who just launched the program wait
+  hours to hear that a fix exists.
+
   Nothing is downloaded and nothing is replaced. Switch the whole thing off with
   `"update_check": false`. What the check discloses is set out in SECURITY.md.
 - **Log rotation.** `events.jsonl` and the new application log

@@ -325,3 +325,22 @@ func TestWatcherJitterIsBounded(t *testing.T) {
 		t.Errorf("jitter for a tiny interval = %v, want 0", got)
 	}
 }
+
+// A tenth of a daily interval is nearly two and a half hours. Left uncapped, a
+// copy someone just started would sit on a waiting fix for most of an afternoon —
+// which is worse than the startup-only check this replaced, in exactly the case
+// the feature exists for.
+func TestWatcherFirstCheckIsPrompt(t *testing.T) {
+	w := Watcher{Interval: 24 * time.Hour}
+	for range 200 {
+		if got := w.jitter(24 * time.Hour); got > jitterCap {
+			t.Fatalf("jitter = %v, past the %v cap", got, jitterCap)
+		}
+	}
+
+	// A short interval keeps its proportional jitter rather than the cap, so a
+	// six-hour interval is not delayed by a fixed five minutes either way.
+	if got := w.jitter(10 * time.Minute); got >= time.Minute {
+		t.Errorf("jitter for a 10m interval = %v, want under a minute", got)
+	}
+}
