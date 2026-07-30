@@ -241,6 +241,7 @@ Type any of these into the dashboard while it runs:
 | `urls` | Every address the server is reachable on; `*` marks the one in the QR code |
 | `qr <n>` | Show the QR code for URL `n` from that list |
 | `cert` | Print the TLS fingerprint, to compare against your phone's warning |
+| `update` | Ask GitHub now whether a newer release exists, and say either way |
 | `rotate-key` | New pairing key, all sessions invalidated |
 | `help` | The list above |
 | `Ctrl+C` | Graceful shutdown |
@@ -351,6 +352,7 @@ Each one is implemented natively per platform — `/sys` and `/proc` on Linux, W
 - **Starts when you log in** — `leavesafe install-service`, on all three platforms
 - **Survives its own bugs** — A panicking sensor is restarted and reported, not fatal
 - **Says when it stopped watching** — A start after a crash or a reboot reports the gap
+- **Tells you a fix exists** — Checks daily, on the dashboard *and* on your phone, with the command for however you installed it
 - **Signed provenance** — Every release artifact attests which workflow and commit built it
 
 </td>
@@ -510,7 +512,9 @@ You can change everything from the phone UI, or edit the file directly. A file t
 | `restore_armed_state` | `false` | Re-arm on startup if the last run ended while armed |
 | `session_ttl_minutes` | `1440` | How long a paired session lasts; `0` means forever |
 | `session_idle_minutes` | `480` | Drop a session idle this long; `0` means never |
-| `update_check` | `true` | Ask GitHub once at startup whether a newer release exists |
+| `update_check` | `true` | Ask GitHub whether a newer release exists, and say so on the dashboard and the phone |
+| `update_channel` | `stable` | Which releases count: `stable`, or `beta` for prereleases as well |
+| `update_check_hours` | `24` | How often to ask; clamped to between 6 hours and a week |
 | `connection_mode` | `wifi` | Transport mode (`wifi`, `bluetooth`, or `both`) |
 | `remote_access` | asked on first run | Publish the port beyond the local network |
 | `remote_port` | `9443` | Port used when remote access is enabled |

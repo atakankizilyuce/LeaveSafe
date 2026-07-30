@@ -37,9 +37,21 @@ diff is small.
   and the phone refuses to send the pairing key if the two disagree. The
   fingerprint is shown on the pairing screen so it can be compared against the
   browser's warning. See SECURITY.md for what this does and does not catch.
-- **Update check.** LeaveSafe asks GitHub once at startup whether a newer release
-  exists and reports it. Nothing is downloaded and nothing is replaced. Switch it
-  off with `"update_check": false`.
+- **Update check.** LeaveSafe asks GitHub whether a newer release exists and
+  reports it on the dashboard **and to the paired phone**, with the upgrade command
+  for however this copy was installed — Homebrew, Scoop, winget, or the releases
+  page. It asks once a day rather than once per start, because a copy installed as
+  a service runs for weeks and the installations most in need of a fix were the
+  least likely to hear about one. The schedule survives restarts, so a crash loop
+  cannot turn into a flood of requests.
+
+  `"update_channel": "beta"` opts into prereleases; `stable` is the default and
+  hears about full releases only. `"update_check_hours"` changes the interval.
+  `update` on the dashboard checks on demand and answers either way. Everything is
+  changeable from the phone's settings screen.
+
+  Nothing is downloaded and nothing is replaced. Switch the whole thing off with
+  `"update_check": false`. What the check discloses is set out in SECURITY.md.
 - **Log rotation.** `events.jsonl` and the new application log
   (`leavesafe.log`) rotate on size and keep a fixed number of generations, so a
   machine running for months no longer leaks disk.
