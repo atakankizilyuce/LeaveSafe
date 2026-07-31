@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -39,6 +40,8 @@ func GenerateOrLoadCert(configDir string) (tls.Certificate, string, error) {
 	if cert, fp, err := loadCert(certPath, keyPath); err == nil {
 		log.Info("Loaded existing TLS certificate")
 		return cert, fp, nil
+	} else if !errors.Is(err, errCertUnusable) {
+		log.Debugf("No usable TLS certificate on disk: %v", err)
 	}
 
 	// Generate new cert
@@ -55,10 +58,42 @@ func GenerateOrLoadCert(configDir string) (tls.Certificate, string, error) {
 	return cert, fp, nil
 }
 
+// errCertUnusable marks a certificate that was read successfully but must not
+// be served — expired, or about to be. It is distinguished from a read failure
+// so the caller can say which happened.
+var errCertUnusable = errors.New("stored certificate is not usable")
+
+// certRenewBefore is how long before expiry a certificate is replaced. A
+// machine that is started once a month must not be the one to discover, while
+// its owner is away from it, that the certificate ran out yesterday.
+const certRenewBefore = 30 * 24 * time.Hour
+
 func loadCert(certPath, keyPath string) (tls.Certificate, string, error) {
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return tls.Certificate{}, "", err
+	}
+
+	// LoadX509KeyPair checks that the key matches the certificate; it says
+	// nothing about the dates. Serving an expired certificate means every phone
+	// meets a warning the fingerprint cannot explain away, on the one screen
+	// the user has while they are away from the laptop.
+	parsed, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return tls.Certificate{}, "", fmt.Errorf("%w: %w", errCertUnusable, err)
+	}
+	if remaining := time.Until(parsed.NotAfter); remaining < certRenewBefore {
+		if remaining <= 0 {
+			log.Warnf("Stored TLS certificate expired on %s — generating a new one",
+				parsed.NotAfter.Format("2006-01-02"))
+		} else {
+			log.Infof("Stored TLS certificate expires on %s — generating a new one now",
+				parsed.NotAfter.Format("2006-01-02"))
+		}
+		// The fingerprint changes with the certificate, which is exactly what
+		// the QR code and the greeting exist to carry: the phone compares what
+		// this run is serving, so a rescan pairs against the new one.
+		return tls.Certificate{}, "", fmt.Errorf("%w: expires %s", errCertUnusable, parsed.NotAfter)
 	}
 
 	fp := certFingerprint(cert.Certificate[0])
@@ -117,6 +152,14 @@ func generateCert(certPath, keyPath string) (tls.Certificate, string, error) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 	if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
 		return tls.Certificate{}, "", err
+	}
+	// WriteFile applies the mode only when it creates the file, so a key
+	// restored from a backup or left by an older version keeps whatever
+	// permissions it arrived with. This is the private key for the certificate
+	// guarding remote access; internal/auth/keyfile.go does the same for the
+	// pairing key and for the same reason.
+	if err := os.Chmod(keyPath, 0o600); err != nil {
+		return tls.Certificate{}, "", fmt.Errorf("restrict TLS key permissions: %w", err)
 	}
 
 	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)

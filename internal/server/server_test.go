@@ -2,9 +2,19 @@ package server
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -131,6 +141,81 @@ func TestWebSocketOutlivesTheServerWriteTimeout(t *testing.T) {
 	}
 	if _, _, err := conn.Read(ctx); err != nil {
 		t.Fatalf("the socket was closed by the server timeouts: %v", err)
+	}
+}
+
+// A certificate on disk is served for as long as it is there, so nothing else
+// would ever notice it had run out. An expired one means every phone meets a
+// browser warning that the fingerprint cannot explain away — on the one screen
+// the user has while they are away from the laptop.
+func TestAnExpiredCertificateIsReplaced(t *testing.T) {
+	dir := t.TempDir()
+
+	_, first, err := GenerateOrLoadCert(dir)
+	if err != nil {
+		t.Fatalf("first generation: %v", err)
+	}
+
+	// A second call must reuse what the first one wrote, or this test proves
+	// nothing about expiry.
+	_, second, err := GenerateOrLoadCert(dir)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if second != first {
+		t.Fatal("a fresh certificate was replaced rather than reused")
+	}
+
+	// Rewrite the stored pair with one that expired yesterday.
+	writeExpiredCert(t, dir)
+
+	_, third, err := GenerateOrLoadCert(dir)
+	if err != nil {
+		t.Fatalf("after expiry: %v", err)
+	}
+	if third == first {
+		t.Error("the expired certificate was served instead of being replaced")
+	}
+	if third == "" {
+		t.Error("no fingerprint was produced for the replacement")
+	}
+}
+
+// writeExpiredCert replaces the stored certificate and key with a pair whose
+// validity ended yesterday.
+func writeExpiredCert(t *testing.T, configDir string) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "expired"},
+		NotBefore:    time.Now().Add(-48 * time.Hour),
+		NotAfter:     time.Now().Add(-24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+
+	tlsDir := filepath.Join(configDir, "tls")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	if err := os.WriteFile(filepath.Join(tlsDir, certFileName), certPEM, 0o600); err != nil {
+		t.Fatalf("write certificate: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tlsDir, keyFileName), keyPEM, 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
 	}
 }
 
