@@ -431,3 +431,6 @@ docs/superpowers/
 plans/
 specs/
 .claude/
+# Snapshots and console dumps a browser-driving agent leaves behind while it
+# checks the phone UI. They describe one run, not the project.
+.playwright-mcp/
