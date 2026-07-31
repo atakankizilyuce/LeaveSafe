@@ -4,7 +4,6 @@ package monitor
 
 import (
 	"context"
-	"os/exec"
 	"strings"
 	"time"
 )
@@ -31,7 +30,7 @@ func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			on, err := isScreenOnWindows()
+			on, err := isScreenOnWindows(ctx)
 			if err != nil {
 				continue
 			}
@@ -57,14 +56,17 @@ func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 
 func (s *ScreenSensor) Stop() error { return nil }
 
-func isScreenOnWindows() (bool, error) {
+// isScreenOnWindows reports whether the display is awake. ctx is the sensor's
+// own context, so disarming stops the poll rather than waiting on a query that
+// may not return.
+func isScreenOnWindows(ctx context.Context) (bool, error) {
 	// Check if the console display is active via PowerShell
-	out, err := exec.Command("powershell", "-Command",
-		"[System.Windows.Forms.Screen]::PrimaryScreen -ne $null").Output()
+	out, err := powershellOutput(ctx,
+		"[System.Windows.Forms.Screen]::PrimaryScreen -ne $null")
 	if err != nil {
 		// Fallback: check if session is locked
-		out2, err2 := exec.Command("powershell", "-Command",
-			"(Get-Process -Name LogonUI -ErrorAction SilentlyContinue) -ne $null").Output()
+		out2, err2 := powershellOutput(ctx,
+			"(Get-Process -Name LogonUI -ErrorAction SilentlyContinue) -ne $null")
 		if err2 != nil {
 			return true, err
 		}

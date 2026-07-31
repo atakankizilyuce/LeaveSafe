@@ -4,7 +4,6 @@ package monitor
 
 import (
 	"context"
-	"os/exec"
 	"time"
 )
 
@@ -22,9 +21,15 @@ func (s *LidSensor) Name() string        { return "lid" }
 func (s *LidSensor) DisplayName() string { return "Lid State" }
 
 func (s *LidSensor) Available() bool {
-	// Check if this is a laptop by querying battery info
-	out, err := exec.Command("powershell", "-Command",
-		"(Get-WmiObject -Class Win32_Battery).Count").Output()
+	// Check if this is a laptop by querying battery info.
+	//
+	// Bounded, because this runs while the sensors are registered and that
+	// happens before the server binds: on a machine with no battery the query
+	// can sit for half a minute, and every second of it is a second the phone
+	// cannot reach the laptop. A probe that does not answer is not a laptop
+	// lid as far as this is concerned.
+	out, err := powershellOutput(context.Background(),
+		"(Get-WmiObject -Class Win32_Battery).Count")
 	if err != nil {
 		return false
 	}
@@ -43,7 +48,7 @@ func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			open, err := isLidOpenWindows()
+			open, err := isLidOpenWindows(ctx)
 			if err != nil {
 				continue
 			}
@@ -69,9 +74,11 @@ func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 
 func (s *LidSensor) Stop() error { return nil }
 
-func isLidOpenWindows() (bool, error) {
-	out, err := exec.Command("powershell", "-Command",
-		"(Get-WmiObject -Namespace root/WMI -Class MSAcpi_LidStatus).LidStatus").Output()
+// isLidOpenWindows reads the lid state. ctx is the sensor's own context, so
+// disarming stops the poll rather than waiting on a query that may not return.
+func isLidOpenWindows(ctx context.Context) (bool, error) {
+	out, err := powershellOutput(ctx,
+		"(Get-WmiObject -Namespace root/WMI -Class MSAcpi_LidStatus).LidStatus")
 	if err != nil {
 		return true, err // Assume open if we can't determine
 	}
