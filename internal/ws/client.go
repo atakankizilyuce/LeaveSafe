@@ -42,6 +42,10 @@ type Client struct {
 	// the first message rather than with the client, so a connection that never
 	// says anything costs nothing.
 	limiter *tokenBucket
+	// authLimiter bounds pairing attempts, separately from limiter. The two
+	// cannot share one allowance: a flood from a paired phone would otherwise
+	// eat into what a stranger's guesses are counted against.
+	authLimiter *tokenBucket
 }
 
 // allowMessage reports whether this client may have another message handled,
@@ -54,6 +58,15 @@ func (c *Client) allowMessage() bool {
 		c.limiter = newTokenBucket()
 	}
 	return c.limiter.allow()
+}
+
+// allowAuth reports whether this client may have another pairing attempt
+// handled, spending one token if so. Same goroutine discipline as allowMessage.
+func (c *Client) allowAuth() bool {
+	if c.authLimiter == nil {
+		c.authLimiter = newAuthBucket(c.hub.authManager.MaxAttempts())
+	}
+	return c.authLimiter.allow()
 }
 
 // close tears down the underlying connection, whichever transport it uses.

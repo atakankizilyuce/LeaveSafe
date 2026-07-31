@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -65,6 +66,14 @@ func (o Options) withDefaults() Options {
 	}
 	return o
 }
+
+// ErrLockedOut is returned when an address is refused because it is serving a
+// lockout, rather than because the secret it presented was wrong.
+//
+// The distinction is for the audit log. The lockout itself is worth one record;
+// the attempts made during it are worth none, and writing one per attempt let
+// an unauthenticated peer flood the history out of a size-rotated file.
+var ErrLockedOut = errors.New("locked out")
 
 // attempts records the failure state of a single remote address.
 type attempts struct {
@@ -155,7 +164,7 @@ func (m *Manager) Authenticate(addr, key string) (string, int, error) {
 	rec := m.record(host, now)
 
 	if now.Before(rec.lockedUntil) {
-		return "", 0, fmt.Errorf("locked out for %.0f seconds", now.Sub(rec.lockedUntil).Abs().Seconds())
+		return "", 0, fmt.Errorf("%w for %.0f seconds", ErrLockedOut, now.Sub(rec.lockedUntil).Abs().Seconds())
 	}
 
 	// Expired sessions are swept before the cap is measured, so a phone whose
@@ -204,7 +213,7 @@ func (m *Manager) CheckPin(addr, pin, pinHash string) error {
 	rec := m.record(host, now)
 
 	if now.Before(rec.lockedUntil) {
-		return fmt.Errorf("locked out for %.0f seconds", now.Sub(rec.lockedUntil).Abs().Seconds())
+		return fmt.Errorf("%w for %.0f seconds", ErrLockedOut, now.Sub(rec.lockedUntil).Abs().Seconds())
 	}
 
 	if !VerifyPinHash(pin, pinHash) {
