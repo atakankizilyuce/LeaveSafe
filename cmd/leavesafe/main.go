@@ -998,7 +998,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s test, trigger <sensor>, stop, history, urls, qr <n>, cert, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
+	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
@@ -1061,11 +1061,60 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 				sb.writeLine("  %s[TEST]%s Sensor %q triggered", cYellow, cReset, name)
 			}
 		case line == "stop" || line == "silence":
-			if localAlarm.IsPlaying() {
-				localAlarm.Stop()
+			if localAlarm.IsPlaying() || hub.ClientCount() > 0 {
+				// Through the hub rather than the alarm directly, so every
+				// paired phone stops sounding too.
+				hub.DismissAlarm()
 				sb.writeLine("  %s[ALARM]%s Alarm dismissed from console", cYellow, cReset)
 			} else {
 				sb.writeLine("  No alarm is currently active")
+			}
+
+		case line == "arm":
+			if hub.IsArmed() {
+				sb.writeLine("  Already armed since %s", hub.ArmedAt().Format("15:04:05"))
+				break
+			}
+			hub.Arm()
+			sb.writeLine("  %s[ARM]%s Armed from console", cGreen, cReset)
+
+		case line == "disarm":
+			if !hub.IsArmed() {
+				sb.writeLine("  Already disarmed")
+				break
+			}
+			pin := ""
+			if hub.PinRequired() {
+				sb.writeLine("  PIN required to disarm. Type it and press enter:")
+				if !scanner.Scan() {
+					break
+				}
+				pin = strings.TrimSpace(scanner.Text())
+			}
+			if err := hub.DisarmWithPin("console", pin); err != nil {
+				sb.writeLine("  %s[PIN]%s Refused: %v", cRed, cReset, err)
+				break
+			}
+			sb.writeLine("  %s[DISARM]%s Disarmed from console", cGreen, cReset)
+
+		case line == "status":
+			if hub.IsArmed() {
+				sb.writeLine("  %sARMED%s since %s (%s ago)", cGreen, cReset,
+					hub.ArmedAt().Format("15:04:05"),
+					time.Since(hub.ArmedAt()).Round(time.Second))
+			} else {
+				sb.writeLine("  %sDISARMED%s", cDim, cReset)
+			}
+			sb.writeLine("  Phones connected: %d", hub.ClientCount())
+			for _, s := range hub.GetSensorInfos() {
+				mark := "off"
+				switch {
+				case !s.Available:
+					mark = "unavailable"
+				case s.Enabled:
+					mark = "on"
+				}
+				sb.writeLine("    %-10s %s", s.Name, mark)
 			}
 		case line == "history":
 			evts, err := eventlog.ReadLast(filepath.Join(config.ConfigDir(), eventLogFileName), 20)
@@ -1137,7 +1186,7 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 			checkForUpdateNow(sb, hub, installMethod, updateLedger)
 
 		case line == "help":
-			sb.writeLine("  Commands: test, trigger <sensor>, stop, history, urls, qr <n>, cert, update, rotate-key, help")
+			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, update, rotate-key, help")
 		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)

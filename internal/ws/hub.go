@@ -32,28 +32,28 @@ const defaultAuthDeadline = 20 * time.Second
 
 // Hub manages all WebSocket connections and dispatches alerts.
 type Hub struct {
-	mu              sync.RWMutex
-	clients         map[*Client]bool
-	authManager     *auth.Manager
-	sensorMgr       *monitor.Manager
-	armed bool
+	mu          sync.RWMutex
+	clients     map[*Client]bool
+	authManager *auth.Manager
+	sensorMgr   *monitor.Manager
+	armed       bool
 	// armedAt is when armed last became true, zero when disarmed. The phone's
 	// "armed for 12 minutes" counter reads from here rather than keeping its
 	// own, because the page holding it is thrown away every time the screen
 	// locks and would otherwise restart from zero on every reconnect.
-	armedAt time.Time
-	version string
+	armedAt           time.Time
+	version           string
 	onAllDisconnected func()
 	onClientChange    func(count int, armed bool)
-	onAlarmTrigger  func()
-	onAlarmDismiss  func()
-	autoArmOnLock   bool
-	pinEnabled      bool
-	pinHash         string
-	alertChan       chan ServerMessage
-	eventLog        *eventlog.Logger
-	stateStore      *state.Store
-	certFP          string
+	onAlarmTrigger    func()
+	onAlarmDismiss    func()
+	autoArmOnLock     bool
+	pinEnabled        bool
+	pinHash           string
+	alertChan         chan ServerMessage
+	eventLog          *eventlog.Logger
+	stateStore        *state.Store
+	certFP            string
 
 	heartbeatInterval     time.Duration
 	disconnectGracePeriod time.Duration
@@ -719,23 +719,10 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 			}
 			h.Disarm()
 		case MsgTypeDisarmPin:
-			h.mu.RLock()
-			pinEnabled := h.pinEnabled
-			pinHash := h.pinHash
-			h.mu.RUnlock()
-			if pinEnabled && pinHash != "" {
-				// The PIN guards the alarm from whoever is holding the phone,
-				// so guesses are rate-limited like pairing-key attempts.
-				if err := h.authManager.CheckPin(client.remoteAddr, msg.Pin, pinHash); err != nil {
-					client.send(ServerMessage{Type: MsgTypeAuthFail, Reason: err.Error()})
-					h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "Disarm refused: " + err.Error()})
-					return
-				}
-				// A correct PIN is the only moment the digits are in hand, and
-				// therefore the only moment an old hash can be upgraded.
-				h.upgradePinHash(msg.Pin, pinHash)
+			if err := h.DisarmWithPin(client.remoteAddr, msg.Pin); err != nil {
+				client.send(ServerMessage{Type: MsgTypeAuthFail, Reason: err.Error()})
+				return
 			}
-			h.Disarm()
 		case MsgTypeConfigure:
 			h.handleConfigure(msg)
 		case MsgTypeTestAlert:
@@ -814,6 +801,65 @@ func (h *Hub) clearAlarm() string {
 	h.mu.Unlock()
 	h.fireAlarmDismiss()
 	return sensor
+}
+
+// DismissAlarm stops the alarm everywhere: the laptop's own siren through the
+// dismiss callback, and every paired phone through a broadcast.
+//
+// The message matters because the phone-initiated path never needed one — a
+// phone that dismissed knows it did. Anything dismissing from elsewhere has to
+// say so out loud.
+func (h *Hub) DismissAlarm() {
+	h.clearAlarm()
+
+	h.mu.RLock()
+	targets := make([]*Client, 0, len(h.clients))
+	for client := range h.clients {
+		if client.authenticated {
+			targets = append(targets, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	// Writes happen with the lock released; see PushAlert.
+	msg := ServerMessage{Type: MsgTypeAlarmCleared, Timestamp: time.Now().Unix()}
+	for _, client := range targets {
+		client.send(msg)
+	}
+}
+
+// DisarmWithPin verifies the PIN, if one is configured, and disarms.
+//
+// source names the rate-limit bucket the guesses are counted against: a phone's
+// remote address, or "console" for the terminal. Returning an error leaves the
+// machine armed.
+func (h *Hub) DisarmWithPin(source, pin string) error {
+	h.mu.RLock()
+	pinEnabled := h.pinEnabled
+	pinHash := h.pinHash
+	h.mu.RUnlock()
+
+	if pinEnabled && pinHash != "" {
+		// The PIN guards the alarm from whoever is holding the device, so
+		// guesses are rate-limited like pairing-key attempts.
+		if err := h.authManager.CheckPin(source, pin, pinHash); err != nil {
+			h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "Disarm refused: " + err.Error()})
+			return err
+		}
+		// A correct PIN is the only moment the digits are in hand, and
+		// therefore the only moment an old hash can be upgraded.
+		h.upgradePinHash(pin, pinHash)
+	}
+
+	h.Disarm()
+	return nil
+}
+
+// PinRequired reports whether disarming asks for a PIN.
+func (h *Hub) PinRequired() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.pinEnabled && h.pinHash != ""
 }
 
 func (h *Hub) handleAuth(client *Client, msg ClientMessage) {

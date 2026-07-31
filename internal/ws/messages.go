@@ -37,9 +37,14 @@ const (
 	MsgTypePong              = "pong"
 	MsgTypeDisconnectWarning = "disconnect_warning"
 	MsgTypeAlarmActive       = "alarm_active"
-	MsgTypePinRequired       = "pin_required"
-	MsgTypeConfigData        = "config_data"
-	MsgTypeLocation          = "location"
+	// MsgTypeAlarmCleared says the alarm has been dismissed by someone other
+	// than this phone — from the laptop's own terminal, or by another paired
+	// phone. Without it a console `stop` silences the laptop and leaves every
+	// phone sounding.
+	MsgTypeAlarmCleared = "alarm_cleared"
+	MsgTypePinRequired  = "pin_required"
+	MsgTypeConfigData   = "config_data"
+	MsgTypeLocation     = "location"
 	// MsgTypeUpdateAvailable says a newer release exists. It is sent after
 	// authentication when a result is already known, so a phone that pairs hours
 	// after the check still learns about it, and broadcast when a later check
@@ -113,12 +118,12 @@ type ServerMessage struct {
 	// ArmedSince is when arming happened, in Unix seconds. Sent with auth_ok so
 	// a phone that reconnected resumes its counter instead of restarting it.
 	// Omitted when the machine is not armed.
-	ArmedSince *int64     `json:"armed_since,omitempty"`
-	Alert      *AlertData `json:"alert,omitempty"`
-	Timestamp         int64                   `json:"ts,omitempty"`
-	Config            *ConfigPayload          `json:"config,omitempty"`
-	Location          *LocationPayload        `json:"location,omitempty"`
-	Update            *UpdatePayload          `json:"update,omitempty"`
+	ArmedSince *int64           `json:"armed_since,omitempty"`
+	Alert      *AlertData       `json:"alert,omitempty"`
+	Timestamp  int64            `json:"ts,omitempty"`
+	Config     *ConfigPayload   `json:"config,omitempty"`
+	Location   *LocationPayload `json:"location,omitempty"`
+	Update     *UpdatePayload   `json:"update,omitempty"`
 	// CertFP is the SHA-256 fingerprint of this server's TLS certificate,
 	// empty on the plain-HTTP local path where there is no certificate.
 	CertFP string `json:"cert_fp,omitempty"`
