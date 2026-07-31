@@ -43,7 +43,7 @@ jobs:
           cat /proc/acpi/button/lid/*/state > out/lid_state_dump.txt 2>/dev/null || \
             echo "no acpi lid on this runner" > out/lid_state_dump.txt
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fixtures-linux
           path: out/
@@ -62,7 +62,7 @@ jobs:
           ioreg -c IOHIDSystem -d 4 -S > out/ioreg_hid_idle.txt
           system_profiler SPUSBDataType -detailLevel mini > out/system_profiler_usb.txt
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fixtures-darwin
           path: out/
@@ -92,7 +92,7 @@ jobs:
           (Get-Process -Name LogonUI -ErrorAction SilentlyContinue) -ne $null |
             Out-File -Encoding utf8 out/logonui_present.txt
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fixtures-windows
           path: out/
