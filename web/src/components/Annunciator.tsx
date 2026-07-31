@@ -32,7 +32,12 @@ export function Annunciator() {
                 {list.map((sensor, i) => {
                     const lit = tripped.value[sensor.name] !== undefined;
                     const off = !sensor.available;
-                    const watching = sensor.enabled && sensor.available && armed.value;
+                    // Enabled and available but not running: the driver failed
+                    // and the laptop is restarting it. This used to read as
+                    // "ready", which is the panel claiming cover it does not
+                    // have — the one lie an alarm cannot afford.
+                    const failed = !off && Boolean(sensor.failure);
+                    const watching = sensor.enabled && sensor.available && !failed && armed.value;
 
                     return (
                         <button
@@ -42,6 +47,7 @@ export function Annunciator() {
                             style={{ animationDelay: `${i * 38}ms` }}
                             data-lit={lit}
                             data-off={off}
+                            data-failed={failed}
                             data-watching={watching}
                             data-enabled={sensor.enabled}
                             aria-expanded={open === sensor.name}
@@ -51,7 +57,15 @@ export function Annunciator() {
                                 {SENSOR_CAPTIONS[sensor.name] ?? sensor.display_name}
                             </span>
                             <span class="cap-state readout">
-                                {off ? 'n/a' : lit ? 'tripped' : sensor.enabled ? 'ready' : 'off'}
+                                {off
+                                    ? 'n/a'
+                                    : lit
+                                      ? 'tripped'
+                                      : failed
+                                        ? 'FAULT'
+                                        : sensor.enabled
+                                          ? 'ready'
+                                          : 'off'}
                             </span>
                         </button>
                     );
@@ -86,6 +100,12 @@ function Detail({ name, onClose }: { name: string; onClose(): void }) {
             <p class="cap-desc">{SENSOR_DESCRIPTIONS[name] ?? ''}</p>
             {!sensor.available && (
                 <p class="cap-warn">This machine has no sensor for that, so it cannot be used.</p>
+            )}
+            {sensor.available && sensor.failure && (
+                <p class="cap-warn">
+                    This sensor is not watching right now: {sensor.failure}. The laptop is
+                    restarting it, and the tile clears when it comes back.
+                </p>
             )}
             <div class="cap-actions">
                 <button

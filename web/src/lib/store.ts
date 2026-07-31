@@ -64,7 +64,11 @@ export const logNewestFirst = signal(true);
 
 export const armedSince = signal<number | null>(null);
 
-export const activeSensorCount = computed(() => sensors.value.filter((s) => s.enabled && s.available).length);
+// A sensor whose driver has failed is not active, however it is configured.
+// This is the number the user reads before walking away from the laptop.
+export const activeSensorCount = computed(
+    () => sensors.value.filter((s) => s.enabled && s.available && !s.failure).length,
+);
 
 export const visibleLog = computed(() => {
     const entries =

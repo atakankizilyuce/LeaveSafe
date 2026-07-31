@@ -14,11 +14,21 @@ export interface SensorInfo {
     enabled: boolean;
     /** Filled in from status updates rather than sent with the sensor list. */
     status?: string;
+    /**
+     * Why this sensor is not watching, absent when it is.
+     *
+     * A sensor can be enabled and available and still not running — its driver
+     * failed and the laptop is restarting the loop. Without this the panel
+     * counted it as covered, which is the one thing an alarm must not get wrong.
+     */
+    failure?: string;
 }
 
 export interface SensorState {
     enabled: boolean;
+    /** "ok", "unavailable" when the machine has no such sensor, or "failed". */
     status: string;
+    failure?: string;
 }
 
 export interface AlertData {

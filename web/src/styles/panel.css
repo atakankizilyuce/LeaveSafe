@@ -313,6 +313,20 @@
     opacity: 0.42;
 }
 
+/* A sensor that is configured to watch and is not watching — its driver failed
+   and the laptop is restarting the loop. Deliberately not styled like `off`,
+   which is a state the user chose, and not like `tripped`, which is the alarm
+   itself. This is the panel admitting a gap in its own cover, so it is marked
+   rather than dimmed. */
+.cap[data-failed='true'] {
+    border-color: var(--warn);
+    border-style: dashed;
+}
+
+.cap[data-failed='true'] .cap-state {
+    color: var(--warn);
+}
+
 /* Fired. The flash is fast and the decay is slow, which is how a real caption
    light behaves and why it catches the eye without being a strobe. */
 .cap[data-lit='true'] {

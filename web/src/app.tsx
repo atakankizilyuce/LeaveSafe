@@ -272,7 +272,14 @@ export function App() {
                     const states = msg.sensor_states;
                     sensors.value = sensors.value.map((s) => {
                         const next = states[s.name];
-                        return next ? { ...s, enabled: next.enabled, status: next.status } : s;
+                        return next
+                            ? {
+                                  ...s,
+                                  enabled: next.enabled,
+                                  status: next.status,
+                                  failure: next.failure,
+                              }
+                            : s;
                     });
                 }
                 link.value = 'live';

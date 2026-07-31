@@ -685,6 +685,7 @@ func (h *Hub) GetSensorInfos() []SensorInfo {
 			DisplayName: s.DisplayName(),
 			Available:   s.Available(),
 			Enabled:     h.sensorMgr.IsEnabled(s.Name()),
+			Failure:     h.sensorMgr.Failure(s.Name()),
 		})
 	}
 	return infos
@@ -1484,13 +1485,21 @@ func (h *Hub) broadcastStatus() {
 	h.mu.RLock()
 	states := make(map[string]*SensorState)
 	for _, s := range h.sensorMgr.Sensors() {
+		failure := h.sensorMgr.Failure(s.Name())
 		status := "ok"
-		if !s.Available() {
+		switch {
+		case !s.Available():
 			status = "unavailable"
+		case failure != "":
+			// Enabled, available, and not actually running. Said out loud rather
+			// than folded into "ok", which is what let a dead sensor go on
+			// counting towards the tally the user reads before walking away.
+			status = "failed"
 		}
 		states[s.Name()] = &SensorState{
 			Enabled: h.sensorMgr.IsEnabled(s.Name()),
 			Status:  status,
+			Failure: failure,
 		}
 	}
 
