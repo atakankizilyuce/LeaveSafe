@@ -577,17 +577,20 @@ func (h *Hub) RunHeartbeat(ctx context.Context) {
 	}
 }
 
-// dropExpiredSessions disconnects clients whose session has timed out.
+// dropExpiredSessions disconnects clients whose session is no longer valid.
 //
 // A session that expires while its socket is still open would otherwise stay
 // usable until the phone next sent a message — which, for a phone sitting idle
 // in a pocket, could be hours after the limit passed. Checking on the heartbeat
 // makes the timeout mean what it says.
+//
+// It runs whether or not the expiry limits are configured, because expiry is
+// not the only thing that ends a session. Rotating the pairing key drops every
+// token at once, and that is done precisely when a key is believed to have
+// leaked — so the sockets already open on the old key are the ones that most
+// need severing, and waiting for them to speak first is waiting on the
+// attacker's convenience.
 func (h *Hub) dropExpiredSessions() {
-	if h.authManager.SessionTTL() <= 0 && h.authManager.SessionIdle() <= 0 {
-		return
-	}
-
 	h.mu.RLock()
 	stale := make([]*Client, 0)
 	for client := range h.clients {
@@ -598,7 +601,7 @@ func (h *Hub) dropExpiredSessions() {
 	h.mu.RUnlock()
 
 	for _, client := range stale {
-		log.Info("Session expired, disconnecting client")
+		log.Info("Session no longer valid, disconnecting client")
 		client.send(NewAuthFail("session expired, pair again", h.authManager.MaxAttempts()))
 		h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Session expired"})
 		client.close()
