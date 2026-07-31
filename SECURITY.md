@@ -133,6 +133,15 @@ each phone gets its own session. Wi-Fi pairing is unaffected everywhere.
 **The event log records when the machine was left alone.** It is written
 owner-readable only. Anyone who can read your home directory can read it.
 
+**LeaveSafe answers only to its IP address.** A request whose `Host` header is a
+DNS name is refused with 421, so reaching the dashboard at `laptop.local` or
+through a tunnel does not work. This is deliberate: it is the DNS rebinding
+defense. The WebSocket's Origin check cannot provide one, because a rebound page
+sends the attacker's own domain as both Origin and Host, so the two match and the
+check passes. Every address LeaveSafe hands out — in the QR code, in `urls`, in
+the certificate's SANs — is an address literal, so refusing everything else costs
+the documented flow nothing and closes the attack completely.
+
 ## TLS and what pairing does not prove
 
 The certificate fingerprint travels in the QR code, and the phone refuses to

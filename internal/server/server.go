@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -59,7 +60,7 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	s.httpServer = &http.Server{
-		Handler:           securityHeaders(mux, cfg.TLSCert != nil),
+		Handler:           requireAddressHost(securityHeaders(mux, cfg.TLSCert != nil), cfg.DevMode),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
@@ -183,10 +184,16 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		// The default check accepts requests with no Origin header (native
 		// clients, tests) and browser requests whose Origin matches the Host —
 		// which is always true for the embedded UI, since the page and the
-		// socket are served from the same address. What it refuses is exactly
-		// the attack: some other website open in a browser on this network (or
-		// pointed here by DNS rebinding) quietly opening a socket to this
-		// server and spending pairing attempts from the victim's own address.
+		// socket are served from the same address. What it refuses is some
+		// other website, open in a browser on this network, quietly opening a
+		// socket to this server and spending pairing attempts from the victim's
+		// own address.
+		//
+		// It does NOT refuse DNS rebinding, and reading it as though it did was
+		// a mistake worth naming: in a rebinding attack the browser sends the
+		// attacker's own domain as both Origin and Host, so the two match and
+		// the check passes. requireAddressHost is what closes that, by refusing
+		// any Host that is not an address literal.
 		//
 		// Dev mode is the one legitimate cross-origin case: Vite serves the UI
 		// on its own port and proxies /ws here with the browser's Origin intact.
@@ -198,6 +205,84 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.hub.HandleConnection(r.Context(), conn, r.RemoteAddr)
+}
+
+// requireAddressHost refuses any request whose Host header is a DNS name.
+//
+// This is the DNS rebinding defense, and nothing else in the stack provides it.
+// The Origin check on the WebSocket compares Origin against Host, and in a
+// rebinding attack both are the attacker's own domain — evil.example, whose
+// record has been re-pointed at this machine's LAN address — so they match and
+// the socket opens. From there a page the user never trusted is talking to the
+// alarm: reading the greeting, spending pairing attempts, and holding the
+// unpaired-socket slots the owner's phone needs.
+//
+// The refusal is exact rather than a heuristic because every address LeaveSafe
+// ever hands out is an address literal. The QR code, `urls`, and the certificate
+// SANs are all built from net.Interfaces or from the discovered public IP —
+// there is no code path that produces a hostname. So a Host that does not parse
+// as an IP was not produced by this program, and a browser only sends one when
+// something else chose the name.
+//
+// Dev mode is exempt: Vite serves the UI from localhost on its own port and
+// proxies here, and localhost is allowed anyway, but the exemption keeps a
+// developer's tunnel or container alias from being confusing to debug.
+func requireAddressHost(next http.Handler, devMode bool) http.Handler {
+	var mu sync.Mutex
+	var lastWarned time.Time
+
+	// The refusal is worth saying out loud — someone who typed a hostname needs
+	// to know why nothing loads — but not once per request. Whoever is being
+	// refused controls how often they ask, and the application log is
+	// size-rotated, so a line per refusal is a way to push the rest of the log
+	// out. Once a minute keeps the explanation and drops the flood.
+	shouldWarn := func(now time.Time) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if now.Sub(lastWarned) < hostWarnInterval {
+			return false
+		}
+		lastWarned = now
+		return true
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !devMode && !isAddressHost(r.Host) {
+			if shouldWarn(time.Now()) {
+				log.Warnf("Refusing requests for host %q (most recently from %s): LeaveSafe is only "+
+					"reachable by IP address, and a hostname here is how a DNS rebinding attack arrives",
+					r.Host, r.RemoteAddr)
+			}
+			// 421 is the status for "this server is not authoritative for the
+			// name you asked for", which is precisely the objection.
+			http.Error(w, "LeaveSafe is only reachable by IP address", http.StatusMisdirectedRequest)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// hostWarnInterval is how often a refused hostname is worth a log line.
+const hostWarnInterval = time.Minute
+
+// isAddressHost reports whether host is an IP literal or localhost, with or
+// without a port.
+func isAddressHost(host string) bool {
+	if host == "" {
+		// HTTP/1.1 requires a Host and Go rejects a request without one before
+		// it reaches here. A non-browser client on HTTP/1.0 has no Origin to
+		// abuse and no DNS name to rebind, so there is nothing to refuse.
+		return true
+	}
+	h := host
+	if hostOnly, _, err := net.SplitHostPort(host); err == nil {
+		h = hostOnly
+	}
+	h = strings.Trim(h, "[]")
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	return net.ParseIP(h) != nil
 }
 
 // hstsMaxAge is how long a browser should refuse to talk to this origin over
