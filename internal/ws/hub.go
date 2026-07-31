@@ -456,8 +456,23 @@ func (h *Hub) RegisterExternalClient(transport Transport, onRemove func()) *Clie
 	}
 }
 
-// HandleExternalMessage processes a message from an external (non-WebSocket) client.
+// HandleExternalMessage processes a message from an external (non-WebSocket)
+// client, one message at a time.
+//
+// A WebSocket client is handled by the goroutine that reads its socket, so its
+// messages are already serialized and the state on Client needs no lock. A
+// transport with no read loop of its own has no such order: the BLE backend
+// hands each incoming write to a fresh goroutine, so several of one phone's
+// messages could be inside handleMessage at once.
+//
+// That is not a crash — it is the pairing-attempt bucket being created twice
+// and losing whichever copy had counted the attempts. The bucket is what keeps
+// refused attempts from flooding the size-rotated security log, and over BLE it
+// is reachable by anything in radio range without a key. The lock is here
+// rather than in the transport so the guarantee holds for the next one too.
 func (h *Hub) HandleExternalMessage(client *Client, msg ClientMessage) {
+	client.handling.Lock()
+	defer client.handling.Unlock()
 	h.handleMessage(client, msg)
 }
 
