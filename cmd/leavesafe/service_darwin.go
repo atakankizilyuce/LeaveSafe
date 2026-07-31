@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
@@ -45,6 +47,27 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
+// plistString renders a value for the <string> elements above.
+//
+// A plist is XML, and these three values are paths — which on macOS may contain
+// <, >, & and quotes. Dropped in raw, a path chosen by whoever created the
+// directory the binary was unpacked into could close its own <string> and open
+// keys of its own: EnvironmentVariables with DYLD_INSERT_LIBRARIES in it is a
+// well-formed plist that launchd honors at every login, from a file it reads as
+// root. The Linux side already refuses the equivalent for systemd units; this is
+// the same rule for the same reason.
+func plistString(s string) string {
+	var b bytes.Buffer
+	// EscapeText also turns control characters into references, so a path with a
+	// newline in it stays one path rather than becoming another directive.
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		// Writing to a bytes.Buffer does not fail; the branch exists so a future
+		// change of sink cannot make this silently emit the unescaped value.
+		return ""
+	}
+	return b.String()
+}
+
 func agentPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -71,7 +94,8 @@ func installAutostart(exe string) (string, error) {
 	stdoutPath := LogFilePath() + ".launchd.out"
 	stderrPath := LogFilePath() + ".launchd.err"
 
-	plist := fmt.Sprintf(plistTemplate, agentLabel, exe, stdoutPath, stderrPath)
+	plist := fmt.Sprintf(plistTemplate,
+		agentLabel, plistString(exe), plistString(stdoutPath), plistString(stderrPath))
 	if err := os.WriteFile(path, []byte(plist), 0o600); err != nil {
 		return "", fmt.Errorf("write LaunchAgent: %w", err)
 	}
