@@ -106,6 +106,25 @@ diff is small.
 
 ### Fixed
 
+- **Running the test suite no longer destroys your own configuration.** The hub
+  tests call `handleUpdateConfig` and friends directly, and those save through
+  `config.Save` — which writes to the real config directory. So `go test ./...`
+  on a developer's machine overwrote that developer's `config.json` with
+  whatever payload the test happened to send. `config.Save` renames a temporary
+  file over the original, so there was no backup and nothing to recover: a
+  disarm PIN hash and a geolocation API key live nowhere else. CI never noticed,
+  because a fresh runner has no configuration to lose. The package now isolates
+  the config directory for every test in it, and a test fails if that isolation
+  is ever removed.
+- **The end-to-end harness waits for an answer, not for an open port.** It
+  checked readiness by dialling the TCP port, but the app binds its listener
+  early and only begins serving at the very end of startup — after drawing the
+  dashboard, rendering a QR code per address and registering the sensors. The
+  kernel completes handshakes into the backlog throughout that window, so the
+  harness handed tests a server that could not yet reply, and the first test of
+  a run could spend its whole ten-second pairing deadline waiting for a greeting
+  that was never coming. It showed up as an intermittent "timed out waiting for
+  an auth reply" on loaded runners.
 - **A corrupt `config.json` is moved aside rather than overwritten.** The
   program ran on with defaults and saved over the file at the first settings
   change, destroying a PIN hash and a geolocation API key that exist nowhere
