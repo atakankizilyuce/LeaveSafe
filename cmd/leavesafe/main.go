@@ -864,7 +864,7 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 	}
 
 	sb.writeLine("  %s    Re-arming, as restore_armed_state is enabled.%s", cYellow, cReset)
-	hub.RestoreArmed()
+	hub.RestoreArmed(prev.ChangedAt)
 }
 
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,

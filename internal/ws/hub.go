@@ -36,8 +36,13 @@ type Hub struct {
 	clients         map[*Client]bool
 	authManager     *auth.Manager
 	sensorMgr       *monitor.Manager
-	armed           bool
-	version         string
+	armed bool
+	// armedAt is when armed last became true, zero when disarmed. The phone's
+	// "armed for 12 minutes" counter reads from here rather than keeping its
+	// own, because the page holding it is thrown away every time the screen
+	// locks and would otherwise restart from zero on every reconnect.
+	armedAt time.Time
+	version string
 	onAllDisconnected func()
 	onClientChange    func(count int, armed bool)
 	onAlarmTrigger  func()
@@ -256,6 +261,13 @@ func (h *Hub) IsArmed() bool {
 	return h.armed
 }
 
+// ArmedAt returns when the system was armed, or the zero time when it is not.
+func (h *Hub) ArmedAt() time.Time {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.armedAt
+}
+
 // SetCertFingerprint records the SHA-256 fingerprint of the TLS certificate
 // this server presents, so it can be announced to connecting clients. Empty
 // when the server runs over plain HTTP and there is no certificate.
@@ -278,9 +290,18 @@ func (h *Hub) SetStateStore(store *state.Store) {
 // side effects of a fresh arm — no event is logged as if the user had just
 // tapped Arm, because they did not. Used at startup when the previous run ended
 // while armed and the config asks for the state to be restored.
-func (h *Hub) RestoreArmed() {
+//
+// since is when the previous run armed, so the phone's counter resumes rather
+// than restarts. A zero time means the state file did not record one, and now is
+// the only honest answer left.
+func (h *Hub) RestoreArmed(since time.Time) {
+	if since.IsZero() {
+		since = time.Now()
+	}
+
 	h.mu.Lock()
 	h.armed = true
+	h.armedAt = since
 	tracker := h.tracker
 	trackerCtx := h.trackerCtx
 	h.mu.Unlock()
@@ -312,6 +333,7 @@ func (h *Hub) persistArmed(armed bool) {
 func (h *Hub) Arm() {
 	h.mu.Lock()
 	h.armed = true
+	h.armedAt = time.Now()
 	tracker := h.tracker
 	trackerCtx := h.trackerCtx
 	h.mu.Unlock()
@@ -335,6 +357,7 @@ func (h *Hub) Arm() {
 func (h *Hub) Disarm() {
 	h.mu.Lock()
 	h.armed = false
+	h.armedAt = time.Time{}
 	h.alarmActive = false
 	h.alarmSensor = ""
 	tracker := h.tracker
