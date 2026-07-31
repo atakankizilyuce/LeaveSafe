@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -276,6 +277,28 @@ func (c *Config) Validate() []string {
 		clampInt("location.poll_seconds", &c.Location.PollSeconds, 15, 86400, 60)
 	}
 
+	// The geolocation API key travels in this URL's query string, so a plain
+	// HTTP endpoint puts it on the wire in cleartext — on whatever café Wi-Fi
+	// the machine is sitting on. The phone is already refused a non-HTTPS
+	// endpoint when it sets one; this is the same rule for the file, which is
+	// the documented way to configure it and the path that was left open.
+	//
+	// The endpoint is dropped rather than corrected, so the default HTTPS one
+	// takes over instead of the key going somewhere unintended.
+	if c.Location.GeolocateURL != "" && !isHTTPS(c.Location.GeolocateURL) {
+		notes = append(notes, fmt.Sprintf(
+			"location.geolocate_url was %q, which is not https — ignoring it, because the API key travels in that URL",
+			c.Location.GeolocateURL))
+		c.Location.GeolocateURL = ""
+	}
+	// The IP lookup carries no key, but it decides where the machine is reported
+	// to be, and over plain HTTP anyone on the path can choose that answer.
+	if c.Location.IPLookupURL != "" && !isHTTPS(c.Location.IPLookupURL) {
+		notes = append(notes, fmt.Sprintf(
+			"location.ip_lookup_url was %q, which is not https — ignoring it", c.Location.IPLookupURL))
+		c.Location.IPLookupURL = ""
+	}
+
 	if c.ConnectionMode != "" {
 		switch c.ConnectionMode {
 		case "wifi", "bluetooth", "both":
@@ -311,6 +334,14 @@ func (c *Config) Validate() []string {
 	}
 
 	return notes
+}
+
+// isHTTPS reports whether raw is a well-formed https:// URL. Anything else —
+// plain HTTP, a scheme-relative address, a typo — is not somewhere a secret may
+// be sent.
+func isHTTPS(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Host != ""
 }
 
 // Save writes the config to disk, creating the directory if needed.
