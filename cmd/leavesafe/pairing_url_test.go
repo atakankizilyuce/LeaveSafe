@@ -23,7 +23,7 @@ func TestPairingURLKeepsTheKeyOffTheWire(t *testing.T) {
 
 		u, err := url.Parse(raw)
 		if err != nil {
-			t.Fatalf("pairingURL produced something unparseable (%q): %v", raw, err)
+			t.Fatalf("pairingURL produced something unparsable (%q): %v", raw, err)
 		}
 
 		// RequestURI is exactly what the browser writes into the request line.
