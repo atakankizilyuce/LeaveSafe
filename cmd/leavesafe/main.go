@@ -525,15 +525,28 @@ func main() {
 			log.Warnf("UPnP failed: %v — manual port forwarding required (port %d)", err, srv.Port())
 		} else {
 			portMapping = pm
-			if ip, err := pm.ExternalIP(); err == nil {
-				publicIP = ip
-			}
 		}
-		if publicIP == "" {
-			if ip, err := network.GetPublicIP(); err == nil {
+
+		// Asked of the internet first, and of the router only if that fails.
+		//
+		// This address becomes the first URL on the dashboard, and the dashboard
+		// renders the first URL as a QR code with the pairing key in it. The
+		// router's answer arrives over unauthenticated SSDP from whatever
+		// replied fastest on the local network, so taking it first meant a
+		// machine on the same café Wi-Fi could name the address the owner's
+		// phone would scan. STUN and the HTTPS lookup are answered by hosts
+		// outside that network, which is the whole difference.
+		if ip, err := network.GetPublicIP(); err == nil {
+			publicIP = ip
+		} else {
+			log.Warnf("Could not determine public IP: %v", err)
+		}
+		if publicIP == "" && portMapping != nil {
+			if ip, err := portMapping.ExternalIP(); err == nil {
+				log.Infof("Using the address the router reports, %s, as the public one", ip)
 				publicIP = ip
 			} else {
-				log.Warnf("Could not determine public IP: %v", err)
+				log.Warnf("The router's idea of the public address was not usable: %v", err)
 			}
 		}
 	}

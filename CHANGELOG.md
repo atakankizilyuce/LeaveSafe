@@ -113,6 +113,57 @@ diff is small.
 
 ### Security
 
+- **A phone can reconnect as often as it likes.** The cap on sockets that have
+  not paired yet counted a peer by its address when it took a slot and by its
+  address *and port* when it gave one back, so the per-address count only ever
+  went up. Four reconnects from one phone — four screen locks — and the owner
+  was refused by their own laptop with "the laptop is busy" until the process
+  was restarted. The same asymmetry left an entry behind for every address that
+  ever connected, which with remote access on is memory a stranger gets to
+  spend.
+- **The phone sends nothing until the connection has proved itself.** Inbound
+  messages were already held to that and outbound ones were not, so the check
+  guarded one direction. The phone reconnects to the same address every three
+  seconds forever, so anything that could answer there once the laptop went
+  quiet was handed the heartbeat — with the session token on it — the reply to
+  "check the connection", which carries the phone's own precise position, and
+  the digits typed into a disarm dialog that outlived the socket that raised it.
+  The heartbeat is now stopped when its socket closes rather than running on
+  across every reconnect, and the PIN dialog is closed with it.
+- **A refusal is only acted on if something was asked.** `auth_fail` was
+  believed from any peer, and on the resume path that reaches `clearSession()` —
+  so anything answering the socket could make the phone throw its stored pairing
+  away and leave the owner unpaired from a laptop they are not standing next to.
+  It is now ignored unless the pairing key actually went out on that connection.
+- **The public address is asked of the internet, not of the router.** With
+  remote access on, the address came first from whatever answered an
+  unauthenticated UPnP discovery on the local network, was never checked to be
+  an IP address at all, and went to the front of the URL list — which is the QR
+  code the dashboard displays, with the pairing key in it. A machine on the same
+  café Wi-Fi that replied to the discovery first got to choose where the owner's
+  phone tried to pair. STUN and the HTTPS lookup are now preferred, and the
+  router's claim is refused unless it is a public IP address.
+- **The Windows system directory comes from the kernel.** It was read from
+  `%SystemRoot%`/`%windir%`, which an ordinary user can set through
+  `HKCU\Environment` — so the absolute-path hardening added for `powershell`,
+  `netsh` and `schtasks` could be pointed at a directory they own. And when the
+  tool was not found there, the lookup fell back to the bare name, handing it
+  straight back to `PATH`. Both doors are closed: the directory is asked of
+  `GetSystemDirectory`, and the resolved path stays absolute whether or not
+  anything is there to run.
+- **The macOS LaunchAgent escapes the paths written into it.** A plist is XML
+  and the paths are not this program's to choose, so a directory named with `<`
+  or `&` could close its own element and add keys of its own —
+  `DYLD_INSERT_LIBRARIES` among them — to a file launchd reads as root and acts
+  on at every login. The systemd side already refused the equivalent.
+- **One client's messages are handled one at a time, whatever the transport.**
+  Per-connection state — whether the client has paired, its token, and the two
+  meters that bound it — is kept without a lock, on the understanding that a
+  WebSocket's read loop provides the order. The BLE backend has no such loop: it
+  hands each incoming write to a fresh goroutine, so the pairing-attempt meter
+  could be created twice and lose whichever copy had been counting. That meter
+  is what keeps refused attempts out of the size-rotated security log, and over
+  BLE it is reachable by anything in radio range without a key.
 - **DNS rebinding is refused.** LeaveSafe now answers only to requests whose
   `Host` is an IP address (or `localhost`). The WebSocket's Origin check does not
   cover this attack — a rebound page sends the attacker's own domain as both

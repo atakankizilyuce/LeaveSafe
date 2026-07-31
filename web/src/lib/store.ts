@@ -81,8 +81,38 @@ export const visibleLog = computed(() => {
 let transport: Transport | null = null;
 let token: string | null = null;
 
+/**
+ * Whether the socket currently registered has proved it is the laptop.
+ *
+ * Inbound messages were already held to this, and outbound ones were not, which
+ * left the check guarding the wrong direction. The phone reconnects to
+ * `location.host` every three seconds, forever, so anything that can answer at
+ * that address once the laptop has gone quiet — the sleeping-or-stolen laptop
+ * this product is about, or a machine that took its address on the local
+ * network — was handed the ping (with the session token on it), the reply to
+ * "check the connection" (which includes the phone's own precise position), and
+ * the digits typed into a disarm dialog that outlived the socket that raised it.
+ *
+ * None of that needed the pairing key, and none of it produced anything on
+ * screen to suggest it had happened.
+ */
+let verified = false;
+
 export function setTransport(t: Transport | null) {
     transport = t;
+    // A new socket has proved nothing, including one that replaces a socket
+    // that had. Reconnecting is exactly when something else can answer at the
+    // same address.
+    verified = false;
+}
+
+/**
+ * Records that this connection answered the pairing key this page sent. Called
+ * from the one place that can know it: the `auth_ok` branch, behind the check
+ * that a key actually went out on this connection.
+ */
+export function markVerified() {
+    verified = true;
 }
 
 export function setToken(value: string | null) {
@@ -95,12 +125,18 @@ export function hasToken(): boolean {
 
 export function send(msg: ClientMessage) {
     if (!transport) return;
+    // The pairing key is the one thing that necessarily goes out before the
+    // connection has proved anything — proving it is what the key is for. It
+    // carries its own protection: the fingerprint check upstream decides
+    // whether it is sent at all.
+    if (!verified && msg.type !== 'auth') return;
     transport.send(token ? { ...msg, token } : msg);
 }
 
 export function closeTransport() {
     transport?.close();
     transport = null;
+    verified = false;
 }
 
 // ---- log persistence ---------------------------------------------------

@@ -24,6 +24,7 @@ import {
     hasToken,
     link,
     loadLog,
+    markVerified,
     pairError,
     pairing,
     pinPrompt,
@@ -103,6 +104,21 @@ function clearHelloTimer() {
     if (helloTimer !== null) {
         window.clearTimeout(helloTimer);
         helloTimer = null;
+    }
+}
+
+/**
+ * Stops the heartbeat when the socket it was beating on goes away.
+ *
+ * It used to be started once and never stopped, so it went on firing across
+ * every drop and reconnect — at whatever had answered the address by then, with
+ * the session token attached to each one. afterPairing starts it again, which
+ * is the only place that knows the connection is good for it.
+ */
+function stopPinging() {
+    if (pingTimer !== null) {
+        window.clearInterval(pingTimer);
+        pingTimer = null;
     }
 }
 
@@ -189,7 +205,13 @@ export function App() {
         // raise the PIN dialog to collect the code that guards disarming — all
         // without knowing the pairing key, and without ever sending the
         // greeting the fingerprint check reads.
-        if (msg.type === 'auth_ok' && !authSent) return;
+        // A refusal is only a refusal of something asked. Acted on unbidden, it
+        // was a way for anything that could answer this socket to make the
+        // phone throw its pairing away: on the resume path there is no token
+        // yet, so the branch below reaches clearSession and the stored key is
+        // gone. The owner is then unpaired from a laptop they are not standing
+        // next to, and the only way back is the QR code on its screen.
+        if ((msg.type === 'auth_ok' || msg.type === 'auth_fail') && !authSent) return;
         if (msg.type !== 'hello' && msg.type !== 'auth_fail' && msg.type !== 'auth_ok' && !sessionLive) {
             return;
         }
@@ -222,6 +244,7 @@ export function App() {
 
             case 'auth_ok':
                 sessionLive = true;
+                markVerified();
                 setToken(msg.token ?? null);
                 serverVersion.value = msg.version ?? null;
                 sensors.value = msg.sensors ?? [];
@@ -410,6 +433,14 @@ export function App() {
             },
             onClose: () => {
                 clearHelloTimer();
+                stopPinging();
+                // A dialog the laptop asked for must not outlive the laptop.
+                // Left standing across a reconnect, the digits typed into it
+                // afterwards were submitted on a socket that had proved
+                // nothing — so the PIN guarding the alarm went to whatever had
+                // answered. Closing it also means the user is not typing into
+                // something whose Disarm button has quietly stopped working.
+                pinPrompt.value = false;
                 if (hasToken()) {
                     link.value = 'lost';
                     warnDisconnected();

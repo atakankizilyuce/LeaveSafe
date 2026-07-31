@@ -104,6 +104,25 @@ func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *
 	}
 }
 
+// acquirePending takes an unpaired-socket slot for this client, reporting
+// whether one was available.
+//
+// The address is normalized here and again in releasePending, through the same
+// call, because the two sides naming a peer differently is not a bug that shows
+// up in the total — it shows up only in the per-address share, months later. It
+// happened: acquire counted the bare host and release named the host:port the
+// socket arrived with, so the per-address count only ever went up. Four
+// reconnects from one phone — a screen locking four times — and the owner was
+// refused by their own laptop until the process restarted, while every address
+// that had ever connected stayed in the table forever.
+func (h *Hub) acquirePending(c *Client) bool {
+	if !h.pending.acquire(auth.NormalizeAddr(c.remoteAddr)) {
+		return false
+	}
+	c.pendingHeld = true
+	return true
+}
+
 // releasePending gives back the unpaired-socket slot this client holds, if it
 // holds one. Calling it twice is a no-op, which is what lets both the pairing
 // path and the disconnect path call it without counting the same socket twice.
@@ -115,7 +134,7 @@ func (h *Hub) releasePending(c *Client) {
 		return
 	}
 	c.pendingHeld = false
-	h.pending.release(c.remoteAddr)
+	h.pending.release(auth.NormalizeAddr(c.remoteAddr))
 }
 
 // SetAuthDeadline sets how long a fresh connection has to present a valid
@@ -437,8 +456,23 @@ func (h *Hub) RegisterExternalClient(transport Transport, onRemove func()) *Clie
 	}
 }
 
-// HandleExternalMessage processes a message from an external (non-WebSocket) client.
+// HandleExternalMessage processes a message from an external (non-WebSocket)
+// client, one message at a time.
+//
+// A WebSocket client is handled by the goroutine that reads its socket, so its
+// messages are already serialized and the state on Client needs no lock. A
+// transport with no read loop of its own has no such order: the BLE backend
+// hands each incoming write to a fresh goroutine, so several of one phone's
+// messages could be inside handleMessage at once.
+//
+// That is not a crash — it is the pairing-attempt bucket being created twice
+// and losing whichever copy had counted the attempts. The bucket is what keeps
+// refused attempts from flooding the size-rotated security log, and over BLE it
+// is reachable by anything in radio range without a key. The lock is here
+// rather than in the transport so the guarantee holds for the next one too.
 func (h *Hub) HandleExternalMessage(client *Client, msg ClientMessage) {
+	client.handling.Lock()
+	defer client.handling.Unlock()
 	h.handleMessage(client, msg)
 }
 
@@ -465,13 +499,12 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 	// A socket that has not paired costs a goroutine and a file descriptor and
 	// counts against nothing else, so the number of them is capped. Turning one
 	// away is not the same as a failure: say why, then close.
-	if !h.pending.acquire(auth.NormalizeAddr(remoteAddr)) {
+	if !h.acquirePending(client) {
 		log.Warnf("Refusing a connection from %s: too many unpaired sockets waiting", remoteAddr)
 		client.send(NewAuthFail("the laptop is busy, try again in a moment", 0))
 		_ = conn.Close(websocket.StatusTryAgainLater, "too many unpaired connections")
 		return
 	}
-	client.pendingHeld = true
 
 	defer func() {
 		h.releasePending(client)

@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -19,10 +20,19 @@ type Transport interface {
 
 // Client represents a single connected device.
 type Client struct {
-	hub           *Hub
-	conn          *websocket.Conn // nil for non-WebSocket transports
-	transport     Transport       // nil for WebSocket clients (uses conn)
-	remoteAddr    string          // peer address, used to rate-limit pairing per source
+	hub        *Hub
+	conn       *websocket.Conn // nil for non-WebSocket transports
+	transport  Transport       // nil for WebSocket clients (uses conn)
+	remoteAddr string          // peer address, used to rate-limit pairing per source
+	// handling serializes message handling for this client. Everything below it
+	// in this struct is per-connection state kept without a lock of its own, on
+	// the understanding that one client's messages are handled one at a time.
+	//
+	// A WebSocket gets that for free — the read loop is a single goroutine — and
+	// a transport with no such loop does not. Hub.HandleExternalMessage holds
+	// this so the understanding is a guarantee the hub makes rather than one it
+	// hopes each transport happens to keep.
+	handling      sync.Mutex
 	authenticated bool
 	token         string
 	// pendingHeld records that this client is occupying one of the slots
