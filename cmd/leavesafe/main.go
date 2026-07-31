@@ -154,7 +154,12 @@ func (sb *statusBar) gridLines() []string {
 	for _, s := range sensors {
 		// A sensor whose loop has failed is not active, however it is
 		// configured. This count is what the user reads before walking away.
-		if sb.sensorMgr.IsEnabled(s.Name()) && s.Available() && sb.sensorMgr.Failure(s.Name()) == "" {
+		//
+		// AvailableNow, because this runs on the five-second repaint and holds
+		// the lock the log lines go through: a sensor that answers by starting
+		// PowerShell would otherwise freeze the dashboard while it thought.
+		available, _ := sb.sensorMgr.AvailableNow(s)
+		if sb.sensorMgr.IsEnabled(s.Name()) && available && sb.sensorMgr.Failure(s.Name()) == "" {
 			active++
 		}
 	}
@@ -1317,6 +1322,12 @@ func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
 // its own goroutine and the phone can reach the laptop while the answer is
 // still being worked out.
 func logSensorAvailability(mgr *monitor.Manager) {
+	// Ask them all at once and wait for the answers, so the six probes overlap
+	// instead of queueing. Everything below then reads a settled value, and so
+	// does anything that pairs while this is still running: it is told what is
+	// known so far rather than made to wait for the rest.
+	mgr.PrimeAvailability()
+
 	sensors := mgr.Sensors()
 	available := 0
 	for _, s := range sensors {

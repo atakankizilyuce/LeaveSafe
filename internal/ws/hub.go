@@ -713,10 +713,14 @@ func (h *Hub) GetSensorInfos() []SensorInfo {
 	sensors := h.sensorMgr.Sensors()
 	infos := make([]SensorInfo, 0, len(sensors))
 	for _, s := range sensors {
+		// AvailableNow rather than Available: this list goes out with the reply
+		// to a pairing key, and on Windows asking the lid sensor directly starts
+		// a WMI query allowed twenty seconds. The phone gives up after ten.
+		available, _ := h.sensorMgr.AvailableNow(s)
 		infos = append(infos, SensorInfo{
 			Name:        s.Name(),
 			DisplayName: s.DisplayName(),
-			Available:   s.Available(),
+			Available:   available,
 			Enabled:     h.sensorMgr.IsEnabled(s.Name()),
 			Failure:     h.sensorMgr.Failure(s.Name()),
 		})
@@ -1519,9 +1523,13 @@ func (h *Hub) broadcastStatus() {
 	states := make(map[string]*SensorState)
 	for _, s := range h.sensorMgr.Sensors() {
 		failure := h.sensorMgr.Failure(s.Name())
+		// This runs on the heartbeat, which also carries the alarm. It must not
+		// stall behind a sensor working out whether it can run here; a sensor
+		// still finding out reads as unavailable and the next beat corrects it.
+		available, _ := h.sensorMgr.AvailableNow(s)
 		status := "ok"
 		switch {
-		case !s.Available():
+		case !available:
 			status = "unavailable"
 		case failure != "":
 			// Enabled, available, and not actually running. Said out loud rather
