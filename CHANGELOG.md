@@ -106,6 +106,14 @@ diff is small.
 
 ### Fixed
 
+- **The winget submission no longer fails its own validation.** The generated
+  installer manifest carried `PortableCommandAlias` on the installer entry, but
+  the 1.6.0 schema only defines that field for files nested inside an archive.
+  `winget validate` flagged it as an unknown field, the publish workflow treats
+  a warning as failure, and the submission to microsoft/winget-pkgs never
+  happened — Homebrew and Scoop published while winget silently did not. The
+  field was also redundant: a bare portable executable takes its alias from
+  `Commands`.
 - **Pairing no longer waits for a sensor to work out whether it can run.** The
   reply to a pairing key carries the sensor list, and building it asked every
   sensor whether it can work on this machine. On Windows the lid sensor answers

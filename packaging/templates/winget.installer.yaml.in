@@ -7,6 +7,10 @@ PackageVersion: "@VERSION@"
 InstallerType: portable
 # LeaveSafe is a single file with no installer: portable is the honest type, and
 # it is what lets winget put it on PATH without inventing an uninstaller.
+# The command alias comes from Commands below. PortableCommandAlias does not
+# belong here: the schema only defines it for files nested inside an archive,
+# and `winget validate` warns on it — which the publish workflow treats as
+# failure.
 Commands:
   - leavesafe
 ReleaseDate: "@RELEASE_DATE@"
@@ -14,6 +18,5 @@ Installers:
   - Architecture: x64
     InstallerUrl: "@BASE@/leavesafe-windows-amd64.exe"
     InstallerSha256: "@SHA_WINDOWS_AMD64@"
-    PortableCommandAlias: leavesafe
 ManifestType: installer
 ManifestVersion: 1.6.0
