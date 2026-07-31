@@ -1,6 +1,8 @@
 package network
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +16,15 @@ const (
 	ipifyURL    = "https://api.ipify.org"
 	httpTimeout = 5 * time.Second
 )
+
+// STUN wire constants, from RFC 5389.
+const (
+	stunHeaderLen      = 20
+	stunTxIDLen        = 12
+	stunBindingSuccess = 0x0101
+)
+
+var stunMagicCookie = []byte{0x21, 0x12, 0xA4, 0x42}
 
 // GetPublicIP discovers the public IP address using STUN, falling back to HTTP.
 func GetPublicIP() (string, error) {
@@ -34,14 +45,24 @@ func getPublicIPviaSTUN() (string, error) {
 	// Type: 0x0001 (Binding Request), Length: 0x0000
 	// Magic Cookie: 0x2112A442
 	// Transaction ID: 12 random bytes
+	//
+	// The transaction ID is drawn fresh for every request, and the reply is
+	// checked against it. It is the only thing that ties an answer to this
+	// question: the socket takes UDP from anyone, so a fixed ID means any
+	// datagram that turns up is accepted as the answer. What that buys an
+	// attacker is not academic — the address this returns is printed as a QR
+	// code for the phone to scan, so choosing it means choosing where the
+	// owner's phone tries to pair.
 	req := []byte{
 		0x00, 0x01, // Type: Binding Request
 		0x00, 0x00, // Length: 0
 		0x21, 0x12, 0xA4, 0x42, // Magic Cookie
-		0x01, 0x02, 0x03, 0x04, // Transaction ID (static, good enough)
-		0x05, 0x06, 0x07, 0x08,
-		0x09, 0x0A, 0x0B, 0x0C,
 	}
+	txID := make([]byte, stunTxIDLen)
+	if _, err := rand.Read(txID); err != nil {
+		return "", fmt.Errorf("STUN transaction ID: %w", err)
+	}
+	req = append(req, txID...)
 
 	if err := conn.SetDeadline(time.Now().Add(httpTimeout)); err != nil {
 		return "", err
@@ -56,16 +77,31 @@ func getPublicIPviaSTUN() (string, error) {
 		return "", err
 	}
 
-	return parseSTUNResponse(buf[:n])
+	return parseSTUNResponse(buf[:n], txID)
 }
 
-func parseSTUNResponse(data []byte) (string, error) {
-	if len(data) < 20 {
+// parseSTUNResponse extracts the mapped address from a Binding Success
+// Response, rejecting anything that is not a reply to the request that carried
+// txID.
+func parseSTUNResponse(data []byte, txID []byte) (string, error) {
+	if len(data) < stunHeaderLen {
 		return "", fmt.Errorf("STUN response too short")
 	}
 
+	if msgType := uint16(data[0])<<8 | uint16(data[1]); msgType != stunBindingSuccess {
+		return "", fmt.Errorf("STUN response has type 0x%04x, want a binding success", msgType)
+	}
+	if !bytes.Equal(data[4:8], stunMagicCookie) {
+		return "", fmt.Errorf("STUN response carries the wrong magic cookie")
+	}
+	// Constant time is not the point here — the transaction ID is not a secret
+	// and the attacker cannot see it — but the comparison must happen.
+	if !bytes.Equal(data[8:stunHeaderLen], txID) {
+		return "", fmt.Errorf("STUN response answers a different request")
+	}
+
 	// Parse attributes starting at byte 20
-	pos := 20
+	pos := stunHeaderLen
 	for pos+4 <= len(data) {
 		attrType := uint16(data[pos])<<8 | uint16(data[pos+1])
 		attrLen := int(uint16(data[pos+2])<<8 | uint16(data[pos+3]))

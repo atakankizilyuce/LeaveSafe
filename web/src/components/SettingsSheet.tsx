@@ -354,6 +354,25 @@ export function SettingsSheet() {
  * not recognise the installation there is no command to give, and the releases
  * page is offered instead of a guess.
  */
+/**
+ * The one place a server-supplied string reaches an href.
+ *
+ * The laptop already refuses to pass on a release URL that is not on
+ * github.com, so this is the second lock on the same door — but it is the only
+ * unchecked URL sink in the app, and the thing it keeps out is `javascript:`,
+ * which turns a link into script execution. Anything that is not plain http or
+ * https becomes the releases page.
+ */
+function safeHttpUrl(raw: string): string {
+    const fallback = 'https://github.com/atakankizilyuce/LeaveSafe/releases/latest';
+    try {
+        const parsed = new URL(raw, window.location.origin);
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 function UpdateStatus() {
     const found = updateAvailable.value;
     const [copied, setCopied] = useState(false);
@@ -397,7 +416,7 @@ function UpdateStatus() {
                 </div>
             ) : (
                 <p class="group-note">
-                    <a href={found.url} target="_blank" rel="noreferrer noopener">
+                    <a href={safeHttpUrl(found.url)} target="_blank" rel="noreferrer noopener">
                         Open the releases page
                     </a>{' '}
                     to download it. Nothing is installed for you.

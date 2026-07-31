@@ -317,7 +317,7 @@ Each one is implemented natively per platform — `/sys` and `/proc` on Linux, W
 
 ### Pairing & connection
 - **QR code pairing** — Scan once from your phone's browser, no app required
-- **Dual transport** — Wi-Fi (WebSocket) or Bluetooth Low Energy
+- **Dual transport** — Wi-Fi (WebSocket) everywhere, or Bluetooth Low Energy on macOS
 - **No cloud, no accounts** — Your phone connects directly to your laptop, never through a server
 - **Mobile data** — Optional remote access over HTTPS for reaching the laptop from another network
 
@@ -374,8 +374,14 @@ Each one is implemented natively per platform — `/sys` and `/proc` on Linux, W
 | Screen lock / unlock | ✅ | ✅ | ✅ |
 | Network / IP change | ✅ | ✅ | ✅ |
 | Input (keyboard/mouse) | ✅ | ✅ | ✅ |
-| Bluetooth Low Energy | ✅ | ✅ | ✅ |
+| Bluetooth Low Energy | ❌ | ❌ | ✅ |
 | Local alarm siren | ✅ | ✅ | ✅ |
+
+Bluetooth pairing runs on macOS only. Windows and Linux are not missing a driver:
+their Bluetooth stacks do not tell the application *which* device sent a message,
+and a pairing that cannot be kept to one phone would authenticate every device in
+radio range the moment yours paired. Wi-Fi pairing is unaffected on all three, and
+is what the QR code uses.
 
 <br/>
 

@@ -30,6 +30,12 @@ const (
 // open indefinitely and exhaust the server's sockets.
 const defaultAuthDeadline = 20 * time.Second
 
+// maxMessageBytes caps a single client message. The largest thing the protocol
+// carries is a configuration payload, which is a couple of kilobytes; the rest
+// are a line of JSON each. Sixteen kilobytes leaves room for the sensor map to
+// grow without leaving the size of an unpaired peer's frame up to them.
+const maxMessageBytes = 16 << 10
+
 // Hub manages all WebSocket connections and dispatches alerts.
 type Hub struct {
 	mu          sync.RWMutex
@@ -61,6 +67,10 @@ type Hub struct {
 	// shorten it without racing the connection goroutines that read it.
 	authDeadline time.Duration
 
+	// pending bounds how many sockets may sit unpaired at once. The deadline
+	// above limits how long each one lives; this limits how many there are.
+	pending *pendingConns
+
 	tracker    *location.Tracker
 	trackerCtx context.Context //nolint:containedctx // scopes tracker goroutines to the app lifetime
 
@@ -89,7 +99,22 @@ func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *
 		heartbeatInterval:     defaultHeartbeatInterval,
 		disconnectGracePeriod: defaultDisconnectGracePeriod,
 		authDeadline:          defaultAuthDeadline,
+		pending:               newPendingConns(maxPendingConns, maxPendingConnsPerAdr),
 	}
+}
+
+// releasePending gives back the unpaired-socket slot this client holds, if it
+// holds one. Calling it twice is a no-op, which is what lets both the pairing
+// path and the disconnect path call it without counting the same socket twice.
+//
+// The flag is read and written only on the connection's own goroutine, the same
+// place client.authenticated lives, so it needs no lock of its own.
+func (h *Hub) releasePending(c *Client) {
+	if !c.pendingHeld {
+		return
+	}
+	c.pendingHeld = false
+	h.pending.release(c.remoteAddr)
 }
 
 // SetAuthDeadline sets how long a fresh connection has to present a valid
@@ -380,11 +405,19 @@ func (h *Hub) Disarm() {
 // transport. Such transports have no network address, so they share a single
 // rate-limit bucket — which is right for BLE, where every peer is within radio
 // range anyway.
-func (h *Hub) RegisterExternalClient(transport Transport) *Client {
+//
+// onRemove, if not nil, is called once when the hub lets this client go, for
+// whatever reason: the transport reporting a disconnect, an expired session, a
+// rotated pairing key. A transport that keeps its own table of clients needs it
+// to stay in step with the hub — otherwise the hub can retire a client while
+// the transport keeps handing the same one back, and a peer that reconnects
+// inherits the authentication the previous one had.
+func (h *Hub) RegisterExternalClient(transport Transport, onRemove func()) *Client {
 	return &Client{
 		hub:        h,
 		transport:  transport,
 		remoteAddr: auth.UnknownAddr,
+		onRemove:   onRemove,
 	}
 }
 
@@ -408,7 +441,24 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 		remoteAddr: remoteAddr,
 	}
 
+	// Every message this protocol defines is small JSON. Saying so explicitly
+	// keeps the ceiling from being whatever the websocket library happens to
+	// default to, which is not a number this program should inherit silently.
+	conn.SetReadLimit(maxMessageBytes)
+
+	// A socket that has not paired costs a goroutine and a file descriptor and
+	// counts against nothing else, so the number of them is capped. Turning one
+	// away is not the same as a failure: say why, then close.
+	if !h.pending.acquire(auth.NormalizeAddr(remoteAddr)) {
+		log.Warnf("Refusing a connection from %s: too many unpaired sockets waiting", remoteAddr)
+		client.send(NewAuthFail("the laptop is busy, try again in a moment", 0))
+		_ = conn.Close(websocket.StatusTryAgainLater, "too many unpaired connections")
+		return
+	}
+	client.pendingHeld = true
+
 	defer func() {
+		h.releasePending(client)
 		h.removeClient(client)
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
@@ -577,17 +627,20 @@ func (h *Hub) RunHeartbeat(ctx context.Context) {
 	}
 }
 
-// dropExpiredSessions disconnects clients whose session has timed out.
+// dropExpiredSessions disconnects clients whose session is no longer valid.
 //
 // A session that expires while its socket is still open would otherwise stay
 // usable until the phone next sent a message — which, for a phone sitting idle
 // in a pocket, could be hours after the limit passed. Checking on the heartbeat
 // makes the timeout mean what it says.
+//
+// It runs whether or not the expiry limits are configured, because expiry is
+// not the only thing that ends a session. Rotating the pairing key drops every
+// token at once, and that is done precisely when a key is believed to have
+// leaked — so the sockets already open on the old key are the ones that most
+// need severing, and waiting for them to speak first is waiting on the
+// attacker's convenience.
 func (h *Hub) dropExpiredSessions() {
-	if h.authManager.SessionTTL() <= 0 && h.authManager.SessionIdle() <= 0 {
-		return
-	}
-
 	h.mu.RLock()
 	stale := make([]*Client, 0)
 	for client := range h.clients {
@@ -598,7 +651,7 @@ func (h *Hub) dropExpiredSessions() {
 	h.mu.RUnlock()
 
 	for _, client := range stale {
-		log.Info("Session expired, disconnecting client")
+		log.Info("Session no longer valid, disconnecting client")
 		client.send(NewAuthFail("session expired, pair again", h.authManager.MaxAttempts()))
 		h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Session expired"})
 		client.close()
@@ -751,43 +804,64 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 			}
 			log.Info("Alarm dismissed from client")
 
+		// Pausing and disabling a sensor are answers to an alarm that just
+		// fired, and the phone only offers them from the alert overlay. Which
+		// sensor they act on is the one the hub recorded as having triggered,
+		// never the name the message carried: taking the client's word for it
+		// let a paired phone switch the sensors off one at a time while the
+		// machine was armed and no alarm was sounding — the effect of
+		// disarming, without the PIN that disarming asks for.
 		case MsgTypeDismissAlarmPause:
-			triggered := h.clearAlarm()
-			sensor := msg.Sensor
+			sensor := h.clearAlarm()
 			if sensor == "" {
-				sensor = triggered
+				log.Info("Ignoring a sensor pause that answers no alarm")
+				break
 			}
-			duration := msg.Duration
-			if duration <= 0 {
-				duration = 5
-			}
-			if sensor != "" {
-				h.sensorMgr.Disable(sensor)
-				name, d := sensor, duration
-				safe.Go("sensor-unpause:"+name, func() {
-					time.Sleep(time.Duration(d) * time.Second)
-					h.sensorMgr.Enable(name)
-					if h.IsArmed() {
-						h.sensorMgr.StartEnabled()
-					}
-					h.broadcastStatus()
-				})
-			}
+			duration := clampPauseSeconds(msg.Duration)
+			h.sensorMgr.Disable(sensor)
+			name, d := sensor, duration
+			safe.Go("sensor-unpause:"+name, func() {
+				time.Sleep(time.Duration(d) * time.Second)
+				h.sensorMgr.Enable(name)
+				if h.IsArmed() {
+					h.sensorMgr.StartEnabled()
+				}
+				h.broadcastStatus()
+			})
 			h.broadcastStatus()
 			log.WithField("sensor", sensor).Infof("Alarm dismissed, sensor paused for %ds", duration)
 
 		case MsgTypeDismissAlarmDisable:
-			triggered := h.clearAlarm()
-			sensor := msg.Sensor
+			sensor := h.clearAlarm()
 			if sensor == "" {
-				sensor = triggered
+				log.Info("Ignoring a sensor disable that answers no alarm")
+				break
 			}
-			if sensor != "" {
-				h.sensorMgr.Disable(sensor)
-			}
+			h.sensorMgr.Disable(sensor)
 			h.broadcastStatus()
 			log.WithField("sensor", sensor).Info("Alarm dismissed, sensor permanently disabled")
 		}
+	}
+}
+
+// How long "pause this sensor" may switch a sensor off for. The phone offers
+// five seconds; the ceiling is here because the duration arrives over the wire,
+// and an unbounded one would leave a sensor off for the rest of the armed
+// session while the panel still showed the machine as watched.
+const (
+	defaultPauseSeconds = 5
+	maxPauseSeconds     = 300
+)
+
+// clampPauseSeconds keeps a client-supplied pause inside that range.
+func clampPauseSeconds(d int) int {
+	switch {
+	case d <= 0:
+		return defaultPauseSeconds
+	case d > maxPauseSeconds:
+		return maxPauseSeconds
+	default:
+		return d
 	}
 }
 
@@ -870,8 +944,21 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 		return
 	}
 
+	// Pairing again on a socket that is already paired replaces the session,
+	// so the one being replaced has to be given back. Overwriting the token and
+	// leaving the old session in the table let one socket hold as many sessions
+	// as it cared to ask for — and since the cap is checked before the key is
+	// compared, filling it locks every other phone out with "maximum
+	// connections reached", the owner's included.
+	if client.token != "" && client.token != token {
+		h.authManager.RemoveSession(client.token)
+	}
+
 	client.authenticated = true
 	client.token = token
+	// Paired clients are accounted for by the session cap from here on, so the
+	// unpaired slot goes back to whoever is waiting for one.
+	h.releasePending(client)
 
 	h.mu.Lock()
 	h.clients[client] = true
@@ -1076,9 +1163,20 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		cfg.RemotePort = p.RemotePort
 	}
 
+	// Sensors are left alone while the machine is armed, exactly as the
+	// dedicated `configure` message already refuses them. Without this, the
+	// settings screen was a way around the rule: a client could switch every
+	// sensor off mid-watch and reach the silence that disarming gives, without
+	// presenting the PIN that disarming asks for.
+	sensorsRefused := false
 	if p.EnabledSensors != nil {
-		cfg.EnabledSensors = p.EnabledSensors
+		if h.armed && h.sensorsWouldChange(p.EnabledSensors) {
+			sensorsRefused = true
+		} else {
+			cfg.EnabledSensors = p.EnabledSensors
+		}
 	}
+	applySensors := p.EnabledSensors != nil && !sensorsRefused
 
 	// Location changes take effect on the next arm, except for the API key,
 	// which the client never receives: an empty key here means "leave it
@@ -1135,7 +1233,7 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	h.SetPinProtection(pinEnabled, pinHash)
 	h.SetAutoArmOnLock(autoArm)
 
-	if p.EnabledSensors != nil {
+	if applySensors {
 		for name, enabled := range p.EnabledSensors {
 			if enabled {
 				h.sensorMgr.Enable(name)
@@ -1147,6 +1245,9 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 
 	h.broadcastStatus()
 
+	if sensorsRefused {
+		h.PushAlert(NewAlert("system", "warning", "Cannot change sensors while armed — disarm first"))
+	}
 	if needsRestart {
 		h.PushAlert(NewAlert("system", "warning", "Port changed — restart required to take effect"))
 	}
@@ -1212,6 +1313,28 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	log.Info("Configuration reset to defaults")
 }
 
+// sensorsWouldChange reports whether want asks for a sensor state the machine
+// does not already have.
+//
+// The settings screen sends the whole configuration back on every save, so the
+// sensor map arrives unchanged far more often than not. Comparing rather than
+// refusing on sight keeps saving an unrelated setting from being rejected —
+// and from raising a warning about sensors nobody touched — while armed.
+//
+// The comparison is against the sensor manager rather than against the stored
+// config, because the manager is what is actually watching. A config that has
+// never recorded a preference holds an empty map, and measured against that a
+// request to switch a running sensor off reads as no change at all — which is
+// the whole thing this guard exists to stop.
+func (h *Hub) sensorsWouldChange(want map[string]bool) bool {
+	for name, enabled := range want {
+		if h.sensorMgr.IsEnabled(name) != enabled {
+			return true
+		}
+	}
+	return false
+}
+
 func configToPayload(cfg *config.Config) ConfigPayload {
 	remoteAccess := false
 	if cfg.RemoteAccess != nil {
@@ -1260,12 +1383,28 @@ func (h *Hub) removeClient(client *Client) {
 		h.authManager.RemoveSession(client.token)
 	}
 
+	// Told once, under the same lock that retires the client, so a transport
+	// keeping its own table cannot be handed a client the hub has let go.
+	// removeClient is reachable from the connection's goroutine and from the
+	// heartbeat sweep, and both may arrive here for the same client.
+	var notifyRemoved func()
+	if !client.removed {
+		client.removed = true
+		notifyRemoved = client.onRemove
+	}
+
 	armed := h.armed
 	clientCount := len(h.clients)
 	goneCb := h.onAllDisconnected
 	changeCb := h.onClientChange
 	grace := h.disconnectGracePeriod
 	h.mu.Unlock()
+
+	if notifyRemoved != nil {
+		// Outside the lock: the callback reaches into the transport, and
+		// nothing it does should be able to stall the hub.
+		safe.Do("client-removed", notifyRemoved)
+	}
 
 	if changeCb != nil {
 		changeCb(clientCount, armed)

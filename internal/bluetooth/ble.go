@@ -1,11 +1,8 @@
 package bluetooth
 
 import (
-	"encoding/json"
+	"errors"
 	"sync"
-
-	"github.com/leavesafe/leavesafe/internal/ws"
-	log "github.com/sirupsen/logrus"
 )
 
 // Custom 128-bit UUIDs for LeaveSafe BLE GATT service.
@@ -14,6 +11,27 @@ const (
 	TxCharUUIDString  = "4c454156-4553-4146-452d-424c45000002" // server -> client (notify)
 	RxCharUUIDString  = "4c454156-4553-4146-452d-424c45000003" // client -> server (write)
 )
+
+// ErrNoCentralIdentity says this platform's BLE stack does not report which
+// central sent a write, so the transport cannot be offered here.
+//
+// Everything above this package assumes one connection is one device: a client
+// authenticates, and what it may do afterwards follows from that. BLE has no
+// accept step to hang an identity on, so the identity has to come from the
+// stack — and on Linux and Windows it does not come at all. tinygo's bluetooth
+// package passes a connection ID of zero for every write on both (BlueZ "doesn't
+// seem to tell who did the write"; the Windows backend has an open TODO where
+// the connection should be). Every central in radio range therefore collapses
+// into a single client, and the moment the owner's phone pairs, so has everyone
+// else's — no key required, from anywhere in radio range.
+//
+// Refusing the transport is the safe failure, and the same one the TLS path
+// takes when it cannot get a certificate: the Wi-Fi server is unaffected and
+// pairing still works over it. macOS reports a real per-central identifier and
+// is unaffected.
+var ErrNoCentralIdentity = errors.New(
+	"this platform's Bluetooth stack does not report which device sent a message, " +
+		"so a paired session could not be kept to one phone")
 
 // BLETransport implements ws.Transport for BLE clients.
 type BLETransport struct {
@@ -34,78 +52,6 @@ func (t *BLETransport) Close() error {
 	return nil
 }
 
-// Server manages BLE peripheral advertising and GATT connections.
-// Each connected central gets its own ws.Client with independent auth state.
-type Server struct {
-	hub *ws.Hub
-	mu  sync.Mutex
-	// clients maps a connection identifier to its ws.Client.
-	clients map[string]*ws.Client
-}
-
-// NewServer creates a new BLE server.
-func NewServer(hub *ws.Hub) *Server {
-	return &Server{
-		hub:     hub,
-		clients: make(map[string]*ws.Client),
-	}
-}
-
-// getOrCreateClient returns the ws.Client for the given connection ID,
-// creating a new one with the provided transport factory if needed.
-func (s *Server) getOrCreateClient(connID string, newTransport func() *BLETransport) *ws.Client {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if c, ok := s.clients[connID]; ok {
-		return c
-	}
-	transport := newTransport()
-	client := s.hub.RegisterExternalClient(transport)
-	s.clients[connID] = client
-	log.WithField("conn", connID).Info("BLE: client registered")
-	return client
-}
-
-// handleIncoming processes a raw JSON message from a specific BLE connection.
-func (s *Server) handleIncoming(connID string, data []byte, newTransport func() *BLETransport) {
-	client := s.getOrCreateClient(connID, newTransport)
-
-	var msg ws.ClientMessage
-	if err := json.Unmarshal(data, &msg); err != nil {
-		log.Warnf("BLE: invalid message: %v", err)
-		return
-	}
-	s.hub.HandleExternalMessage(client, msg)
-}
-
-// removeClient removes and unregisters the client for a given connection ID.
-// Only the darwin BLE backend reports disconnects, so linters analyzing other
-// platforms see this as dead code.
-//
-//nolint:unused // used by ble_darwin.go
-func (s *Server) removeClient(connID string) {
-	s.mu.Lock()
-	client, ok := s.clients[connID]
-	if ok {
-		delete(s.clients, connID)
-	}
-	s.mu.Unlock()
-	if ok && client != nil {
-		s.hub.RemoveExternalClient(client)
-		log.WithField("conn", connID).Info("BLE: client disconnected")
-	}
-}
-
-// disconnectAll removes all BLE clients from the hub.
-func (s *Server) disconnectAll() {
-	s.mu.Lock()
-	clients := s.clients
-	s.clients = make(map[string]*ws.Client)
-	s.mu.Unlock()
-	for _, client := range clients {
-		s.hub.RemoveExternalClient(client)
-	}
-	if len(clients) > 0 {
-		log.Infof("BLE: disconnected %d client(s)", len(clients))
-	}
-}
+// Server is declared per platform rather than here, because what it has to
+// keep differs: the macOS backend tracks one ws.Client per central, and the
+// platforms that refuse to advertise have nothing to track.

@@ -56,6 +56,9 @@ const RECONNECT_MS = 3000;
  */
 const HELLO_TIMEOUT_MS = 6000;
 
+/** A SHA-256 fingerprint is 32 bytes, so 64 hex characters once separators go. */
+const SHA256_HEX_LENGTH = 64;
+
 let pingTimer: number | null = null;
 
 /**
@@ -102,16 +105,36 @@ export function App() {
     useEffect(() => {
         loadLog();
 
-        // A scanned QR code lands here with the key in the query string, and —
-        // when the laptop is serving HTTPS — the fingerprint of the certificate
-        // it is serving. Take both, then scrub them out of the address bar so
-        // they do not sit in history.
-        const params = new URLSearchParams(window.location.search);
+        // A scanned QR code lands here with the key in the fragment, and — when
+        // the laptop is serving HTTPS — the fingerprint of the certificate it
+        // is serving. The fragment is where they belong: the browser never
+        // sends it to the server, so the key is ours to hold back until the
+        // certificate has been checked.
+        //
+        // The query string is still read, because a code printed by an older
+        // build puts them there and refusing it would only strand the user —
+        // that request already carried the key, and declining to pair now does
+        // not call it back. Fresh codes use the fragment.
+        const params = new URLSearchParams(
+            window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.search,
+        );
         const fromQr = params.get('key');
         const fp = params.get('fp');
-        if (fp) expectedFingerprint = normalizeFingerprint(fp);
+        // A fingerprint that does not survive normalisation is not a reason to
+        // carry on without one. Left as an empty string it reads as "nothing to
+        // check" further down, and the key would go out to a server nobody
+        // verified — a damaged scan silently downgrading the very check it was
+        // there to perform. Say so and let the user rescan instead.
+        const fpDamaged = fp !== null && normalizeFingerprint(fp).length !== SHA256_HEX_LENGTH;
+        if (fp && !fpDamaged) expectedFingerprint = normalizeFingerprint(fp);
         if (fromQr || fp) {
             window.history.replaceState({}, document.title, '/');
+        }
+        if (fpDamaged) {
+            pairError.value =
+                'That code did not scan cleanly — the certificate fingerprint in it is damaged, ' +
+                'so the pairing key was not sent. Scan the code again from the laptop itself.';
+            return;
         }
         if (fromQr) {
             setAutoKey(fromQr);

@@ -60,11 +60,37 @@ func New(cfg Config) *Server {
 
 	s.httpServer = &http.Server{
 		Handler:           securityHeaders(mux, cfg.TLSCert != nil),
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		// Without this a keep-alive connection is held for as long as the peer
+		// cares to hold it. With remote access on, the peer is the internet.
+		IdleTimeout:    idleTimeout,
+		MaxHeaderBytes: maxHeaderBytes,
 	}
 
 	return s
 }
+
+// How long the server will wait on a client, and how much header it will read.
+//
+// These bound the ordinary HTTP path — fetching the page and its assets — and
+// they are safe to apply globally even though a paired phone holds its socket
+// open for hours: net/http clears the connection's deadlines when a handler
+// hijacks it, which is what the WebSocket upgrade does. That is load-bearing
+// rather than incidental, so TestWebSocketOutlivesTheServerWriteTimeout holds
+// it in place.
+//
+// The WebSocket is not left unbounded by that. The hub gives an unpaired peer a
+// deadline of its own, caps how many of them there may be at once, and limits
+// the size of anything any of them sends.
+const (
+	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 30 * time.Second
+	writeTimeout      = 30 * time.Second
+	idleTimeout       = 90 * time.Second
+	maxHeaderBytes    = 1 << 16 // 64 KiB
+)
 
 // Listen binds to the configured port (or a free port if Port is 0).
 // Call this before URLs() or Start().
@@ -143,6 +169,16 @@ func (s *Server) Port() int {
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// The server's read and write timeouts are set for fetching a page, and a
+	// paired phone holds this socket open for hours. Accept hijacks the
+	// connection without touching the deadlines already on it, so they have to
+	// come off here — before the handover, while there is still a
+	// ResponseWriter to ask. Left on, every phone would be disconnected thirty
+	// seconds after it paired.
+	//
+	// The socket does not become unbounded by this: the hub gives an unpaired
+	// peer a deadline of its own, caps how many of them there may be, and
+	// limits the size of anything they send.
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		// The default check accepts requests with no Origin header (native
 		// clients, tests) and browser requests whose Origin matches the Host —
@@ -197,11 +233,16 @@ func securityHeaders(next http.Handler, tls bool) http.Handler {
 		// allowed for this origin — it is the one capability the UI genuinely
 		// asks for, and only when the user turns the feature on.
 
-		// ws:/wss: are listed alongside 'self' because some browsers do not
-		// let 'self' match a scheme change from http(s) to ws(s).
+		// The socket origin is named explicitly rather than with a bare `ws:`.
+		// Some browsers will not let 'self' match a scheme change from http(s)
+		// to ws(s), which is why the scheme has to be spelled out at all — but
+		// `ws: wss:` spells out every host on the internet along with it, and
+		// that is the one channel by which script on this page could ship the
+		// pairing key somewhere. Naming this host closes it while leaving the
+		// UI, which only ever dials its own origin, working exactly as before.
 		h.Set("Content-Security-Policy",
 			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
-				"img-src 'self' data:; connect-src 'self' ws: wss:; "+
+				"img-src 'self' data:; connect-src 'self' "+socketOrigins(r, tls)+"; "+
 				"frame-src https://www.openstreetmap.org; "+
 				"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -209,6 +250,27 @@ func securityHeaders(next http.Handler, tls bool) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// socketOrigins returns the WebSocket origins the page is allowed to dial: its
+// own host, and nothing else.
+//
+// The Host header is the address the browser actually asked for, which is the
+// address its socket has to match — this machine answers on several (every
+// local interface, plus the public one when remote access is on) and a
+// certificate or a config file would only name one of them. A request with no
+// Host is not one a browser makes; it gets the schemes alone, which is the old
+// behavior and no worse than it was.
+func socketOrigins(r *http.Request, tls bool) string {
+	if r.Host == "" {
+		return "ws: wss:"
+	}
+	if tls {
+		return "wss://" + r.Host
+	}
+	// Plain HTTP still allows wss:// to the same host so that turning on remote
+	// access does not require a stale page to be reloaded before it reconnects.
+	return "ws://" + r.Host + " wss://" + r.Host
 }
 
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual

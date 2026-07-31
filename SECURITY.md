@@ -122,6 +122,14 @@ holding an unlocked paired phone, not a second factor.
 it is off by default and opt-in per install. With it on, the pairing key is the
 only thing between the internet and the alarm.
 
+**Bluetooth pairing runs on macOS only.** Not for want of a driver: the Windows
+and Linux Bluetooth stacks do not tell the application which device performed a
+write — the library reports a connection ID of zero for every one — so every
+device in radio range collapses into a single client, and one phone pairing
+would authenticate all of them without the key. LeaveSafe refuses to advertise
+there rather than offer that. macOS reports a real per-central identifier, so
+each phone gets its own session. Wi-Fi pairing is unaffected everywhere.
+
 **The event log records when the machine was left alone.** It is written
 owner-readable only. Anyone who can read your home directory can read it.
 
@@ -133,6 +141,16 @@ misdirected connection — wrong host, stale port forward, a certificate that
 changed since the code was printed — and it means the fingerprint is on the
 phone's own screen for comparison against the browser warning, rather than back
 on the laptop where nobody looks.
+
+Both the key and the fingerprint ride in the URL **fragment**, after the `#`,
+and that is what makes the check mean anything. A fragment is never put on the
+wire: the browser strips it before building the request, so the key reaches the
+page's own JavaScript and no server sees it. Earlier versions put the key in the
+query string, which meant the first request line the phone sent already carried
+it — to whatever server answered that address, before any of the page had run
+and before the certificate could be checked. If you are looking at a QR code
+from an older build, its URL contains `?key=`; that key should be considered
+disclosed to whatever answered, and `rotate-key` on the laptop replaces it.
 
 It is not proof against a determined interceptor. A browser gives page
 JavaScript no way to see the certificate of its own connection, so the
