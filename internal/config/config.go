@@ -314,6 +314,15 @@ func (c *Config) Validate() []string {
 }
 
 // Save writes the config to disk, creating the directory if needed.
+//
+// The write goes to a temporary file which is then renamed over the real one,
+// so a crash or a flat battery mid-write leaves the previous config intact
+// rather than a truncated one. That matters more here than the pattern usually
+// does: this program is written to survive abrupt shutdowns, and a config that
+// fails to parse is moved aside and replaced with defaults — taking the PIN
+// hash and the geolocation API key with it, neither of which is recoverable
+// from anywhere else. The state store and the update ledger already write this
+// way; this is the file with the most to lose.
 func Save(cfg *Config) error {
 	dir := ConfigDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -325,5 +334,33 @@ func Save(cfg *Config) error {
 		return err
 	}
 
-	return os.WriteFile(ConfigPath(), data, 0o600)
+	tmp, err := os.CreateTemp(dir, "config.json.*")
+	if err != nil {
+		return fmt.Errorf("create temp config: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		// Only fires on the failure paths; a successful call has already
+		// renamed the file away by the time it gets here.
+		_ = os.Remove(tmpName)
+	}()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod temp config: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temp config: %w", err)
+	}
+	// Without the sync, a power loss just after the rename can leave the
+	// directory entry pointing at a file whose contents never reached the disk.
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temp config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp config: %w", err)
+	}
+	return os.Rename(tmpName, ConfigPath())
 }
