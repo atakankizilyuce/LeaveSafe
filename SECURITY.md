@@ -122,6 +122,14 @@ holding an unlocked paired phone, not a second factor.
 it is off by default and opt-in per install. With it on, the pairing key is the
 only thing between the internet and the alarm.
 
+**Bluetooth pairing runs on macOS only.** Not for want of a driver: the Windows
+and Linux Bluetooth stacks do not tell the application which device performed a
+write — the library reports a connection ID of zero for every one — so every
+device in radio range collapses into a single client, and one phone pairing
+would authenticate all of them without the key. LeaveSafe refuses to advertise
+there rather than offer that. macOS reports a real per-central identifier, so
+each phone gets its own session. Wi-Fi pairing is unaffected everywhere.
+
 **The event log records when the machine was left alone.** It is written
 owner-readable only. Anyone who can read your home directory can read it.
 

@@ -405,11 +405,19 @@ func (h *Hub) Disarm() {
 // transport. Such transports have no network address, so they share a single
 // rate-limit bucket — which is right for BLE, where every peer is within radio
 // range anyway.
-func (h *Hub) RegisterExternalClient(transport Transport) *Client {
+//
+// onRemove, if not nil, is called once when the hub lets this client go, for
+// whatever reason: the transport reporting a disconnect, an expired session, a
+// rotated pairing key. A transport that keeps its own table of clients needs it
+// to stay in step with the hub — otherwise the hub can retire a client while
+// the transport keeps handing the same one back, and a peer that reconnects
+// inherits the authentication the previous one had.
+func (h *Hub) RegisterExternalClient(transport Transport, onRemove func()) *Client {
 	return &Client{
 		hub:        h,
 		transport:  transport,
 		remoteAddr: auth.UnknownAddr,
+		onRemove:   onRemove,
 	}
 }
 
@@ -1375,12 +1383,28 @@ func (h *Hub) removeClient(client *Client) {
 		h.authManager.RemoveSession(client.token)
 	}
 
+	// Told once, under the same lock that retires the client, so a transport
+	// keeping its own table cannot be handed a client the hub has let go.
+	// removeClient is reachable from the connection's goroutine and from the
+	// heartbeat sweep, and both may arrive here for the same client.
+	var notifyRemoved func()
+	if !client.removed {
+		client.removed = true
+		notifyRemoved = client.onRemove
+	}
+
 	armed := h.armed
 	clientCount := len(h.clients)
 	goneCb := h.onAllDisconnected
 	changeCb := h.onClientChange
 	grace := h.disconnectGracePeriod
 	h.mu.Unlock()
+
+	if notifyRemoved != nil {
+		// Outside the lock: the callback reaches into the transport, and
+		// nothing it does should be able to stall the hub.
+		safe.Do("client-removed", notifyRemoved)
+	}
 
 	if changeCb != nil {
 		changeCb(clientCount, armed)

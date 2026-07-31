@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -642,7 +643,18 @@ func main() {
 	if connMode == "bluetooth" || connMode == "both" {
 		bleServer := ble.NewServer(hub)
 		safe.Supervise(ctx, "ble-server", func(c context.Context) {
-			if err := bleServer.Start(c); err != nil {
+			err := bleServer.Start(c)
+			switch {
+			case err == nil:
+			case errors.Is(err, ble.ErrNoCentralIdentity):
+				// Not a fault to be retried, and not something to bury in a
+				// log line the user will read as noise: they asked for
+				// Bluetooth and are not getting it. Say why, and say what
+				// still works.
+				sb.writeLine("  %s[BLE]%s Bluetooth pairing is off on this platform: %v.",
+					cYellow, cReset, err)
+				sb.writeLine("  %s      Pair over Wi-Fi instead — scan the QR code above.%s", cDim, cReset)
+			default:
 				log.Errorf("BLE server error: %v", err)
 			}
 		})

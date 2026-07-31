@@ -30,6 +30,14 @@ type Client struct {
 	// exactly once — on pairing or on disconnect, whichever comes first.
 	// Transports with no accept step of their own never take one.
 	pendingHeld bool
+	// onRemove is called once when the hub lets this client go, so a transport
+	// keeping its own table of clients can drop its entry at the same moment.
+	// Nil for WebSocket clients, which keep no such table.
+	onRemove func()
+	// removed guards onRemove against firing twice: removeClient runs from the
+	// connection's own goroutine and from the heartbeat sweep, and both may
+	// reach the same client.
+	removed bool
 }
 
 // close tears down the underlying connection, whichever transport it uses.
