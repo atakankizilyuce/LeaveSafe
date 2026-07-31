@@ -1,8 +1,14 @@
 package ws
 
 import (
+	"context"
+	"encoding/json"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/leavesafe/leavesafe/internal/auth"
+	"nhooyr.io/websocket"
 )
 
 // The phone shows how long the machine has been armed. That counter has to come
@@ -93,5 +99,83 @@ func TestAuthOKOmitsTheArmTimeWhenDisarmed(t *testing.T) {
 	}
 	if msg.ArmedSince != nil {
 		t.Errorf("auth_ok carried an arm time of %d while disarmed", *msg.ArmedSince)
+	}
+}
+
+// Silencing from the terminal has to silence the phone too. Stopping only the
+// laptop leaves the phone wailing in a pocket with no way to know it is over.
+func TestDismissAlarmTellsEveryPhone(t *testing.T) {
+	hub := testHub(t)
+
+	var dismissed atomic.Bool
+	hub.SetAlarmDismissCallback(func() { dismissed.Store(true) })
+
+	srv := hubServer(t, hub)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn := dialAndAuth(t, ctx, wsURL(srv), hub)
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	hub.DismissAlarm()
+
+	if !dismissed.Load() {
+		t.Error("DismissAlarm did not stop the laptop's own alarm")
+	}
+
+	readCtx, readCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer readCancel()
+	for {
+		_, data, err := conn.Read(readCtx)
+		if err != nil {
+			t.Fatal("no alarm_cleared reached the phone")
+		}
+		var msg ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if msg.Type == MsgTypeAlarmCleared {
+			return
+		}
+	}
+}
+
+// The PIN guards the alarm from whoever is holding the device. A terminal is a
+// device too, and a wrong PIN there must leave the machine armed.
+func TestConsoleDisarmRefusesAWrongPin(t *testing.T) {
+	hash, err := auth.HashPin("1234")
+	if err != nil {
+		t.Fatalf("hash pin: %v", err)
+	}
+
+	hub := testHub(t)
+	hub.SetPinProtection(true, hash)
+	hub.Arm()
+
+	if err := hub.DisarmWithPin("console", "9999"); err == nil {
+		t.Error("a wrong PIN was accepted")
+	}
+	if !hub.IsArmed() {
+		t.Error("a refused PIN disarmed the machine anyway")
+	}
+
+	if err := hub.DisarmWithPin("console", "1234"); err != nil {
+		t.Errorf("the correct PIN was refused: %v", err)
+	}
+	if hub.IsArmed() {
+		t.Error("the correct PIN did not disarm the machine")
+	}
+}
+
+// With no PIN configured, disarming must not invent a barrier.
+func TestConsoleDisarmWithoutAPinJustDisarms(t *testing.T) {
+	hub := testHub(t)
+	hub.Arm()
+
+	if err := hub.DisarmWithPin("console", ""); err != nil {
+		t.Errorf("disarm was refused with no PIN protection on: %v", err)
+	}
+	if hub.IsArmed() {
+		t.Error("the machine stayed armed")
 	}
 }
