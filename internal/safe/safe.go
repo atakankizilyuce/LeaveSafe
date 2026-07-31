@@ -116,6 +116,22 @@ func Go(name string, fn func()) {
 // This is what the long-lived loops use — the alert dispatcher, the heartbeat,
 // sensor polling. Those must still be running when the user comes back.
 func Supervise(ctx context.Context, name string, fn func(context.Context)) {
+	SuperviseRetry(ctx, name, func(c context.Context) error {
+		fn(c)
+		return nil
+	})
+}
+
+// SuperviseRetry is Supervise for work that can fail without panicking. It
+// restarts fn after a short delay when fn panics *or* returns a non-nil error,
+// until ctx is canceled. Returning nil ends the supervision.
+//
+// Panicking is not the only way a loop stops watching, and treating it as the
+// only one was a real gap: a sensor whose driver returned an error logged it,
+// returned normally, and was retired as though it had finished its work. For a
+// program whose whole job is to still be watching when the user comes back,
+// "returned an error" and "panicked" deserve the same answer.
+func SuperviseRetry(ctx context.Context, name string, fn func(context.Context) error) {
 	// Read once, here on the caller's goroutine, rather than on every restart.
 	// The supervised goroutine outlives the call, so reading a package variable
 	// from inside it would race with a test swapping the value.
@@ -126,10 +142,19 @@ func Supervise(ctx context.Context, name string, fn func(context.Context)) {
 			if ctx.Err() != nil {
 				return
 			}
-			if completed := runOnce(ctx, name, fn); completed {
+			err, panicked := runOnce(ctx, name, fn)
+			if !panicked && err == nil {
 				return
 			}
-			log.Warnf("Restarting %s in %v after a panic", name, backoff)
+			// A cancellation that arrived mid-run is not a failure to retry.
+			if ctx.Err() != nil {
+				return
+			}
+			if panicked {
+				log.Warnf("Restarting %s in %v after a panic", name, backoff)
+			} else {
+				log.Warnf("Restarting %s in %v after an error: %v", name, backoff, err)
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -139,15 +164,14 @@ func Supervise(ctx context.Context, name string, fn func(context.Context)) {
 	}()
 }
 
-// runOnce invokes fn, returning true if it returned normally and false if it
-// panicked.
-func runOnce(ctx context.Context, name string, fn func(context.Context)) (completed bool) {
+// runOnce invokes fn, returning whatever error it produced and whether it
+// panicked instead of returning at all.
+func runOnce(ctx context.Context, name string, fn func(context.Context) error) (err error, panicked bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			report(name, r, debug.Stack())
-			completed = false
+			panicked = true
 		}
 	}()
-	fn(ctx)
-	return true
+	return fn(ctx), false
 }
