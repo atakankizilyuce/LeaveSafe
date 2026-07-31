@@ -32,7 +32,7 @@ A lightweight, cross-platform device security monitor that turns your phone into
 
 You are in a café, a library, a co-working space. You need to stand up — the counter, the bathroom, a phone call outside. Your laptop is on the table. You either carry it with you every single time, or you leave it and hope.
 
-**LeaveSafe is the third option.** Run it, scan the QR code with your phone, tap *Arm*, and walk away. The laptop watches its own charger, lid, USB ports, screen lock, network and input. The moment any of them changes, your phone goes off in your pocket — and the laptop starts screaming too.
+**LeaveSafe is the third option.** Run it, scan the QR code with your phone, tap *Arm*, and walk away. The laptop watches its own charger, lid, USB ports, screen lock, network and input. The moment any of them changes, your phone goes off in your pocket — and the laptop starts screaming too. The phone is the convenience, not the alarm: when its screen locks the operating system freezes the page, so an alert may not reach it until you open it again — and the laptop sounds regardless.
 
 No account. No server. No internet needed. Your phone talks straight to your laptop over your local network or Bluetooth, and the 16-digit pairing key never leaves the two of them.
 
@@ -236,7 +236,10 @@ Type any of these into the dashboard while it runs:
 |---------|--------------|
 | `test` | Send a test alert to every connected phone |
 | `trigger <sensor>` | Fire one sensor by hand (`power`, `lid`, `usb`, `screen`, `network`, `input`) |
-| `stop` / `silence` | Stop an alarm that is going off |
+| `arm` | Arm monitoring from the terminal |
+| `disarm` | Disarm from the terminal; asks for the PIN if one is set |
+| `status` | Armed state, how long for, phones connected and every sensor |
+| `stop` / `silence` | Stop an alarm that is going off, on the laptop and on every paired phone |
 | `history` | The last 20 security events |
 | `urls` | Every address the server is reachable on; `*` marks the one in the QR code |
 | `qr <n>` | Show the QR code for URL `n` from that list |
@@ -507,7 +510,7 @@ You can change everything from the phone UI, or edit the file directly. A file t
 | `max_auth_attempts` | `5` | Failed attempts before lockout |
 | `lockout_seconds` | `60` | Lockout duration |
 | `heartbeat_seconds` | `15` | Status broadcast interval |
-| `disconnect_grace_seconds` | `30` | Delay before alarm on full disconnect |
+| `disconnect_grace_seconds` | `30` | How long a phone can be gone before the laptop reports it. Not an alarm — only the sensors do that |
 | `auto_arm_on_lock` | `false` | Arm automatically when the screen locks |
 | `restore_armed_state` | `false` | Re-arm on startup if the last run ended while armed |
 | `session_ttl_minutes` | `1440` | How long a paired session lasts; `0` means forever |
