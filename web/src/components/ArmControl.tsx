@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { captureAnchor } from '../lib/geo';
-import { armed, send } from '../lib/store';
+import { armed, send, showToast } from '../lib/store';
 
 const HOLD_MS = 1500;
 
@@ -44,6 +44,12 @@ export function ArmControl({ counting, onCountdown }: Props) {
                 send({ type: 'arm' });
                 captureAnchor();
                 send({ type: 'get_location' });
+                // Said here rather than pinned to the panel: it is true all the
+                // time, but it only changes what someone does at the moment they
+                // are about to put the phone away.
+                showToast(
+                    'Armed. If your phone sleeps the alert may not arrive — the laptop still sounds its own alarm.',
+                );
             } else {
                 onCountdown(left);
             }
