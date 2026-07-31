@@ -136,6 +136,15 @@ diff is small.
   saved fingerprint that is not 64 hex characters is discarded rather than
   silently read as "no certificate to check", and a session with no fingerprint
   recorded is not resumed over HTTPS.
+- **A sensor that fails is restarted, and is not reported as watching until it
+  is.** Only a panic used to bring a sensor loop back. A driver that returned an
+  error logged it and returned normally, which the supervisor read as "finished
+  its work" — so the loop was retired, and because its cancel function stayed
+  registered every later arm skipped the sensor as already running. One transient
+  failure removed it for the life of the process. Worse, nothing said so: the
+  dashboard and the phone kept counting it towards "5/5 sensors active" with the
+  machine shown as armed. Failed sensors now retry with backoff, and both screens
+  show the fault and the reason instead of counting it as cover.
 - **Windows system tools are run from an absolute path.** `powershell`, `netsh`
   and `schtasks` were launched by bare name, so Windows searched `PATH` in order.
   A directory some installer added ahead of `System32` that ordinary users can
