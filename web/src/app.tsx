@@ -76,6 +76,29 @@ let activeKey: string | null = null;
 
 let helloTimer: number | null = null;
 
+/**
+ * Whether the pairing key has actually gone out on *this* connection.
+ *
+ * Without it the certificate check guarded nothing that mattered. It lives in
+ * the `hello` branch, so a server that simply never greets skips it entirely —
+ * and every other branch acted on whatever arrived. An `auth_ok` sent by
+ * something that was never asked anything flipped the page to the panel, and a
+ * `pin_required` behind it put the disarm PIN dialog on screen, so the digits
+ * guarding the alarm were typed straight into whatever had answered.
+ */
+let authSent = false;
+
+/**
+ * Whether this connection has been authenticated — an `auth_ok` that answers a
+ * key this page sent, rather than one that arrived unbidden.
+ *
+ * Separate from `hasToken()`, which stays true across a dropped socket so the
+ * reconnect can tell itself apart from a fresh pairing. During that reconnect
+ * the new socket has proved nothing yet, and until it does it is treated like
+ * any other stranger.
+ */
+let sessionLive = false;
+
 function clearHelloTimer() {
     if (helloTimer !== null) {
         window.clearTimeout(helloTimer);
@@ -88,6 +111,7 @@ function sendPendingKey() {
     if (pendingKey === null) return;
     const key = pendingKey;
     pendingKey = null;
+    authSent = true;
     send({ type: 'auth', key });
 }
 
@@ -153,6 +177,23 @@ export function App() {
     }, []);
 
     function handle(msg: ServerMessage) {
+        // Nothing but the handshake is acted on until this connection has
+        // proved itself. The three that get through are the handshake: the
+        // greeting that carries the certificate, the refusal that answers a key
+        // we sent, and the acceptance — and that last one only if there was a
+        // key to accept.
+        //
+        // Everything after the switch assumes a laptop on the other end. Before
+        // this guard existed, anything that could answer the phone's socket
+        // could open the panel, sound a spoofed alarm on the lock screen, and
+        // raise the PIN dialog to collect the code that guards disarming — all
+        // without knowing the pairing key, and without ever sending the
+        // greeting the fingerprint check reads.
+        if (msg.type === 'auth_ok' && !authSent) return;
+        if (msg.type !== 'hello' && msg.type !== 'auth_fail' && msg.type !== 'auth_ok' && !sessionLive) {
+            return;
+        }
+
         switch (msg.type) {
             case 'hello': {
                 clearHelloTimer();
@@ -180,6 +221,7 @@ export function App() {
             }
 
             case 'auth_ok':
+                sessionLive = true;
                 setToken(msg.token ?? null);
                 serverVersion.value = msg.version ?? null;
                 sensors.value = msg.sensors ?? [];
@@ -324,6 +366,12 @@ export function App() {
         pairError.value = null;
         pendingKey = key;
         activeKey = key;
+        // A new socket has proved nothing, including the one that replaces a
+        // dropped connection. Reconnecting is exactly when a different machine
+        // can answer at the same address, so the reconnect starts from the same
+        // suspicion a first connection does.
+        authSent = false;
+        sessionLive = false;
 
         const handlers = {
             onMessage: handle,
@@ -337,7 +385,12 @@ export function App() {
                 }
                 helloTimer = window.setTimeout(() => {
                     helloTimer = null;
-                    if (!hasToken()) {
+                    // Measured against this connection, not against holding a
+                    // token from an earlier one. A forged auth_ok used to set a
+                    // token and so cancel this bail-out, which is the wrong way
+                    // round: a server that never greets is precisely what this
+                    // timer is here to give up on.
+                    if (!sessionLive) {
                         pendingKey = null;
                         pairing.value = false;
                         pairError.value =
