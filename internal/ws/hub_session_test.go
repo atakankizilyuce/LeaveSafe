@@ -59,3 +59,39 @@ func TestRestoreArmedWithoutATimeUsesNow(t *testing.T) {
 		t.Error("RestoreArmed with an unknown time left no arm time at all")
 	}
 }
+
+// A phone that locked its screen and came back has to learn the state on
+// arrival. Waiting for the next heartbeat means up to fifteen seconds showing
+// "disarmed" for a machine that is armed — the one thing the panel must never
+// get wrong.
+func TestAuthOKCarriesTheArmedState(t *testing.T) {
+	hub := testHub(t)
+	hub.Arm()
+
+	msg := NewAuthOK("tok", nil, "test", hub.IsArmed(), hub.ArmedAt())
+
+	if msg.Armed == nil || !*msg.Armed {
+		t.Fatal("auth_ok did not say the machine was armed")
+	}
+	if msg.ArmedSince == nil {
+		t.Fatal("auth_ok carried no arm time")
+	}
+	if want := hub.ArmedAt().Unix(); *msg.ArmedSince != want {
+		t.Errorf("auth_ok said armed since %d, want %d", *msg.ArmedSince, want)
+	}
+}
+
+// Claiming an arm time for a disarmed machine would give the phone a counter to
+// render for a watch that is not running.
+func TestAuthOKOmitsTheArmTimeWhenDisarmed(t *testing.T) {
+	hub := testHub(t)
+
+	msg := NewAuthOK("tok", nil, "test", hub.IsArmed(), hub.ArmedAt())
+
+	if msg.Armed == nil || *msg.Armed {
+		t.Error("auth_ok claimed a disarmed machine was armed")
+	}
+	if msg.ArmedSince != nil {
+		t.Errorf("auth_ok carried an arm time of %d while disarmed", *msg.ArmedSince)
+	}
+}

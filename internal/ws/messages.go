@@ -110,7 +110,11 @@ type ServerMessage struct {
 	Sensors           []SensorInfo            `json:"sensors,omitempty"`
 	SensorStates      map[string]*SensorState `json:"sensor_states,omitempty"`
 	Armed             *bool                   `json:"armed,omitempty"`
-	Alert             *AlertData              `json:"alert,omitempty"`
+	// ArmedSince is when arming happened, in Unix seconds. Sent with auth_ok so
+	// a phone that reconnected resumes its counter instead of restarting it.
+	// Omitted when the machine is not armed.
+	ArmedSince *int64     `json:"armed_since,omitempty"`
+	Alert      *AlertData `json:"alert,omitempty"`
 	Timestamp         int64                   `json:"ts,omitempty"`
 	Config            *ConfigPayload          `json:"config,omitempty"`
 	Location          *LocationPayload        `json:"location,omitempty"`
@@ -211,13 +215,24 @@ func NewHello(certFP, version string) ServerMessage {
 }
 
 // NewAuthOK creates an auth success response.
-func NewAuthOK(token string, sensors []SensorInfo, version string) ServerMessage {
-	return ServerMessage{
+//
+// It carries the armed state because a reconnecting phone would otherwise show
+// the machine as disarmed until the next status broadcast — and the commonest
+// reason to reconnect is that the screen locked, which is exactly when the
+// machine is most likely to be armed.
+func NewAuthOK(token string, sensors []SensorInfo, version string, armed bool, armedAt time.Time) ServerMessage {
+	msg := ServerMessage{
 		Type:    MsgTypeAuthOK,
 		Token:   token,
 		Version: version,
 		Sensors: sensors,
+		Armed:   &armed,
 	}
+	if armed && !armedAt.IsZero() {
+		since := armedAt.Unix()
+		msg.ArmedSince = &since
+	}
+	return msg
 }
 
 // NewAuthFail creates an auth failure response.

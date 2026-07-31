@@ -839,7 +839,7 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	}
 
 	infos := h.GetSensorInfos()
-	client.send(NewAuthOK(token, infos, h.version))
+	client.send(NewAuthOK(token, infos, h.version, h.IsArmed(), h.ArmedAt()))
 
 	// A phone can pair hours after the check ran, so the known result is told to
 	// it on arrival rather than only broadcast at the moment it was found.
