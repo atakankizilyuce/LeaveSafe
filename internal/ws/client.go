@@ -38,6 +38,22 @@ type Client struct {
 	// connection's own goroutine and from the heartbeat sweep, and both may
 	// reach the same client.
 	removed bool
+	// limiter bounds how fast this client's messages are handled. Created on
+	// the first message rather than with the client, so a connection that never
+	// says anything costs nothing.
+	limiter *tokenBucket
+}
+
+// allowMessage reports whether this client may have another message handled,
+// spending one token if so.
+//
+// Read and written only on the connection's own goroutine, like authenticated
+// and pendingHeld, so the bucket needs no lock of its own.
+func (c *Client) allowMessage() bool {
+	if c.limiter == nil {
+		c.limiter = newTokenBucket()
+	}
+	return c.limiter.allow()
 }
 
 // close tears down the underlying connection, whichever transport it uses.

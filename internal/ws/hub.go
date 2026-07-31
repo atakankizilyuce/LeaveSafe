@@ -749,6 +749,21 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 		}
 	}
 
+	// Past this point a message costs something — a disk write, a broadcast to
+	// every paired phone, the siren — so how fast they can arrive is bounded.
+	// Pairing is deliberately outside the limit: it has one of its own, per
+	// address and with a lockout, and running both would let a flood of
+	// messages from a paired client eat into the allowance a stranger's guesses
+	// are counted against.
+	//
+	// Over the limit the message is dropped rather than the client: a phone
+	// whose script has run away is still the owner's phone, and the alarm is
+	// the last thing that should be disconnected for it.
+	if msg.Type != MsgTypeAuth && !client.allowMessage() {
+		log.WithField("type", msg.Type).Debug("Dropping a message from a client that is sending too fast")
+		return
+	}
+
 	switch msg.Type {
 	case MsgTypeAuth:
 		h.handleAuth(client, msg)
