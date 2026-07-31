@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { AppConfig, ClientMessage } from '../lib/protocol';
-import { config, send, serverVersion, settingsOpen, showToast, updateAvailable } from '../lib/store';
+import { clearSession } from '../lib/session';
+import {
+    closeTransport,
+    config,
+    screen,
+    send,
+    serverVersion,
+    setToken,
+    settingsOpen,
+    showToast,
+    updateAvailable,
+} from '../lib/store';
 import { Scrim } from './Scrim';
 
 /**
@@ -295,9 +306,34 @@ export function SettingsSheet() {
                             <UpdateStatus />
                         </Group>
 
+                        <Group
+                            title="When your phone is asleep"
+                            note="LeaveSafe talks straight to your laptop, with no cloud in between. That is also the limit: when your phone locks its screen or you switch apps, the operating system freezes this page and closes the connection, so an alert may not reach you until you open it again."
+                        >
+                            <p class="group-note">
+                                The laptop does not depend on your phone. It keeps watching every sensor you
+                                enabled and sounds its own alarm whether or not a phone is connected — and
+                                losing the connection is not itself treated as an intrusion, so a phone in
+                                your pocket will not set it off.
+                            </p>
+                        </Group>
+
                         <div class="sheet-actions">
                             <button type="button" class="alarm-primary" onClick={save}>
                                 {saved ? 'Saved' : 'Save settings'}
+                            </button>
+                            <button
+                                type="button"
+                                class="sheet-reset"
+                                onClick={() => {
+                                    clearSession();
+                                    setToken(null);
+                                    closeTransport();
+                                    settingsOpen.value = false;
+                                    screen.value = 'pair';
+                                }}
+                            >
+                                Forget this phone
                             </button>
                             <button type="button" class="sheet-reset" onClick={reset}>
                                 Reset everything

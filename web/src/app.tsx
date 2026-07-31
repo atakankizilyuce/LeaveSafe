@@ -11,7 +11,8 @@ import { StateHeader } from './components/StateHeader';
 import { checkFingerprint, normalizeFingerprint } from './lib/fingerprint';
 import { captureAnchor } from './lib/geo';
 import type { ServerMessage } from './lib/protocol';
-import { startSiren, warnDisconnected } from './lib/siren';
+import { clearSession, loadSession, saveSession } from './lib/session';
+import { startSiren, stopSiren, warnDisconnected } from './lib/siren';
 import {
     alarm,
     appendLog,
@@ -67,6 +68,9 @@ let expectedFingerprint: string | null = null;
 /** The key waiting on the fingerprint check, held rather than sent. */
 let pendingKey: string | null = null;
 
+/** The key the current connection is pairing with, kept so it can be stored. */
+let activeKey: string | null = null;
+
 let helloTimer: number | null = null;
 
 function clearHelloTimer() {
@@ -112,6 +116,16 @@ export function App() {
         if (fromQr) {
             setAutoKey(fromQr);
             window.setTimeout(() => pair(fromQr.replace(/\D/g, ''), 'websocket'), 400);
+            return;
+        }
+
+        // No code in the address bar means this is a return visit — most often
+        // because the phone locked its screen and threw the page away. Pick the
+        // pairing back up rather than asking for the QR code again.
+        const stored = loadSession();
+        if (stored) {
+            expectedFingerprint = stored.fingerprint;
+            window.setTimeout(() => pair(stored.key, 'websocket'), 100);
         }
     }, []);
 
@@ -146,6 +160,21 @@ export function App() {
                 setToken(msg.token ?? null);
                 serverVersion.value = msg.version ?? null;
                 sensors.value = msg.sensors ?? [];
+                if (typeof msg.armed === 'boolean') {
+                    armed.value = msg.armed;
+                    // The laptop's own clock, so a page that was discarded and
+                    // reopened resumes the counter instead of restarting it. An
+                    // older laptop sends no time, and now is the only honest
+                    // answer left.
+                    if (!msg.armed) {
+                        armedSince.value = null;
+                    } else if (msg.armed_since) {
+                        armedSince.value = msg.armed_since * 1000;
+                    } else {
+                        armedSince.value = Date.now();
+                    }
+                }
+                if (activeKey) saveSession(activeKey, expectedFingerprint);
                 pairing.value = false;
                 pairError.value = null;
                 screen.value = 'panel';
@@ -156,6 +185,9 @@ export function App() {
             case 'auth_fail':
                 pairing.value = false;
                 if (!hasToken()) {
+                    // The stored key no longer opens this laptop — rotated, or
+                    // from a different one. Keeping it would retry forever.
+                    clearSession();
                     const left = msg.remaining_attempts;
                     pairError.value = `${msg.reason ?? 'That key was refused.'}${
                         left ? ` ${left} attempt${left === 1 ? '' : 's'} left.` : ''
@@ -206,6 +238,13 @@ export function App() {
                 }
                 break;
 
+            case 'alarm_cleared':
+                // Someone else called it off — the laptop's terminal, or another
+                // paired phone. This one has no other way to find out.
+                alarm.value = null;
+                stopSiren();
+                break;
+
             case 'config_data':
                 if (msg.config) config.value = msg.config;
                 break;
@@ -247,7 +286,13 @@ export function App() {
             void Notification.requestPermission();
         }
         if ('serviceWorker' in navigator) {
-            void navigator.serviceWorker.register('/sw.js').catch(() => {});
+            navigator.serviceWorker.register('/sw.js').catch((err: Error) => {
+                // Browsers refuse to register a worker on an origin with a
+                // certificate error, which is exactly what the laptop's
+                // self-signed certificate produces. Swallowing this made a
+                // notification path that never ran look like one that did.
+                console.warn('LeaveSafe: notifications are unavailable —', err.message);
+            });
         }
     }
 
@@ -255,6 +300,7 @@ export function App() {
         pairing.value = true;
         pairError.value = null;
         pendingKey = key;
+        activeKey = key;
 
         const handlers = {
             onMessage: handle,

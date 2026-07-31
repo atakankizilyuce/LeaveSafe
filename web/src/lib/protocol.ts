@@ -104,6 +104,8 @@ export interface ServerMessage {
     sensors?: SensorInfo[];
     sensor_states?: Record<string, SensorState>;
     armed?: boolean;
+    /** When arming happened, in Unix seconds. Sent with `auth_ok`. */
+    armed_since?: number;
     alert?: AlertData;
     ts?: number;
     config?: AppConfig;
