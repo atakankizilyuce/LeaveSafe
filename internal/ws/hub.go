@@ -30,6 +30,12 @@ const (
 // open indefinitely and exhaust the server's sockets.
 const defaultAuthDeadline = 20 * time.Second
 
+// maxMessageBytes caps a single client message. The largest thing the protocol
+// carries is a configuration payload, which is a couple of kilobytes; the rest
+// are a line of JSON each. Sixteen kilobytes leaves room for the sensor map to
+// grow without leaving the size of an unpaired peer's frame up to them.
+const maxMessageBytes = 16 << 10
+
 // Hub manages all WebSocket connections and dispatches alerts.
 type Hub struct {
 	mu          sync.RWMutex
@@ -61,6 +67,10 @@ type Hub struct {
 	// shorten it without racing the connection goroutines that read it.
 	authDeadline time.Duration
 
+	// pending bounds how many sockets may sit unpaired at once. The deadline
+	// above limits how long each one lives; this limits how many there are.
+	pending *pendingConns
+
 	tracker    *location.Tracker
 	trackerCtx context.Context //nolint:containedctx // scopes tracker goroutines to the app lifetime
 
@@ -89,7 +99,22 @@ func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *
 		heartbeatInterval:     defaultHeartbeatInterval,
 		disconnectGracePeriod: defaultDisconnectGracePeriod,
 		authDeadline:          defaultAuthDeadline,
+		pending:               newPendingConns(maxPendingConns, maxPendingConnsPerAdr),
 	}
+}
+
+// releasePending gives back the unpaired-socket slot this client holds, if it
+// holds one. Calling it twice is a no-op, which is what lets both the pairing
+// path and the disconnect path call it without counting the same socket twice.
+//
+// The flag is read and written only on the connection's own goroutine, the same
+// place client.authenticated lives, so it needs no lock of its own.
+func (h *Hub) releasePending(c *Client) {
+	if !c.pendingHeld {
+		return
+	}
+	c.pendingHeld = false
+	h.pending.release(c.remoteAddr)
 }
 
 // SetAuthDeadline sets how long a fresh connection has to present a valid
@@ -408,7 +433,24 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 		remoteAddr: remoteAddr,
 	}
 
+	// Every message this protocol defines is small JSON. Saying so explicitly
+	// keeps the ceiling from being whatever the websocket library happens to
+	// default to, which is not a number this program should inherit silently.
+	conn.SetReadLimit(maxMessageBytes)
+
+	// A socket that has not paired costs a goroutine and a file descriptor and
+	// counts against nothing else, so the number of them is capped. Turning one
+	// away is not the same as a failure: say why, then close.
+	if !h.pending.acquire(auth.NormalizeAddr(remoteAddr)) {
+		log.Warnf("Refusing a connection from %s: too many unpaired sockets waiting", remoteAddr)
+		client.send(NewAuthFail("the laptop is busy, try again in a moment", 0))
+		_ = conn.Close(websocket.StatusTryAgainLater, "too many unpaired connections")
+		return
+	}
+	client.pendingHeld = true
+
 	defer func() {
+		h.releasePending(client)
 		h.removeClient(client)
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
@@ -894,8 +936,21 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 		return
 	}
 
+	// Pairing again on a socket that is already paired replaces the session,
+	// so the one being replaced has to be given back. Overwriting the token and
+	// leaving the old session in the table let one socket hold as many sessions
+	// as it cared to ask for — and since the cap is checked before the key is
+	// compared, filling it locks every other phone out with "maximum
+	// connections reached", the owner's included.
+	if client.token != "" && client.token != token {
+		h.authManager.RemoveSession(client.token)
+	}
+
 	client.authenticated = true
 	client.token = token
+	// Paired clients are accounted for by the session cap from here on, so the
+	// unpaired slot goes back to whoever is waiting for one.
+	h.releasePending(client)
 
 	h.mu.Lock()
 	h.clients[client] = true

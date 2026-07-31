@@ -158,3 +158,24 @@ func TestPauseLengthIsClamped(t *testing.T) {
 		})
 	}
 }
+
+// Pairing again on a socket that is already paired replaces the session. The
+// one being replaced has to be given back: the session cap is checked before
+// the key is compared, so a socket that could hoard sessions could lock every
+// other phone out with "maximum connections reached" — the owner's included.
+func TestRepeatedPairingOnOneSocketDoesNotHoardSessions(t *testing.T) {
+	hub := testHub(t)
+	client := &Client{hub: hub, remoteAddr: "192.0.2.7:5000"}
+	key := hub.authManager.RawPairingKey()
+
+	for range hub.authManager.MaxSessions() + 2 {
+		hub.handleAuth(client, ClientMessage{Type: MsgTypeAuth, Key: key})
+	}
+
+	if !client.authenticated {
+		t.Fatal("the client never paired")
+	}
+	if got := hub.authManager.SessionCount(); got != 1 {
+		t.Errorf("one socket holds %d sessions, want 1", got)
+	}
+}

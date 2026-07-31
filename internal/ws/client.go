@@ -25,6 +25,11 @@ type Client struct {
 	remoteAddr    string          // peer address, used to rate-limit pairing per source
 	authenticated bool
 	token         string
+	// pendingHeld records that this client is occupying one of the slots
+	// reserved for sockets that have not paired yet, so the slot is given back
+	// exactly once — on pairing or on disconnect, whichever comes first.
+	// Transports with no accept step of their own never take one.
+	pendingHeld bool
 }
 
 // close tears down the underlying connection, whichever transport it uses.

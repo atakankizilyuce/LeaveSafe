@@ -390,9 +390,17 @@ func (m *Manager) TrackedAddrs() int {
 	return len(m.byAddr)
 }
 
-// normalizeAddr reduces a transport address to the identity we rate-limit on.
+// NormalizeAddr reduces a transport address to the identity we rate-limit on.
 // A host:port pair becomes the bare host, because the port changes on every
 // TCP connection and would give each attempt a fresh allowance.
+//
+// Exported because the failure counter is not the only thing keyed on "which
+// peer is this": the cap on unpaired sockets is too, and the two must agree on
+// what counts as the same peer or one of them is trivially sidestepped.
+func NormalizeAddr(addr string) string {
+	return normalizeAddr(addr)
+}
+
 func normalizeAddr(addr string) string {
 	if addr == "" {
 		return UnknownAddr
