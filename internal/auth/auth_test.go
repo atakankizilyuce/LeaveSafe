@@ -168,6 +168,62 @@ func TestTrackedAddrs_Bounded(t *testing.T) {
 	}
 }
 
+// A lockout that a flood of other addresses can wash away is not a lockout.
+//
+// The failure table is bounded, so something has to be evicted when it fills.
+// If that something can be a record still serving its lockout, an attacker who
+// has just been locked out gets back in by connecting from enough other
+// addresses to push their own record out — and on IPv6, addresses are free.
+// The penalty has to outrank the bookkeeping.
+func TestLockoutSurvivesAFloodOfOtherAddresses(t *testing.T) {
+	const bound = 8
+	const attacker = "198.51.100.9:4444"
+
+	mgr, _ := NewManagerWithOptions(Options{MaxTrackedAddrs: bound, MaxAttempts: 3})
+
+	for range 3 {
+		mgr.Authenticate(attacker, "0000000000000000")
+	}
+	// The correct key is what the assertions use. A wrong one is refused
+	// whether or not a lockout is in force, so it cannot tell the two apart —
+	// which is what made an earlier version of this test pass against the very
+	// bug it was written for.
+	if _, _, err := mgr.Authenticate(attacker, mgr.RawPairingKey()); err == nil {
+		t.Fatal("the attacker was not locked out after spending every attempt")
+	}
+
+	// Fill the table many times over from other addresses.
+	for i := range bound * 8 {
+		mgr.Authenticate(fmt.Sprintf("10.0.0.%d:1234", i), "0000000000000000")
+	}
+
+	if _, _, err := mgr.Authenticate(attacker, mgr.RawPairingKey()); err == nil {
+		t.Error("the flood cleared the attacker's lockout: the correct key was accepted")
+	}
+	if got := mgr.TrackedAddrs(); got > bound {
+		t.Errorf("tracked addresses = %d, want at most %d", got, bound)
+	}
+}
+
+// The other half of the same rule. Preferring to keep locked-out records must
+// not turn into never evicting them: a table that may not shrink is a table
+// that grows without limit, which is the thing the bound exists to stop. When
+// every tracked address is locked out, something still has to go.
+func TestTableStaysBoundedWhenEveryRecordIsLockedOut(t *testing.T) {
+	const bound = 8
+	mgr, _ := NewManagerWithOptions(Options{MaxTrackedAddrs: bound, MaxAttempts: 1})
+
+	// MaxAttempts of 1 means one wrong key locks an address out, so every
+	// record this creates is a locked one.
+	for i := range bound * 8 {
+		mgr.Authenticate(fmt.Sprintf("10.0.1.%d:1234", i), "0000000000000000")
+	}
+
+	if got := mgr.TrackedAddrs(); got > bound {
+		t.Errorf("tracked addresses = %d, want at most %d", got, bound)
+	}
+}
+
 func TestOptions_MaxAttemptsIsHonoured(t *testing.T) {
 	mgr, _ := NewManagerWithOptions(Options{MaxAttempts: 2})
 

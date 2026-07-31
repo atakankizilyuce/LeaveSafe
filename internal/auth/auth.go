@@ -238,9 +238,17 @@ func (m *Manager) record(host string, now time.Time) *attempts {
 	return rec
 }
 
-// evictLocked drops expired records, and if that frees nothing, the least
-// recently seen one. Callers must hold m.mu.
+// evictLocked makes room in the failure table. Callers must hold m.mu.
+//
+// A record that is still serving a lockout is the last thing to go. Evicting
+// one throws away the lockout with it, and the address it belonged to gets a
+// fresh allowance the next time it asks — so an attacker who had just been
+// locked out could buy their way back in by making the table overflow with
+// other addresses, which on IPv6 costs nothing. Losing the record is losing the
+// penalty, so the eviction order has to put penalties last.
 func (m *Manager) evictLocked(now time.Time) {
+	// Records that are past their lockout and have been quiet for longer than
+	// one lockout period carry no penalty worth keeping.
 	freed := false
 	for host, rec := range m.byAddr {
 		if now.After(rec.lockedUntil) && now.Sub(rec.lastSeen) > m.opts.LockoutPeriod {
@@ -252,16 +260,41 @@ func (m *Manager) evictLocked(now time.Time) {
 		return
 	}
 
+	// Then the least recently seen record that is not currently locked out.
+	// Its failure count is worth something, but far less than a live lockout.
+	if host := m.oldestUnlockedLocked(now); host != "" {
+		delete(m.byAddr, host)
+		return
+	}
+
+	// Every tracked address is locked out. Something is deliberately filling
+	// the table, so give up the lockout that had least time left to run.
+	var soonestHost string
+	var soonestUntil time.Time
+	for host, rec := range m.byAddr {
+		if soonestHost == "" || rec.lockedUntil.Before(soonestUntil) {
+			soonestHost, soonestUntil = host, rec.lockedUntil
+		}
+	}
+	if soonestHost != "" {
+		delete(m.byAddr, soonestHost)
+	}
+}
+
+// oldestUnlockedLocked returns the least recently seen address that is not
+// serving a lockout, or "" when every record is locked. Callers must hold m.mu.
+func (m *Manager) oldestUnlockedLocked(now time.Time) string {
 	var oldestHost string
 	var oldestSeen time.Time
 	for host, rec := range m.byAddr {
+		if now.Before(rec.lockedUntil) {
+			continue
+		}
 		if oldestHost == "" || rec.lastSeen.Before(oldestSeen) {
 			oldestHost, oldestSeen = host, rec.lastSeen
 		}
 	}
-	if oldestHost != "" {
-		delete(m.byAddr, oldestHost)
-	}
+	return oldestHost
 }
 
 // ValidateSession reports whether a session token is still valid, without
