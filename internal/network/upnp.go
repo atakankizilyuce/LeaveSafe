@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -48,8 +50,43 @@ func OpenPort(port int) (*PortMapping, error) {
 }
 
 // ExternalIP returns the public IP address reported by the UPnP gateway.
+//
+// The gateway is whatever answered an unauthenticated SSDP multicast, and this
+// address is not decoration: it goes to the front of the URL list, and the
+// dashboard renders the first of those as a QR code with the pairing key in its
+// fragment. Whoever chooses this string chooses where the owner's phone tries
+// to pair — and the key goes with it. A machine on the café Wi-Fi that answers
+// the discovery before the real router does gets to choose it.
+//
+// The certificate check does not save that case: the page doing the checking
+// would be the attacker's own. So the claim is held to what a public address
+// can look like. Private, loopback, link-local and unspecified addresses are
+// refused along with anything that is not an IP at all — none of them is
+// reachable from the internet, so none is an honest answer to this question,
+// and every one of them would aim the phone somewhere on the local network.
+//
+// This does not make the router trustworthy; it takes away the easy answers.
+// Preferring the independently discovered address is the other half, and that
+// is the caller's to do.
 func (pm *PortMapping) ExternalIP() (string, error) {
-	return pm.device.ExternalIP()
+	raw, err := pm.device.ExternalIP()
+	if err != nil {
+		return "", err
+	}
+	return publicAddr(raw)
+}
+
+// publicAddr returns raw as a canonical IP string if it could be this machine's
+// address on the internet, and an error otherwise.
+func publicAddr(raw string) (string, error) {
+	ip := net.ParseIP(strings.TrimSpace(raw))
+	if ip == nil {
+		return "", fmt.Errorf("the gateway reported %q as this machine's public address, which is not an IP address", raw)
+	}
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return "", fmt.Errorf("the gateway reported %s as this machine's public address, which is not a public one", ip)
+	}
+	return ip.String(), nil
 }
 
 // Close removes the port mapping from the router.
