@@ -27,15 +27,23 @@ type Manager struct {
 	// while its loop is between restarts or failing repeatedly — an alarm that
 	// reports coverage it does not have is worse than one that reports none.
 	failures map[string]string
+
+	// availability holds the settled answer to "can this sensor work here",
+	// and probing names the sensors still finding out. See availability.go for
+	// why the answer is cached here rather than left to each sensor.
+	availability map[string]bool
+	probing      map[string]bool
 }
 
 // NewManager creates a new sensor manager.
 func NewManager() *Manager {
 	return &Manager{
-		enabled:  make(map[string]bool),
-		cancels:  make(map[string]context.CancelFunc),
-		alertCh:  make(chan Alert, 100),
-		failures: make(map[string]string),
+		enabled:      make(map[string]bool),
+		cancels:      make(map[string]context.CancelFunc),
+		alertCh:      make(chan Alert, 100),
+		failures:     make(map[string]string),
+		availability: make(map[string]bool),
+		probing:      make(map[string]bool),
 	}
 }
 
@@ -112,12 +120,32 @@ func (m *Manager) Disable(name string) {
 }
 
 // StartEnabled starts all enabled and available sensors.
+//
+// Arming is the one caller allowed to wait for an availability answer: it is a
+// deliberate act with a person behind it, and starting the right set of sensors
+// is worth a pause in a way that answering a socket is not. But it waits
+// *outside* the lock. Asking under it meant a twenty-second WMI query on Windows
+// held the manager's mutex for the duration, and every status broadcast and
+// pairing reply queued behind the arm that triggered it.
 func (m *Manager) StartEnabled() {
+	sensors := m.Sensors()
+	available := make(map[string]bool, len(sensors))
+	for _, s := range sensors {
+		available[s.Name()] = s.Available()
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// The answers are worth keeping: they are the same ones AvailableNow hands
+	// to the panel, and arming has just paid for them.
+	for name, ok := range available {
+		m.availability[name] = ok
+		delete(m.probing, name)
+	}
+
 	for _, s := range m.sensors {
-		if !m.enabled[s.Name()] || !s.Available() {
+		if !m.enabled[s.Name()] || !available[s.Name()] {
 			continue
 		}
 		// Don't start if already running

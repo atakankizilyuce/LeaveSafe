@@ -106,6 +106,23 @@ diff is small.
 
 ### Fixed
 
+- **Pairing no longer waits for a sensor to work out whether it can run.** The
+  reply to a pairing key carries the sensor list, and building it asked every
+  sensor whether it can work on this machine. On Windows the lid sensor answers
+  by starting PowerShell and querying WMI, under a twenty-second budget — and
+  the phone gives up on a pairing reply after ten. Whoever asked first paid, and
+  one of the things that asks is a pairing client, so a phone connecting in the
+  first seconds after a cold start could be left waiting and then time out
+  against a laptop that was working perfectly.
+
+  The answer is now settled once, off any path a client waits on: the probes run
+  side by side at startup instead of one after another, and the pairing reply,
+  the status broadcast and the dashboard's own repaint read whatever is known
+  rather than blocking. A sensor still working it out reads as unavailable for
+  the moment, which the next broadcast corrects — under-reporting coverage is
+  the safe direction. Arming still waits for a real answer, because starting the
+  right set of sensors is worth a pause; it just no longer holds the sensor
+  manager's lock while it does, which used to queue every broadcast behind it.
 - **Running the test suite no longer destroys your own configuration.** The hub
   tests call `handleUpdateConfig` and friends directly, and those save through
   `config.Save` — which writes to the real config directory. So `go test ./...`
