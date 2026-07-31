@@ -587,9 +587,10 @@ func main() {
 	hub.SetAlarmDismissCallback(func() {
 		localAlarm.Stop()
 	})
-	hub.SetDisconnectCallback(func() {
-		log.Warn("All clients disconnected while armed — local alarm triggered")
-		localAlarm.Start()
+	hub.SetAllDisconnectedCallback(func() {
+		log.Warn("Every phone disconnected while armed — monitoring continues")
+		sb.writeLine("  %s[LINK]%s No phone is connected. Monitoring continues; "+
+			"an alert may not reach you until one reconnects.", cYellow, cReset)
 	})
 	hub.SetClientChangeCallback(func(_ int, _ bool) {
 		sb.refresh()

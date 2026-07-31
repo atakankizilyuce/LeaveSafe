@@ -38,8 +38,8 @@ type Hub struct {
 	sensorMgr       *monitor.Manager
 	armed           bool
 	version         string
-	onAllDisconnect func()
-	onClientChange  func(count int, armed bool)
+	onAllDisconnected func()
+	onClientChange    func(count int, armed bool)
 	onAlarmTrigger  func()
 	onAlarmDismiss  func()
 	autoArmOnLock   bool
@@ -208,12 +208,16 @@ func (h *Hub) logEvent(evt eventlog.Event) {
 	}
 }
 
-// SetDisconnectCallback sets the function called when all authenticated clients
-// disconnect while the system is armed.
-func (h *Hub) SetDisconnectCallback(fn func()) {
+// SetAllDisconnectedCallback sets the function called once every authenticated
+// client has gone while the system is armed.
+//
+// This reports; it does not accuse. A phone drops its socket whenever its screen
+// locks or its browser is backgrounded, which is the ordinary case and not an
+// intrusion — the laptop keeps watching its own sensors and alarms on those.
+func (h *Hub) SetAllDisconnectedCallback(fn func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.onAllDisconnect = fn
+	h.onAllDisconnected = fn
 }
 
 // SetClientChangeCallback sets the function called when client count changes.
@@ -1189,7 +1193,7 @@ func (h *Hub) removeClient(client *Client) {
 
 	armed := h.armed
 	clientCount := len(h.clients)
-	disconnectCb := h.onAllDisconnect
+	goneCb := h.onAllDisconnected
 	changeCb := h.onClientChange
 	grace := h.disconnectGracePeriod
 	h.mu.Unlock()
@@ -1200,16 +1204,22 @@ func (h *Hub) removeClient(client *Client) {
 
 	h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Client disconnected"})
 
-	if armed && clientCount == 0 && disconnectCb != nil {
-		log.Warn("All clients disconnected while armed - triggering alarm")
-		safe.Go("disconnect-alarm", func() {
+	if armed && clientCount == 0 && goneCb != nil {
+		// The grace period is a debounce, not a countdown to anything. A phone
+		// that reconnects inside it never really left, and saying so would turn
+		// every reload into a line in the log.
+		safe.Go("all-disconnected", func() {
 			time.Sleep(grace)
 			h.mu.RLock()
 			count := len(h.clients)
 			isArmed := h.armed
 			h.mu.RUnlock()
 			if count == 0 && isArmed {
-				disconnectCb()
+				h.logEvent(eventlog.Event{
+					Type:    eventlog.EventDisconnect,
+					Message: "Every phone disconnected while armed; monitoring continues",
+				})
+				goneCb()
 			}
 		})
 	}
