@@ -683,6 +683,16 @@ func main() {
 // pairingURL builds the address a QR code encodes: the server, the pairing key,
 // and — when there is a certificate — its fingerprint.
 //
+// Both ride in the fragment, after the '#', and that is the whole point. A
+// fragment is never put on the wire: the browser strips it before building the
+// request, so the key reaches the page's own JavaScript and nothing else. It
+// used to be a query parameter, which meant the very first request line the
+// phone sent carried the key in clear — to whatever server answered that
+// address, before a single byte of the page had run. The check that holds the
+// key back until the server names its certificate was then guarding a secret
+// that had already left, and on the default plain-HTTP path it left in clear on
+// the café Wi-Fi.
+//
 // The fingerprint rides along so the phone can check which server it reached
 // before it offers the key, and so the value is on the phone's own screen to
 // compare against the browser's certificate warning. Previously it was only on
@@ -692,11 +702,11 @@ func main() {
 // This does not turn a self-signed certificate into a verified one. See
 // SECURITY.md for what it does and does not catch.
 func pairingURL(base, rawKey, certFP string) string {
-	url := base + "?key=" + rawKey
+	fragment := "key=" + rawKey
 	if certFP != "" {
-		url += "&fp=" + strings.ToLower(strings.ReplaceAll(certFP, ":", ""))
+		fragment += "&fp=" + strings.ToLower(strings.ReplaceAll(certFP, ":", ""))
 	}
-	return url
+	return base + "/#" + fragment
 }
 
 // reachableURLs returns every address a phone could connect to, public one
