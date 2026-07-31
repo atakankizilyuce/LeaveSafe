@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"os"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -76,6 +78,15 @@ func (w *Writer) open() error {
 	f, err := os.OpenFile(w.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, fileMode)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", w.path, err)
+	}
+	// The mode above applies only when this call creates the file. A log left
+	// by an older version, restored from a backup, or pre-created by someone
+	// else keeps whatever permissions it arrived with — and the event log
+	// records exactly when this machine was left unattended, which is not a
+	// thing to hand to every account on a shared system.
+	// internal/auth/keyfile.go does the same for the pairing key.
+	if err := f.Chmod(fileMode); err != nil {
+		log.Debugf("Could not restrict permissions on %s: %v", w.path, err)
 	}
 	info, err := f.Stat()
 	if err != nil {

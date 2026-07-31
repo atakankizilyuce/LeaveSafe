@@ -2,12 +2,17 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/leavesafe/leavesafe/internal/safe"
 )
+
+// errStoppedWatching is the failure recorded for a sensor whose driver returned
+// without being asked to and without saying why.
+var errStoppedWatching = errors.New("the sensor stopped watching without being asked to")
 
 // Manager handles sensor registration, lifecycle, and alert routing.
 type Manager struct {
@@ -16,15 +21,44 @@ type Manager struct {
 	enabled map[string]bool
 	cancels map[string]context.CancelFunc
 	alertCh chan Alert
+
+	// failures records why a sensor is not watching right now, keyed by name and
+	// empty when it is. This is what stops the panel claiming a sensor is active
+	// while its loop is between restarts or failing repeatedly — an alarm that
+	// reports coverage it does not have is worse than one that reports none.
+	failures map[string]string
 }
 
 // NewManager creates a new sensor manager.
 func NewManager() *Manager {
 	return &Manager{
-		enabled: make(map[string]bool),
-		cancels: make(map[string]context.CancelFunc),
-		alertCh: make(chan Alert, 100),
+		enabled:  make(map[string]bool),
+		cancels:  make(map[string]context.CancelFunc),
+		alertCh:  make(chan Alert, 100),
+		failures: make(map[string]string),
 	}
+}
+
+// recordFailure notes that a sensor is not watching, and why.
+func (m *Manager) recordFailure(name string, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failures[name] = err.Error()
+}
+
+// clearFailure marks a sensor as watching again. Called at the top of every
+// attempt, so a restart that succeeds clears the record the failure left.
+func (m *Manager) clearFailure(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.failures, name)
+}
+
+// Failure returns why a sensor is not watching, or "" when it is.
+func (m *Manager) Failure(name string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.failures[name]
 }
 
 // Register adds a sensor to the manager. Sensors start disabled by default.
@@ -71,6 +105,9 @@ func (m *Manager) Disable(name string) {
 		cancel()
 		delete(m.cancels, name)
 	}
+	// A sensor switched off is not a sensor that failed. Leaving the record
+	// behind would report a fault the user chose.
+	delete(m.failures, name)
 	m.mu.Unlock()
 }
 
@@ -99,14 +136,38 @@ func (m *Manager) StartEnabled() {
 		// believing the machine is watched. The loop comes back on its own and
 		// the panic is logged.
 		sensor := s
-		safe.Supervise(ctx, "sensor:"+sensor.Name(), func(runCtx context.Context) {
+		// SuperviseRetry, not Supervise. A driver that returns an error used to
+		// log it and return normally, which the supervisor read as "finished its
+		// work" — so the loop was retired and never came back. m.cancels kept
+		// the entry, so every later StartEnabled skipped the sensor as already
+		// running. One transient failure removed it for the life of the process,
+		// while the dashboard and the phone went on reporting it active and the
+		// machine as armed.
+		safe.SuperviseRetry(ctx, "sensor:"+sensor.Name(), func(runCtx context.Context) error {
 			log.WithField("sensor", sensor.Name()).Info("Sensor started")
-			if err := sensor.Start(runCtx, alertCh); err != nil {
-				if runCtx.Err() == nil {
-					log.WithField("sensor", sensor.Name()).Errorf("Sensor error: %v", err)
-				}
+			m.clearFailure(sensor.Name())
+
+			err := sensor.Start(runCtx, alertCh)
+
+			// Being asked to stop is the one clean way out of this loop. The
+			// sensor reports that as an error — usually runCtx.Err() itself —
+			// and passing it on would have the supervisor restart a sensor the
+			// user just disarmed or switched off.
+			//
+			//nolint:nilerr // cancellation is a clean stop, not a failure to retry
+			if runCtx.Err() != nil {
+				log.WithField("sensor", sensor.Name()).Info("Sensor stopped")
+				return nil
 			}
-			log.WithField("sensor", sensor.Name()).Info("Sensor stopped")
+			// A sensor that returns while it is still supposed to be watching has
+			// stopped watching, whether or not it says why. Returning nil here
+			// would retire the loop for exactly the reason it must not be.
+			if err == nil {
+				err = errStoppedWatching
+			}
+			log.WithField("sensor", sensor.Name()).Errorf("Sensor error: %v", err)
+			m.recordFailure(sensor.Name(), err)
+			return err
 		})
 	}
 }
@@ -119,6 +180,8 @@ func (m *Manager) StopAll() {
 	for name, cancel := range m.cancels {
 		cancel()
 		delete(m.cancels, name)
+		// Disarming is not a fault; see Disable.
+		delete(m.failures, name)
 	}
 
 	for _, s := range m.sensors {

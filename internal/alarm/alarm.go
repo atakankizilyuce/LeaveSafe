@@ -56,37 +56,56 @@ func (a *Alarm) Start() {
 		return
 	}
 	a.playing = true
-	a.stopCh = make(chan struct{})
+	stop := make(chan struct{})
+	a.stopCh = stop
 	a.mu.Unlock()
 
+	// The loops are handed the channel this run created rather than reading
+	// a.stopCh as they go. Reading the field was a data race — it is written
+	// here under the lock and was read without one — and the race had a real
+	// shape: a siren parked inside beepTone through a Stop and a following
+	// Start would wake, read the *new* channel, and so never see that its own
+	// was closed. It would sound past the dismissal, with the new siren
+	// alongside it, and nothing left could stop it.
 	if a.alarmCfg.EscalationEnabled && len(a.alarmCfg.Levels) > 0 {
-		safe.Go("alarm-escalation", a.escalationLoop)
+		safe.Go("alarm-escalation", func() { a.escalationLoop(stop) })
 	} else {
-		a.startFullSiren()
+		a.startFullSiren(stop)
 	}
 }
 
-func (a *Alarm) startFullSiren() {
+func (a *Alarm) startFullSiren(stop chan struct{}) {
+	// The siren is launched before the volume is touched, and the order is
+	// load-bearing. The volume backends walk COM vtables on Windows and a raw C
+	// pointer on Linux; a panic in one of them is recovered by the caller, which
+	// with the old order meant Start had already set playing to true and had not
+	// yet started any siren. The alarm then reported itself sounding, made no
+	// noise, and refused to start again until something called Stop — while the
+	// machine it was guarding was being carried away.
+	//
+	// This way a failure down there costs the volume, not the alarm. A siren at
+	// whatever volume the laptop was already at is the whole point; silence is
+	// the one outcome that helps nobody.
+	log.Info("Siren started")
+	safe.Go("alarm-siren", func() { a.sirenLoop(stop) })
+
 	log.Info("Forcing system volume to maximum")
 	saved, err := maxVolume()
 	if err != nil {
 		log.Warnf("Volume control error: %v", err)
-	} else {
-		a.mu.Lock()
-		a.savedVolume = saved
-		a.volumeSaved = true
-		a.mu.Unlock()
+		return
 	}
-
-	log.Info("Siren started")
-	safe.Go("alarm-siren", a.sirenLoop)
+	a.mu.Lock()
+	a.savedVolume = saved
+	a.volumeSaved = true
+	a.mu.Unlock()
 }
 
-func (a *Alarm) escalationLoop() {
+func (a *Alarm) escalationLoop(stop chan struct{}) {
 	for _, level := range a.alarmCfg.Levels {
 		if level.DelaySeconds > 0 {
 			select {
-			case <-a.stopCh:
+			case <-stop:
 				return
 			case <-time.After(time.Duration(level.DelaySeconds) * time.Second):
 			}
@@ -122,7 +141,7 @@ func (a *Alarm) escalationLoop() {
 				}
 				a.mu.Unlock()
 			}
-			safe.Go("alarm-siren", a.sirenLoop)
+			safe.Go("alarm-siren", func() { a.sirenLoop(stop) })
 
 		case "full_volume":
 			log.Info("Alarm escalation: full volume")
@@ -173,11 +192,11 @@ func (a *Alarm) IsPlaying() bool {
 	return a.playing
 }
 
-func (a *Alarm) sirenLoop() {
+func (a *Alarm) sirenLoop(stop chan struct{}) {
 	high := true
 	for {
 		select {
-		case <-a.stopCh:
+		case <-stop:
 			return
 		default:
 			freq := freqLow
@@ -185,7 +204,7 @@ func (a *Alarm) sirenLoop() {
 				freq = freqHigh
 			}
 			high = !high
-			beepTone(freq, switchMs, a.stopCh)
+			beepTone(freq, switchMs, stop)
 		}
 	}
 }

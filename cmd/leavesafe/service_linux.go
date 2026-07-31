@@ -32,6 +32,32 @@ RestartSec=5
 WantedBy=default.target
 `
 
+// systemdExecPath renders an executable path for ExecStart.
+//
+// Three things had to be handled and none of them were. systemd splits the line
+// on whitespace, so an unquoted /home/me/my apps/leavesafe becomes the command
+// /home/me/my with an argument after it — pointing the autostart at a path any
+// local user can then create and fill. It expands %-specifiers, so a directory
+// named %h silently became the home directory. And a filename may contain a
+// newline, which is not a mangled path but a second directive: everything after
+// it is read as another line of the unit, and ExecStartPre runs before the
+// program does.
+//
+// Quoting fixes the first, doubling fixes the second, and the third is refused
+// rather than escaped — a unit file has no way to carry a literal newline in a
+// path, and this is an install-time error with a person watching it.
+func systemdExecPath(exe string) (string, error) {
+	if strings.ContainsAny(exe, "\n\r") {
+		return "", fmt.Errorf("refusing to install: the path to this program contains a line break (%q), "+
+			"which cannot be written into a systemd unit safely — move the binary somewhere without one", exe)
+	}
+	// Inside double quotes systemd processes C-style escapes, so a literal
+	// backslash or quote has to be doubled. %% is how a literal % survives
+	// specifier expansion, which happens separately.
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`).Replace(exe)
+	return `"` + escaped + `"`, nil
+}
+
 func unitPath() (string, error) {
 	// $XDG_CONFIG_HOME wins where it is set, which is what a user who has moved
 	// their config directory expects.
@@ -56,7 +82,11 @@ func installAutostart(exe string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("create unit directory: %w", err)
 	}
-	unit := fmt.Sprintf(unitTemplate, repoURL, exe)
+	quoted, err := systemdExecPath(exe)
+	if err != nil {
+		return "", err
+	}
+	unit := fmt.Sprintf(unitTemplate, repoURL, quoted)
 	if err := os.WriteFile(path, []byte(unit), 0o600); err != nil {
 		return "", fmt.Errorf("write unit: %w", err)
 	}

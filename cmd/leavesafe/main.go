@@ -152,7 +152,9 @@ func (sb *statusBar) gridLines() []string {
 	sensors := sb.sensorMgr.Sensors()
 	total, active := len(sensors), 0
 	for _, s := range sensors {
-		if sb.sensorMgr.IsEnabled(s.Name()) && s.Available() {
+		// A sensor whose loop has failed is not active, however it is
+		// configured. This count is what the user reads before walking away.
+		if sb.sensorMgr.IsEnabled(s.Name()) && s.Available() && sb.sensorMgr.Failure(s.Name()) == "" {
 			active++
 		}
 	}
@@ -1137,6 +1139,10 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 				switch {
 				case !s.Available:
 					mark = "unavailable"
+				case s.Failure != "":
+					// Named rather than folded into "on": this is the state the
+					// user most needs to see and least expects to be in.
+					mark = "FAILED — " + s.Failure
 				case s.Enabled:
 					mark = "on"
 				}

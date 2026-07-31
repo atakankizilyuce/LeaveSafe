@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+
+	"github.com/leavesafe/leavesafe/internal/syspath"
 )
 
 // USBSensor monitors USB device changes on Windows using WMI event subscriptions.
@@ -49,8 +51,13 @@ while ($true) {
 }
 `
 
+	// Absolute path, not a PATH lookup — see internal/syspath. This one is the
+	// longest-lived of them: it runs for as long as the sensor does.
+	//
+	// #nosec G204 -- script is a constant in this file and the interpreter is
+	// resolved from the Windows directory; neither comes from user input.
 	cmd := exec.CommandContext(ctx,
-		"powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+		syspath.PowerShell(), "-NoProfile", "-NonInteractive", "-Command", script)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

@@ -6,6 +6,8 @@ import (
 	"context"
 	"os/exec"
 	"time"
+
+	"github.com/leavesafe/leavesafe/internal/syspath"
 )
 
 // The two kinds of question this package asks PowerShell, and how long each is
@@ -38,7 +40,12 @@ func powershellOutput(ctx context.Context, timeout time.Duration, script string)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// The interpreter is named by absolute path rather than left to PATH. The
+	// script has always been a constant, so the arguments were never the risk;
+	// which binary answers to "powershell" was, and PATH is not this program's
+	// to trust on a call it makes every couple of seconds while armed.
+	//
 	// #nosec G204 -- script is a constant defined in this package, never user input
 	return exec.CommandContext(ctx,
-		"powershell", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+		syspath.PowerShell(), "-NoProfile", "-NonInteractive", "-Command", script).Output()
 }

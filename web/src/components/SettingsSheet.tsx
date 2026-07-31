@@ -359,15 +359,21 @@ export function SettingsSheet() {
  *
  * The laptop already refuses to pass on a release URL that is not on
  * github.com, so this is the second lock on the same door — but it is the only
- * unchecked URL sink in the app, and the thing it keeps out is `javascript:`,
- * which turns a link into script execution. Anything that is not plain http or
- * https becomes the releases page.
+ * unchecked URL sink in the app.
+ *
+ * It holds the same line the laptop does rather than a weaker one. Refusing
+ * only `javascript:` left every https host in the world allowed, so a link the
+ * user taps from inside the app could lead anywhere — and the value arrives
+ * over the socket, which is the one place this app takes strings from something
+ * other than itself. Matching the server's rule exactly means the check is
+ * still worth something if the server's ever slips.
  */
 function safeHttpUrl(raw: string): string {
     const fallback = 'https://github.com/atakankizilyuce/LeaveSafe/releases/latest';
     try {
         const parsed = new URL(raw, window.location.origin);
-        return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : fallback;
+        if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') return fallback;
+        return parsed.href;
     } catch {
         return fallback;
     }

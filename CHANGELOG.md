@@ -113,6 +113,65 @@ diff is small.
 
 ### Security
 
+- **DNS rebinding is refused.** LeaveSafe now answers only to requests whose
+  `Host` is an IP address (or `localhost`). The WebSocket's Origin check does not
+  cover this attack — a rebound page sends the attacker's own domain as both
+  Origin and Host, so the two match and the socket opened. Every address
+  LeaveSafe hands out is an address literal, so nothing about the documented
+  flow changes; reaching the dashboard by a hostname no longer works.
+- **A pairing flood can no longer erase the event history.** Every refused
+  pairing attempt used to write a record to the size-rotated security log, at
+  whatever rate an unauthenticated peer could send them — enough to push out the
+  arm, the alert and the disconnect that recorded an actual intrusion. Attempts
+  made against an address already serving a lockout are no longer written (the
+  lockout itself still is), and pairing now has a rate allowance of its own,
+  sized so the lockout is always what refuses a client first.
+- **The phone acts on nothing until the connection has proved itself.** A server
+  that answered the phone's socket could send `auth_ok` without ever being given
+  the pairing key, which opened the panel, and then `pin_required`, which put the
+  disarm PIN dialog on screen and collected the code. It could also sound
+  spoofed alarms on the lock screen. The certificate check did not stop it: that
+  check lives in the greeting handler, and this needed no greeting.
+- **A stored pairing session is held to the same standard as a scanned one.** A
+  saved fingerprint that is not 64 hex characters is discarded rather than
+  silently read as "no certificate to check", and a session with no fingerprint
+  recorded is not resumed over HTTPS.
+- **A sensor that fails is restarted, and is not reported as watching until it
+  is.** Only a panic used to bring a sensor loop back. A driver that returned an
+  error logged it and returned normally, which the supervisor read as "finished
+  its work" — so the loop was retired, and because its cancel function stayed
+  registered every later arm skipped the sensor as already running. One transient
+  failure removed it for the life of the process. Worse, nothing said so: the
+  dashboard and the phone kept counting it towards "5/5 sensors active" with the
+  machine shown as armed. Failed sensors now retry with backoff, and both screens
+  show the fault and the reason instead of counting it as cover.
+- **Windows system tools are run from an absolute path.** `powershell`, `netsh`
+  and `schtasks` were launched by bare name, so Windows searched `PATH` in order.
+  A directory some installer added ahead of `System32` that ordinary users can
+  write to was enough: whatever was dropped there under the right name would be
+  run by LeaveSafe every couple of seconds while armed, in the owner's session —
+  and `schtasks`, which `install-service` may run from an elevated prompt, would
+  have run as administrator. The arguments were never the risk; which binary
+  answered to the name was.
+- **The systemd unit quotes and escapes the path to the binary.** `ExecStart`
+  was written unquoted, so installing from a path containing a space pointed the
+  autostart at the first word — a path any local user could then create and fill,
+  to be run as the owner at every login. `%` is now doubled so systemd does not
+  expand it, and a path containing a line break is refused rather than written,
+  because in a unit file that is not a mangled path but a second directive.
+- **The alarm sounds before it touches the volume.** A panic in a platform volume
+  backend is recovered rather than fatal, which used to leave the alarm marked as
+  sounding with no siren ever started — silent, and refusing to start again.
+- Fixed a data race on the alarm's stop channel. A siren that was mid-tone
+  through a dismissal and a fresh alarm could read the new run's channel, never
+  see its own closed, and sound past the dismissal with nothing able to stop it.
+- The event log's owner-only permissions are enforced on a file that already
+  exists, not only on one this version creates.
+- Release links from the update check are pinned to `github.com` on the phone as
+  well as on the laptop.
+- A `geolocate_url` or `ip_lookup_url` hand-edited into the config file must be
+  HTTPS. The geolocation API key travels in that URL's query string, and the
+  phone was already refused a plain-HTTP endpoint; the file was not.
 - Session tokens no longer live until the process restarts.
 - The pairing key is withheld when the server presents a certificate other than
   the one the scanned code named.

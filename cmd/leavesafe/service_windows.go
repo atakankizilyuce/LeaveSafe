@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/leavesafe/leavesafe/internal/syspath"
 )
 
 // taskName is the Scheduled Task LeaveSafe registers.
@@ -70,7 +72,12 @@ func autostartStatus() (bool, string, error) {
 }
 
 func runSchtasks(args ...string) (string, error) {
-	cmd := exec.Command("schtasks", args...) // #nosec G204 -- arguments are literals and this program's own path, never user input
+	// Absolute path, not a PATH lookup — see internal/syspath. This is the call
+	// that most needs it: install-service may be run from an elevated prompt,
+	// so a hijacked schtasks would run as administrator.
+	//
+	// #nosec G204 -- arguments are literals and this program's own path, never user input
+	cmd := exec.Command(syspath.System32("schtasks.exe"), args...)
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -227,6 +228,21 @@ func (h *Hub) EventLogger() *eventlog.Logger {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.eventLog
+}
+
+// logAuthFailure records a refused secret, unless the refusal was the lockout
+// itself doing its job.
+//
+// The lockout is written once, when it starts. Every attempt made behind it is
+// the same fact restated, and the event log is size-rotated — so writing one
+// record per attempt is how a flood erases the history it is supposed to
+// preserve: the arm, the sensor alert, the disconnect. Suppressing them keeps
+// the log a record of what happened rather than of how loudly someone knocked.
+func (h *Hub) logAuthFailure(kind eventlog.EventType, prefix string, err error) {
+	if errors.Is(err, auth.ErrLockedOut) {
+		return
+	}
+	h.logEvent(eventlog.Event{Type: kind, Message: prefix + err.Error()})
 }
 
 func (h *Hub) logEvent(evt eventlog.Event) {
@@ -669,6 +685,7 @@ func (h *Hub) GetSensorInfos() []SensorInfo {
 			DisplayName: s.DisplayName(),
 			Available:   s.Available(),
 			Enabled:     h.sensorMgr.IsEnabled(s.Name()),
+			Failure:     h.sensorMgr.Failure(s.Name()),
 		})
 	}
 	return infos
@@ -751,15 +768,26 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 
 	// Past this point a message costs something — a disk write, a broadcast to
 	// every paired phone, the siren — so how fast they can arrive is bounded.
-	// Pairing is deliberately outside the limit: it has one of its own, per
-	// address and with a lockout, and running both would let a flood of
-	// messages from a paired client eat into the allowance a stranger's guesses
-	// are counted against.
+	//
+	// Pairing is metered separately rather than not at all. It cannot share this
+	// bucket: a flood from a paired client would eat into the allowance a
+	// stranger's guesses are counted against. But it needs a bucket of its own,
+	// because every refused attempt writes a line to the security event log, and
+	// that log is size-rotated — so an unpaired peer sending attempts at network
+	// speed could push every genuine record out of it and erase the history of
+	// whatever it had just done. The per-address lockout does not stop this: a
+	// locked-out address is still refused once per message, and the refusal is
+	// what gets written.
 	//
 	// Over the limit the message is dropped rather than the client: a phone
 	// whose script has run away is still the owner's phone, and the alarm is
 	// the last thing that should be disconnected for it.
-	if msg.Type != MsgTypeAuth && !client.allowMessage() {
+	if msg.Type == MsgTypeAuth {
+		if !client.allowAuth() {
+			log.Debug("Dropping a pairing attempt from a client that is sending too fast")
+			return
+		}
+	} else if !client.allowMessage() {
 		log.WithField("type", msg.Type).Debug("Dropping a message from a client that is sending too fast")
 		return
 	}
@@ -932,7 +960,7 @@ func (h *Hub) DisarmWithPin(source, pin string) error {
 		// The PIN guards the alarm from whoever is holding the device, so
 		// guesses are rate-limited like pairing-key attempts.
 		if err := h.authManager.CheckPin(source, pin, pinHash); err != nil {
-			h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "Disarm refused: " + err.Error()})
+			h.logAuthFailure(eventlog.EventPinFail, "Disarm refused: ", err)
 			return err
 		}
 		// A correct PIN is the only moment the digits are in hand, and
@@ -955,7 +983,12 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	token, remaining, err := h.authManager.Authenticate(client.remoteAddr, msg.Key)
 	if err != nil {
 		client.send(NewAuthFail(err.Error(), remaining))
-		h.logEvent(eventlog.Event{Type: eventlog.EventAuthFail, Message: "Pairing refused: " + err.Error()})
+		// An attempt made against an address that is already locked out is not
+		// worth a record. The lockout was written when it started, and the
+		// attempts behind it are the flood — writing one per attempt is how the
+		// history gets pushed out of a size-rotated log. The client is still
+		// told, so a phone whose owner is waiting out a lockout still sees why.
+		h.logAuthFailure(eventlog.EventAuthFail, "Pairing refused: ", err)
 		return
 	}
 
@@ -1119,7 +1152,7 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	if pinActive && changingPin {
 		if err := h.authManager.CheckPin(client.remoteAddr, msg.Pin, cfg.PinProtection.PinHash); err != nil {
 			h.mu.Unlock()
-			h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "PIN settings change refused: " + err.Error()})
+			h.logAuthFailure(eventlog.EventPinFail, "PIN settings change refused: ", err)
 			client.send(ServerMessage{Type: MsgTypePinRequired})
 			return
 		}
@@ -1292,7 +1325,7 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	if cfg.PinProtection.Enabled && cfg.PinProtection.PinHash != "" {
 		if err := h.authManager.CheckPin(client.remoteAddr, msg.Pin, cfg.PinProtection.PinHash); err != nil {
 			h.mu.Unlock()
-			h.logEvent(eventlog.Event{Type: eventlog.EventPinFail, Message: "Config reset refused: " + err.Error()})
+			h.logAuthFailure(eventlog.EventPinFail, "Config reset refused: ", err)
 			client.send(ServerMessage{Type: MsgTypePinRequired})
 			return
 		}
@@ -1452,13 +1485,21 @@ func (h *Hub) broadcastStatus() {
 	h.mu.RLock()
 	states := make(map[string]*SensorState)
 	for _, s := range h.sensorMgr.Sensors() {
+		failure := h.sensorMgr.Failure(s.Name())
 		status := "ok"
-		if !s.Available() {
+		switch {
+		case !s.Available():
 			status = "unavailable"
+		case failure != "":
+			// Enabled, available, and not actually running. Said out loud rather
+			// than folded into "ok", which is what let a dead sensor go on
+			// counting towards the tally the user reads before walking away.
+			status = "failed"
 		}
 		states[s.Name()] = &SensorState{
 			Enabled: h.sensorMgr.IsEnabled(s.Name()),
 			Status:  status,
+			Failure: failure,
 		}
 	}
 

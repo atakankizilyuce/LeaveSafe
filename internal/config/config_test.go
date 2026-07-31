@@ -358,3 +358,45 @@ func TestEmptyPinFieldsAreOmitted(t *testing.T) {
 		t.Errorf("empty PIN fields were written: %s", data)
 	}
 }
+
+// The geolocation API key travels in geolocate_url's query string, so a plain
+// HTTP endpoint puts it on the wire in cleartext — on whatever café Wi-Fi the
+// machine happens to be sitting on. The phone was already refused a non-HTTPS
+// endpoint when it set one; the config file, which is the documented way to
+// configure this, was not checked at all.
+func TestValidateRefusesPlainHTTPLocationEndpoints(t *testing.T) {
+	cfg := Default()
+	cfg.Location.GeolocateURL = "http://attacker.example/geolocate"
+	cfg.Location.IPLookupURL = "http://attacker.example/ip"
+
+	notes := cfg.Validate()
+
+	if cfg.Location.GeolocateURL != "" {
+		t.Errorf("geolocate_url = %q, want it dropped so the HTTPS default takes over",
+			cfg.Location.GeolocateURL)
+	}
+	if cfg.Location.IPLookupURL != "" {
+		t.Errorf("ip_lookup_url = %q, want it dropped", cfg.Location.IPLookupURL)
+	}
+	if len(notes) < 2 {
+		t.Errorf("dropped two endpoints but reported %d adjustments; a silent drop is a "+
+			"setting that looks applied and is not", len(notes))
+	}
+}
+
+// The rule must not cost the legitimate case: an HTTPS endpoint is exactly how
+// someone points LeaveSafe at a service other than Google's.
+func TestValidateKeepsHTTPSLocationEndpoints(t *testing.T) {
+	cfg := Default()
+	cfg.Location.GeolocateURL = "https://geo.example/v1/geolocate"
+	cfg.Location.IPLookupURL = "https://ip.example/json"
+
+	cfg.Validate()
+
+	if cfg.Location.GeolocateURL != "https://geo.example/v1/geolocate" {
+		t.Errorf("an HTTPS geolocate_url was dropped: %q", cfg.Location.GeolocateURL)
+	}
+	if cfg.Location.IPLookupURL != "https://ip.example/json" {
+		t.Errorf("an HTTPS ip_lookup_url was dropped: %q", cfg.Location.IPLookupURL)
+	}
+}

@@ -178,12 +178,21 @@ type SensorInfo struct {
 	DisplayName string `json:"display_name"`
 	Available   bool   `json:"available"`
 	Enabled     bool   `json:"enabled"`
+	// Failure says why this sensor is not watching, empty when it is. A sensor
+	// can be enabled and available and still not running — its driver failed and
+	// the loop is being restarted — and without this the panel reported it as
+	// covered. For an alarm, claimed coverage that does not exist is the one
+	// error worth going out of the way to avoid.
+	Failure string `json:"failure,omitempty"`
 }
 
 // SensorState represents the current state of a sensor.
 type SensorState struct {
-	Enabled bool   `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	// Status is "ok", "unavailable" when the machine has no such sensor, or
+	// "failed" when it has one and the driver is not running.
 	Status  string `json:"status"`
+	Failure string `json:"failure,omitempty"`
 }
 
 // AlertData represents an alert event.
