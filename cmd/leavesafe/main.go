@@ -602,6 +602,10 @@ func main() {
 
 	hub.SetLocationTracker(ctx, buildLocationTracker(cfg))
 
+	// Which sensors can work here is reported once, in the background, because
+	// finding out can be slow and nothing about serving should wait on it.
+	safe.Go("sensor-availability", func() { logSensorAvailability(sensorMgr) })
+
 	// Every long-lived loop is supervised. A panic in any one of them used to
 	// take the whole process down, which for an armed machine means the user
 	// walks back to a laptop that stopped watching itself and never said so.
@@ -1283,7 +1287,17 @@ func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
 			}
 		}
 	}
+}
 
+// logSensorAvailability writes down which sensors can work on this machine.
+//
+// It is deliberately not part of registering them. Asking a sensor whether it
+// is available can be expensive — on Windows the lid's answer comes from WMI,
+// which on a machine with no battery has been seen to take half a minute — and
+// nothing about the server coming up should wait behind a log line. Run this on
+// its own goroutine and the phone can reach the laptop while the answer is
+// still being worked out.
+func logSensorAvailability(mgr *monitor.Manager) {
 	sensors := mgr.Sensors()
 	available := 0
 	for _, s := range sensors {

@@ -61,11 +61,11 @@ func (s *ScreenSensor) Stop() error { return nil }
 // may not return.
 func isScreenOnWindows(ctx context.Context) (bool, error) {
 	// Check if the console display is active via PowerShell
-	out, err := powershellOutput(ctx,
+	out, err := powershellOutput(ctx, pollTimeout,
 		"[System.Windows.Forms.Screen]::PrimaryScreen -ne $null")
 	if err != nil {
 		// Fallback: check if session is locked
-		out2, err2 := powershellOutput(ctx,
+		out2, err2 := powershellOutput(ctx, pollTimeout,
 			"(Get-Process -Name LogonUI -ErrorAction SilentlyContinue) -ne $null")
 		if err2 != nil {
 			return true, err
