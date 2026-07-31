@@ -16,14 +16,14 @@ import (
 // the moment the phone can reach the laptop at all.
 func TestPowerShellProbeGivesUp(t *testing.T) {
 	start := time.Now()
-	_, err := powershellOutput(context.Background(), "Start-Sleep -Seconds 60")
+	_, err := powershellOutput(context.Background(), pollTimeout, "Start-Sleep -Seconds 60")
 	elapsed := time.Since(start)
 
 	if err == nil {
 		t.Error("a probe that sleeps for a minute returned without an error")
 	}
 	// Generous slack: a CI runner starting a PowerShell process is not fast.
-	if limit := probeTimeout + 20*time.Second; elapsed > limit {
+	if limit := pollTimeout + 20*time.Second; elapsed > limit {
 		t.Errorf("the probe took %v to give up, past the %v timeout by more than the slack", elapsed, limit)
 	}
 }
@@ -38,21 +38,53 @@ func TestPowerShellProbeHonorsCancellation(t *testing.T) {
 	}()
 
 	start := time.Now()
-	_, err := powershellOutput(ctx, "Start-Sleep -Seconds 60")
+	_, err := powershellOutput(ctx, pollTimeout, "Start-Sleep -Seconds 60")
 	elapsed := time.Since(start)
 
 	if err == nil {
 		t.Error("a canceled probe returned without an error")
 	}
-	if elapsed >= probeTimeout {
-		t.Errorf("canceling took %v; it should return well before the %v timeout", elapsed, probeTimeout)
+	if elapsed >= pollTimeout {
+		t.Errorf("canceling took %v; it should return well before the %v timeout", elapsed, pollTimeout)
+	}
+}
+
+// Asking whether a sensor can work here must cost one process, not one per
+// heartbeat.
+//
+// Available is called from every status broadcast — every fifteen seconds for
+// as long as the program runs — and on Windows it answers by starting
+// PowerShell and asking WMI. The answer cannot change while the program is
+// running, so it is worked out once. Before the cache, an armed laptop spawned
+// a PowerShell process four times a minute to re-ask a settled question.
+func TestLidAvailabilityIsAskedOnce(t *testing.T) {
+	s := NewLidSensor()
+
+	start := time.Now()
+	first := s.Available()
+	firstTook := time.Since(start)
+
+	start = time.Now()
+	for range 50 {
+		if s.Available() != first {
+			t.Fatal("the availability answer changed between calls")
+		}
+	}
+	rest := time.Since(start)
+
+	// Fifty cached answers must be far quicker than the one that did the work.
+	// Comparing against the first call rather than a fixed number keeps this
+	// meaningful on a slow machine, where the real query is slower too.
+	if rest > firstTook {
+		t.Errorf("fifty repeat calls took %v, longer than the first call's %v — the answer is not being kept",
+			rest, firstTook)
 	}
 }
 
 // The ordinary case still has to work, or the timeout has been bought by
 // breaking the thing it protects.
 func TestPowerShellProbeReturnsOutput(t *testing.T) {
-	out, err := powershellOutput(context.Background(), "Write-Output 42")
+	out, err := powershellOutput(context.Background(), availabilityTimeout, "Write-Output 42")
 	if err != nil {
 		t.Fatalf("a trivial probe failed: %v", err)
 	}
