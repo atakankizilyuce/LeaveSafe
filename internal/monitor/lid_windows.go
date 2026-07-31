@@ -5,6 +5,7 @@ package monitor
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +19,9 @@ type LidSensor struct {
 	// a phone pairs.
 	availableOnce sync.Once
 	available     bool
+	// known says the query has finished, so Available can answer from memory.
+	// Read by callers that must not block on it — see monitor.AvailableNow.
+	known atomic.Bool
 }
 
 func NewLidSensor() *LidSensor {
@@ -35,14 +39,22 @@ func (s *LidSensor) DisplayName() string { return "Lid State" }
 // often than it looks: every status broadcast calls this, which is every
 // fifteen seconds for as long as the program is running. Without the cache each
 // one started a PowerShell process to ask WMI the same settled question again.
+// It can take twenty seconds in the worst case, which is why nothing a client
+// waits on calls this directly — see monitor.AvailableNow.
 func (s *LidSensor) Available() bool {
 	s.availableOnce.Do(func() {
 		out, err := powershellOutput(context.Background(), availabilityTimeout,
 			"(Get-WmiObject -Class Win32_Battery).Count")
 		s.available = err == nil && parseHasBattery(string(out))
+		s.known.Store(true)
 	})
 	return s.available
 }
+
+// AvailabilityKnown implements monitor.AvailabilityProber: it reports whether
+// the WMI query above has finished, so a caller on a request path can decline
+// to wait for it.
+func (s *LidSensor) AvailabilityKnown() bool { return s.known.Load() }
 
 func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 	s.lastOpen = true
