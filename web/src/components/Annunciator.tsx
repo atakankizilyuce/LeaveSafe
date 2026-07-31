@@ -103,8 +103,8 @@ function Detail({ name, onClose }: { name: string; onClose(): void }) {
             )}
             {sensor.available && sensor.failure && (
                 <p class="cap-warn">
-                    This sensor is not watching right now: {sensor.failure}. The laptop is
-                    restarting it, and the tile clears when it comes back.
+                    This sensor is not watching right now: {sensor.failure}. The laptop is restarting it, and
+                    the tile clears when it comes back.
                 </p>
             )}
             <div class="cap-actions">
