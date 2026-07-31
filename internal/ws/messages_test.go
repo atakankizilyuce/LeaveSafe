@@ -37,7 +37,7 @@ func TestNewAuthOK(t *testing.T) {
 		{Name: "power", DisplayName: "Power/Charger", Available: true, Enabled: true},
 		{Name: "network", DisplayName: "IP Address Change", Available: true, Enabled: false},
 	}
-	msg := NewAuthOK("mytoken123", sensors, "1.0.0")
+	msg := NewAuthOK("mytoken123", sensors, "1.0.0", false, time.Time{})
 
 	if msg.Type != MsgTypeAuthOK {
 		t.Errorf("Type = %q, want %q", msg.Type, MsgTypeAuthOK)
@@ -57,7 +57,7 @@ func TestNewAuthOK(t *testing.T) {
 }
 
 func TestNewAuthOK_EmptySensors(t *testing.T) {
-	msg := NewAuthOK("tok", nil, "")
+	msg := NewAuthOK("tok", nil, "", false, time.Time{})
 	if msg.Type != MsgTypeAuthOK {
 		t.Errorf("Type = %q, want %q", msg.Type, MsgTypeAuthOK)
 	}
@@ -208,7 +208,7 @@ func TestUpdatePayloadEncoding(t *testing.T) {
 func TestUpdateIsAbsentFromOtherMessages(t *testing.T) {
 	for _, msg := range []ServerMessage{
 		NewStatus(false, nil),
-		NewAuthOK("tok", nil, "v1.2.0"),
+		NewAuthOK("tok", nil, "v1.2.0", false, time.Time{}),
 		{Type: MsgTypePong},
 	} {
 		data, err := json.Marshal(msg)
