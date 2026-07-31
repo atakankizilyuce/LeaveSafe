@@ -5,9 +5,11 @@
 package harness
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -283,24 +285,73 @@ func writeSeedConfig(t *testing.T, dir string, opts Options) {
 	}
 }
 
-// waitUntilServing blocks until the port accepts a connection or the deadline
+// waitUntilServing blocks until the app answers a request, or the deadline
 // passes. A dead process fails fast with its output attached.
+//
+// Answering is the thing worth waiting for, and it is not the same as the port
+// being open. main binds the listener early and only begins serving at the very
+// end of startup — after it has drawn the dashboard, rendered a QR code for
+// every address and registered the sensors. The kernel completes the TCP
+// handshake into the listen backlog throughout that window, so a plain dial
+// succeeded while the app was still starting and the harness handed the test a
+// server that could not yet reply.
+//
+// What that cost was a flake with no fingerprints on it: the test would pair,
+// spend its whole ten-second auth deadline waiting for a greeting, and fail
+// with "timed out waiting for an auth reply" — on a loaded runner, in the first
+// test of the suite, while every later test passed in under a second because
+// the app was warm by then.
 func (a *App) waitUntilServing() {
 	a.t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
-	addr := fmt.Sprintf("127.0.0.1:%d", a.port)
+	var lastErr error
 	for time.Now().Before(deadline) {
 		if a.cmd.ProcessState != nil && a.cmd.ProcessState.Exited() {
 			a.t.Fatalf("leavesafe exited before serving\n--- output ---\n%s", a.out.String())
 		}
-		conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
-		if err == nil {
-			_ = conn.Close()
+		if err := a.probeOnce(); err == nil {
 			return
+		} else {
+			lastErr = err
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	a.t.Fatalf("leavesafe did not serve on %s within 30s\n--- output ---\n%s", addr, a.out.String())
+	a.t.Fatalf("leavesafe did not answer on port %d within 30s (last attempt: %v)\n--- output ---\n%s",
+		a.port, lastErr, a.out.String())
+}
+
+// probeClient is used only for the liveness probe above.
+//
+// The certificate LeaveSafe serves is self-signed by design, and the harness is
+// asking "are you answering yet", not "do I trust you" — the tests that care
+// about the certificate check it themselves.
+var probeClient = &http.Client{
+	Timeout: 2 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- liveness probe, not a trust decision
+	},
+}
+
+// probeOnce asks for the dashboard page and reports whether anything answered.
+//
+// Both schemes are tried because the harness does not get to assume which one
+// is in force: remote access serves HTTPS, but it also falls back to plain HTTP
+// when certificate setup fails, and the suite deliberately exercises that
+// fallback. Discovering the scheme keeps this from encoding a copy of the app's
+// own decision, which could then drift out of step with it.
+func (a *App) probeOnce() error {
+	var firstErr error
+	for _, scheme := range []string{"http", "https"} {
+		resp, err := probeClient.Get(fmt.Sprintf("%s://127.0.0.1:%d/", scheme, a.port))
+		if err == nil {
+			_ = resp.Body.Close()
+			return nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // waitForKey recovers the pairing key from the dashboard the process renders.
