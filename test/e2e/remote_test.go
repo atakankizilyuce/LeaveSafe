@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/leavesafe/leavesafe/internal/ws"
 	"github.com/leavesafe/leavesafe/test/harness"
@@ -49,6 +50,64 @@ func TestRemote_RefusesCleartextWhenTLSFails(t *testing.T) {
 	phone := harness.Dial(t, app.Port())
 	if reply := phone.Authenticate(app.Key()); reply.Type != ws.MsgTypeAuthOK {
 		t.Fatalf("local pairing broke when remote access was refused: %q (%s)", reply.Type, reply.Reason)
+	}
+}
+
+// TestRemote_TogglingKeepsTheLocalPhoneConnected is the claim the whole
+// two-listener design exists to make good on.
+//
+// Remote access used to move the only listener to a new port and switch it to
+// TLS, so turning it on meant every connected phone was dropped and had to
+// re-pair from the QR code — including the phone that asked for the change.
+// Now it is a second listener, and the local one is never touched.
+//
+// The socket is proved alive afterwards by using it, not by looking at it: a
+// closed TCP connection can take a while to admit it, and a ping that comes
+// back is the only answer that cannot be wrong.
+func TestRemote_TogglingKeepsTheLocalPhoneConnected(t *testing.T) {
+	_, phone := pairedPhone(t)
+
+	phone.Send(ws.ClientMessage{Type: ws.MsgTypeGetConfig})
+	current := phone.Expect(ws.MsgTypeConfigData, 10*time.Second)
+	if current.Config == nil {
+		t.Fatal("config_data carried no config")
+	}
+
+	for _, want := range []bool{true, false, true, false} {
+		updated := *current.Config
+		updated.RemoteAccess = want
+		phone.Send(ws.ClientMessage{Type: ws.MsgTypeUpdateConfig, Config: &updated})
+
+		// The same socket has to still answer. Turning remote access on asks a
+		// router for a port mapping and the internet for an address, neither of
+		// which is likely to succeed on a CI runner — and neither of which is
+		// allowed to disturb this connection either way.
+		phone.Send(ws.ClientMessage{Type: ws.MsgTypePing})
+		phone.Expect(ws.MsgTypePong, 20*time.Second)
+
+		phone.Send(ws.ClientMessage{Type: ws.MsgTypeGetConfig})
+		live := phone.Expect(ws.MsgTypeConfigData, 10*time.Second)
+		if live.Config.RemoteAccess != want {
+			t.Fatalf("remote_access in the live config = %v, want %v", live.Config.RemoteAccess, want)
+		}
+		current = live
+	}
+}
+
+// The phone has to be able to see whether remote access actually came up, not
+// only that it asked for it. Without this the switch is one a user can flip
+// with no way to learn it achieved nothing.
+func TestRemote_TheConfigReportsWhatActuallyHappened(t *testing.T) {
+	_, phone := pairedPhone(t)
+
+	phone.Send(ws.ClientMessage{Type: ws.MsgTypeGetConfig})
+	reply := phone.Expect(ws.MsgTypeConfigData, 10*time.Second)
+
+	if reply.Config.RemoteState == nil {
+		t.Fatal("config_data carried no remote_state, so the phone cannot tell working from broken")
+	}
+	if reply.Config.RemoteState.Enabled {
+		t.Errorf("remote_state says enabled on a run started without remote access")
 	}
 }
 
