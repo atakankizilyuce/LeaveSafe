@@ -62,3 +62,33 @@ func TestThePromptDefaultsToWiFiWhenThatIsWhatIsStored(t *testing.T) {
 		t.Errorf("prompt does not show 1 as the default:\n%s", printed)
 	}
 }
+
+// The console's `mode` command has to tell "leave it alone" apart from a mode.
+// Reading a bare enter as a choice would switch remote access off for anyone
+// who typed the command to see what it said.
+func TestParseModeChoiceOnlyAcceptsOneOrTwo(t *testing.T) {
+	cases := map[string]struct {
+		typed    string
+		wantMode bool
+		wantOK   bool
+	}{
+		"1 is wifi":            {"1", false, true},
+		"2 is remote":          {"2", true, true},
+		"padded still counts":  {"  2  ", true, true},
+		"enter leaves alone":   {"", false, false},
+		"spaces leave alone":   {"   ", false, false},
+		"nonsense left alone":  {"banana", false, false},
+		"a third option is no": {"3", false, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			want, ok := parseModeChoice(tc.typed)
+			if ok != tc.wantOK {
+				t.Fatalf("parseModeChoice(%q) ok = %v, want %v", tc.typed, ok, tc.wantOK)
+			}
+			if ok && want != tc.wantMode {
+				t.Errorf("parseModeChoice(%q) = %v, want %v", tc.typed, want, tc.wantMode)
+			}
+		})
+	}
+}

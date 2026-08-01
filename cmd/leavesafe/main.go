@@ -665,8 +665,9 @@ func main() {
 	if !*headless {
 		safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, sb) })
 		// No terminal means no stdin to read commands from.
-		safe.Supervise(ctx, "console", func(context.Context) {
-			runConsole(hub, sb, localAlarm, authMgr, installMethod, updateLedger)
+		safe.Supervise(ctx, "console", func(c context.Context) {
+			runConsole(c, hub, sb, localAlarm, authMgr, installMethod, updateLedger,
+				srv, remoteCtl, cfg)
 		})
 	}
 
@@ -1116,7 +1117,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
+	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
@@ -1209,8 +1210,23 @@ func promptRemoteAccess(cfg *config.Config) {
 	}
 }
 
-func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *auth.Manager,
-	installMethod update.Method, updateLedger *update.Ledger,
+// parseModeChoice reads a connection-mode answer. ok is false when the user
+// pressed enter, typed something else, or the input ended — all of which mean
+// "leave it alone" rather than a mode.
+func parseModeChoice(typed string) (want, ok bool) {
+	switch strings.TrimSpace(typed) {
+	case "1":
+		return false, true
+	case "2":
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm,
+	authMgr *auth.Manager, installMethod update.Method, updateLedger *update.Ledger,
+	srv *server.Server, remoteCtl *remote.Controller, cfg *config.Config,
 ) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -1355,8 +1371,43 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 		case line == "update":
 			checkForUpdateNow(sb, hub, installMethod, updateLedger)
 
+		case line == "mode":
+			st := remoteCtl.State()
+			cur := 1
+			if st.Enabled {
+				cur = 2
+			}
+			sb.writeLine("  [1] Wi-Fi only   [2] Remote access   (currently %d)", cur)
+			sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
+			if !scanner.Scan() {
+				break
+			}
+			want, ok := parseModeChoice(scanner.Text())
+			if !ok {
+				sb.writeLine("  Left unchanged")
+				break
+			}
+			if want == st.Enabled {
+				sb.writeLine("  Already in that mode")
+				break
+			}
+			// Written to disk before the listener moves, so a crash in between
+			// leaves the config saying what the user asked for rather than what
+			// the process happened to be doing.
+			cfg.RemoteAccess = &want
+			if err := config.Save(cfg); err != nil {
+				sb.writeLine("  %s[NET]%s Could not save the setting: %v", cRed, cReset, err)
+				break
+			}
+			next := remoteCtl.Disable()
+			if want {
+				next = remoteCtl.Enable(ctx)
+			}
+			applyRemoteState(sb, hub, srv, next)
+			sb.writeLine("  %s[NET]%s Connection mode: %s", cGreen, cReset, connectionModeName(want))
+
 		case line == "help":
-			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, update, rotate-key, help")
+			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, update, rotate-key, help")
 		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)
