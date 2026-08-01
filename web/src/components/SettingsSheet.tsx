@@ -399,9 +399,9 @@ function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
     if (state.upnp === 'cgnat') {
         return (
             <p class="group-note">
-                Your internet provider puts this connection behind carrier-grade NAT, so the laptop
-                cannot be reached from outside your network. Nothing on the laptop or the router
-                changes that. The local network still works normally.
+                Your internet provider puts this connection behind carrier-grade NAT, so the laptop cannot be
+                reached from outside your network. Nothing on the laptop or the router changes that. The local
+                network still works normally.
             </p>
         );
     }
@@ -417,8 +417,8 @@ function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
             )}
             {state.upnp === 'failed' && (
                 <p class="group-note">
-                    Your router refused an automatic port mapping. Forward TCP port{' '}
-                    {state.manual_port} to this laptop in the router's admin page.
+                    Your router refused an automatic port mapping. Forward TCP port {state.manual_port} to
+                    this laptop in the router's admin page.
                 </p>
             )}
             {state.cert_fp && (
