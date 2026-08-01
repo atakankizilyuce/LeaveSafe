@@ -5,8 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"testing"
-
-	"github.com/leavesafe/leavesafe/internal/server"
 )
 
 type fakeListener struct {
@@ -40,10 +38,19 @@ func (m *fakeMapping) ExternalIP() (string, error) { return m.externalIP, m.ipEr
 func (m *fakeMapping) Close() error                { m.closed++; return nil }
 func (m *fakeMapping) KeepAlive(_ context.Context) {}
 
+// testFingerprint stands in for a real certificate's SHA-256. Generating one
+// would mean importing internal/server, which imports internal/ws, which
+// imports this package — and producing a certificate is that package's
+// concern, tested there. What this package owes is that whatever fingerprint
+// it is handed reaches State.
+const testFingerprint = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+
 // workingDeps is the everything-succeeds case; each test bends one part of it.
 func workingDeps(mapping *fakeMapping, publicIP string) Deps {
 	return Deps{
-		Cert:     server.GenerateOrLoadCert,
+		Cert: func(string) (tls.Certificate, string, error) {
+			return tls.Certificate{}, testFingerprint, nil
+		},
 		OpenPort: func(int) (PortMapping, error) { return mapping, nil },
 		PublicIP: func() (string, error) { return publicIP, nil },
 	}
@@ -64,8 +71,8 @@ func TestEnableReportsThePublicURL(t *testing.T) {
 	if got.UPnP != UPnPOK {
 		t.Errorf("UPnP = %q, want %q", got.UPnP, UPnPOK)
 	}
-	if got.CertFP == "" {
-		t.Error("CertFP is empty, but the listener is serving a certificate")
+	if got.CertFP != testFingerprint {
+		t.Errorf("CertFP = %q, want the fingerprint the certificate came with", got.CertFP)
 	}
 	if ln.started != 1 {
 		t.Errorf("listener started %d times, want 1", ln.started)

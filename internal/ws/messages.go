@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/remote"
 )
 
 const (
@@ -145,24 +146,30 @@ type UpdatePayload struct {
 
 // ConfigPayload is a sanitized configuration for client exchange.
 type ConfigPayload struct {
-	Port                   int                   `json:"port"`
-	MaxSessions            int                   `json:"max_sessions"`
-	MaxAuthAttempts        int                   `json:"max_auth_attempts"`
-	LockoutSeconds         int                   `json:"lockout_seconds"`
-	HeartbeatSeconds       int                   `json:"heartbeat_seconds"`
-	DisconnectGraceSeconds int                   `json:"disconnect_grace_seconds"`
-	AutoArmOnLock          bool                  `json:"auto_arm_on_lock"`
-	InputThreshold         int                   `json:"input_threshold"`
-	ConnectionMode         string                `json:"connection_mode,omitempty"`
-	UpdateCheck            bool                  `json:"update_check"`
-	UpdateChannel          string                `json:"update_channel,omitempty"`
-	UpdateCheckHours       int                   `json:"update_check_hours,omitempty"`
-	Alarm                  config.AlarmConfig    `json:"alarm"`
-	PinProtection          PinProtectionPayload  `json:"pin_protection"`
-	EnabledSensors         map[string]bool       `json:"enabled_sensors,omitempty"`
-	RemoteAccess           bool                  `json:"remote_access,omitempty"`
-	RemotePort             int                   `json:"remote_port,omitempty"`
-	Location               LocationConfigPayload `json:"location"`
+	Port                   int                  `json:"port"`
+	MaxSessions            int                  `json:"max_sessions"`
+	MaxAuthAttempts        int                  `json:"max_auth_attempts"`
+	LockoutSeconds         int                  `json:"lockout_seconds"`
+	HeartbeatSeconds       int                  `json:"heartbeat_seconds"`
+	DisconnectGraceSeconds int                  `json:"disconnect_grace_seconds"`
+	AutoArmOnLock          bool                 `json:"auto_arm_on_lock"`
+	InputThreshold         int                  `json:"input_threshold"`
+	ConnectionMode         string               `json:"connection_mode,omitempty"`
+	UpdateCheck            bool                 `json:"update_check"`
+	UpdateChannel          string               `json:"update_channel,omitempty"`
+	UpdateCheckHours       int                  `json:"update_check_hours,omitempty"`
+	Alarm                  config.AlarmConfig   `json:"alarm"`
+	PinProtection          PinProtectionPayload `json:"pin_protection"`
+	EnabledSensors         map[string]bool      `json:"enabled_sensors,omitempty"`
+	RemoteAccess           bool                 `json:"remote_access,omitempty"`
+	RemotePort             int                  `json:"remote_port,omitempty"`
+	// RemoteState is what remote access is actually doing. RemoteAccess above
+	// is what the user asked for, and the two differ whenever something went
+	// wrong — a router that refused a port mapping, an ISP behind carrier-grade
+	// NAT. Without this the phone has a switch it can flip and no way to see
+	// whether flipping it achieved anything.
+	RemoteState *remote.State         `json:"remote_state,omitempty"`
+	Location    LocationConfigPayload `json:"location"`
 }
 
 // PinProtectionPayload is the PIN config for client exchange.

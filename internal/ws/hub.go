@@ -15,6 +15,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
+	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/state"
 	"nhooyr.io/websocket"
@@ -86,6 +87,15 @@ type Hub struct {
 	// phone that pairs after the check still hears about it. Nil until one is
 	// found, which is also the state of a copy with checking switched off.
 	updateAvailable *UpdatePayload
+
+	// remoteState is what remote access is actually doing, as opposed to what
+	// the config says was asked for. The phone shows both: the toggle reflects
+	// the request, this reflects reality — which is the only way a router that
+	// refused a port mapping can be told apart from a setting nobody enabled.
+	remoteState remote.State
+	// onRemoteToggle actually starts or stops remote access. Nil in tests and
+	// in any embedding with no listener to publish.
+	onRemoteToggle func(enable bool)
 }
 
 // NewHub creates a new WebSocket hub.
@@ -335,6 +345,53 @@ func (h *Hub) SetCertFingerprint(fp string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.certFP = fp
+}
+
+// SetRemoteState records what remote access is currently doing so it can be
+// reported to every phone.
+func (h *Hub) SetRemoteState(st remote.State) {
+	h.mu.Lock()
+	h.remoteState = st
+	h.mu.Unlock()
+	h.broadcastStatus()
+}
+
+// SetRemoteToggle installs the callback that actually starts or stops remote
+// access. Without one, a change from the phone is recorded and nothing else —
+// which is what tests and embeddings with no listener to publish want.
+func (h *Hub) SetRemoteToggle(fn func(enable bool)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.onRemoteToggle = fn
+}
+
+// applyRemoteAccessChange starts or stops remote access when want differs from
+// what the config already held.
+//
+// The settings screen sends the whole config on every save, so the comparison
+// is what keeps an unrelated change from bouncing the listener and dropping
+// whoever is connected through it.
+func (h *Hub) applyRemoteAccessChange(want bool) {
+	h.mu.RLock()
+	current := h.cfg != nil && h.cfg.RemoteAccess != nil && *h.cfg.RemoteAccess
+	fn := h.onRemoteToggle
+	h.mu.RUnlock()
+
+	if fn == nil || want == current {
+		return
+	}
+	fn(want)
+}
+
+// configPayloadWithRemoteState is configToPayload plus what remote access is
+// actually doing.
+func (h *Hub) configPayloadWithRemoteState(cfg *config.Config) ConfigPayload {
+	payload := configToPayload(cfg)
+	h.mu.RLock()
+	st := h.remoteState
+	h.mu.RUnlock()
+	payload.RemoteState = &st
+	return payload
 }
 
 // SetStateStore attaches the store that records the armed state across
@@ -1162,7 +1219,7 @@ func (h *Hub) handleGetConfig(client *Client) {
 	if cfg == nil {
 		return
 	}
-	payload := configToPayload(cfg)
+	payload := h.configPayloadWithRemoteState(cfg)
 	client.send(ServerMessage{
 		Type:   MsgTypeConfigData,
 		Config: &payload,
@@ -1199,8 +1256,10 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	if cfg.RemoteAccess != nil {
 		oldRemote = *cfg.RemoteAccess
 	}
-	needsRestart := p.Port != cfg.Port || (p.ConnectionMode != "" && p.ConnectionMode != cfg.ConnectionMode) ||
-		p.RemoteAccess != oldRemote || (p.RemotePort != 0 && p.RemotePort != cfg.RemotePort)
+	// Remote access and its port are not on this list any more: they are applied
+	// while the program runs, on a listener of their own, so asking the user to
+	// restart for them would be asking for something that achieves nothing.
+	needsRestart := p.Port != cfg.Port || (p.ConnectionMode != "" && p.ConnectionMode != cfg.ConnectionMode)
 
 	cfg.Port = p.Port
 	if p.ConnectionMode != "" {
@@ -1242,7 +1301,14 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	pinHash := cfg.PinProtection.PinHash
 	autoArm := cfg.AutoArmOnLock
 
-	ra := p.RemoteAccess
+	// Captured before the config is overwritten, and acted on further down once
+	// the lock is released: bringing the listener up asks the router for a port
+	// mapping and the internet for an address, and neither is quick enough to
+	// hold every phone's status update behind.
+	remoteWanted := p.RemoteAccess
+	remoteChanged := remoteWanted != oldRemote || (p.RemotePort > 0 && p.RemotePort != cfg.RemotePort)
+
+	ra := remoteWanted
 	cfg.RemoteAccess = &ra
 	if p.RemotePort > 0 {
 		cfg.RemotePort = p.RemotePort
@@ -1334,7 +1400,19 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		h.PushAlert(NewAlert("system", "warning", "Cannot change sensors while armed — disarm first"))
 	}
 	if needsRestart {
-		h.PushAlert(NewAlert("system", "warning", "Port changed — restart required to take effect"))
+		h.PushAlert(NewAlert("system", "warning",
+			"The port or the Bluetooth mode changed — restart required to take effect"))
+	}
+	if remoteChanged {
+		h.mu.RLock()
+		fn := h.onRemoteToggle
+		h.mu.RUnlock()
+		if fn != nil {
+			// On its own goroutine: enabling asks the router for a port mapping
+			// and the internet for an address, which can take seconds, and the
+			// phone that sent this is waiting for its settings to be saved.
+			safe.Go("remote-toggle", func() { fn(remoteWanted) })
+		}
 	}
 	if geoURLRejected {
 		h.PushAlert(NewAlert("system", "warning", "Geolocation endpoint must use https:// — change ignored"))
@@ -1370,6 +1448,10 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 
 	oldPort := cfg.Port
 	oldMode := cfg.ConnectionMode
+	// Defaults leave remote access unset, which means off. Without applying
+	// that, "reset everything" would leave an internet-facing port open while
+	// the config it just wrote asks for nothing of the sort.
+	oldRemote := cfg.RemoteAccess != nil && *cfg.RemoteAccess
 
 	*cfg = *defaults
 	cfg.EnabledSensors = nil
@@ -1384,7 +1466,7 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	h.SetPinProtection(defaults.PinProtection.Enabled, defaults.PinProtection.PinHash)
 	h.SetAutoArmOnLock(defaults.AutoArmOnLock)
 
-	payload := configToPayload(cfg)
+	payload := h.configPayloadWithRemoteState(cfg)
 	client.send(ServerMessage{
 		Type:   MsgTypeConfigData,
 		Config: &payload,
@@ -1392,7 +1474,16 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	h.broadcastStatus()
 
 	if oldPort != cfg.Port || oldMode != cfg.ConnectionMode {
-		h.PushAlert(NewAlert("system", "warning", "Port changed — restart required to take effect"))
+		h.PushAlert(NewAlert("system", "warning",
+			"The port or the Bluetooth mode changed — restart required to take effect"))
+	}
+	if oldRemote {
+		h.mu.RLock()
+		fn := h.onRemoteToggle
+		h.mu.RUnlock()
+		if fn != nil {
+			safe.Go("remote-toggle", func() { fn(false) })
+		}
 	}
 
 	log.Info("Configuration reset to defaults")
