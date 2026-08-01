@@ -137,6 +137,35 @@ func parseSTUNResponse(data []byte, txID []byte) (string, error) {
 	return "", fmt.Errorf("no mapped address in STUN response")
 }
 
+// cgnatBlock is RFC 6598 shared address space, the range an ISP assigns to a
+// subscriber while keeping the routable address for itself.
+var cgnatBlock = &net.IPNet{
+	IP:   net.IPv4(100, 64, 0, 0),
+	Mask: net.CIDRMask(10, 32),
+}
+
+// IsCarrierGradeNAT reports whether ip is inside 100.64.0.0/10.
+//
+// An address in this range is the answer to "what does the internet see" only
+// in the sense that the ISP's NAT sees it. Nothing the user can do to their own
+// router makes such a machine reachable from outside, so remote access is not
+// merely misconfigured here — it cannot work, and saying so is more useful than
+// leaving the user to forward ports at a problem that is not theirs.
+//
+// publicAddr deliberately accepts these addresses; refusing a syntactically
+// valid public address is not its job. This is the separate question.
+func IsCarrierGradeNAT(ip string) bool {
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
+		return false
+	}
+	v4 := parsed.To4()
+	if v4 == nil {
+		return false
+	}
+	return cgnatBlock.Contains(v4)
+}
+
 func getPublicIPviaHTTP() (string, error) {
 	client := &http.Client{Timeout: httpTimeout}
 	resp, err := client.Get(ipifyURL)

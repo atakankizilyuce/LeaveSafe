@@ -9,11 +9,14 @@ import "testing"
 // address must not be passed on as one.
 func TestTheRoutersClaimHasToLookLikeAPublicAddress(t *testing.T) {
 	refused := map[string]string{
-		"a hostname":          "evil.example",
-		"empty":               "",
-		"a private address":   "192.168.1.50",
-		"another private one": "10.4.4.4",
-		"carrier-grade NAT":   "172.16.0.9",
+		"a hostname":                "evil.example",
+		"empty":                     "",
+		"a private address":         "192.168.1.50",
+		"a private ten-net address": "10.4.4.4",
+		// 172.16/12, not 100.64/10 — this is RFC 1918 private space. Carrier-grade
+		// NAT is a separate question with its own answer in IsCarrierGradeNAT,
+		// and publicAddr deliberately accepts those addresses.
+		"another private one, higher up the block": "172.16.0.9",
 		"loopback":            "127.0.0.1",
 		"link-local":          "169.254.10.10",
 		"unspecified":         "0.0.0.0",
