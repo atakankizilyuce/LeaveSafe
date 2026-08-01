@@ -33,9 +33,16 @@ func TestRemote_RefusesCleartextWhenTLSFails(t *testing.T) {
 
 	// The giveaway for the old behaviour: it went on to publish the port. If
 	// remote access is properly refused, the UPnP step is never reached, so no
-	// UPnP line of any kind — success or failure — should appear.
-	if strings.Contains(out, "UPnP") {
-		t.Errorf("the port was published despite having no TLS.\n--- output ---\n%s", out)
+	// UPnP log line — success or failure — should appear.
+	//
+	// The lines are named rather than searching for "UPnP" anywhere in the
+	// output. The connection-mode question is asked on every start and its own
+	// text mentions UPnP, so the bare word now appears in a run where nothing
+	// was published at all.
+	for _, line := range []string{"UPnP port mapping", "UPnP failed", "UPnP discovery", "UPnP lease"} {
+		if strings.Contains(out, line) {
+			t.Errorf("the port was published despite having no TLS (%q).\n--- output ---\n%s", line, out)
+		}
 	}
 
 	// Availability is preserved: the local network path still pairs.

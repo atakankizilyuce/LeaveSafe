@@ -30,6 +30,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/qr"
+	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/state"
@@ -78,7 +79,12 @@ type statusBar struct {
 	qrCodes  [][]string
 	qrURLIdx int
 
-	key          string
+	key string
+	// rawKey is the pairing key as it goes into a QR code, without the grouping
+	// that makes `key` readable on screen. The two are kept side by side
+	// because the URL list is rebuilt whenever remote access comes or goes, and
+	// rebuilding a QR code needs the raw form.
+	rawKey       string
 	urls         []string
 	remoteStatus string // e.g. "ACTIVE — 85.1.2.3:9443" or "" if not remote
 	certFP       string // SHA-256 fingerprint of the TLS certificate, "" if plain HTTP
@@ -96,18 +102,77 @@ type statusBar struct {
 
 // newHeadlessStatusBar returns a status bar that draws nothing, for runs with
 // no terminal attached.
-func newHeadlessStatusBar(hub *ws.Hub, sensorMgr *monitor.Manager, key string, urls []string, certFP, keyPath string) *statusBar {
+func newHeadlessStatusBar(hub *ws.Hub, sensorMgr *monitor.Manager, key, rawKey string,
+	urls []string, certFP, keyPath string,
+) *statusBar {
 	return &statusBar{
 		out:       io.Discard,
 		hub:       hub,
 		sensorMgr: sensorMgr,
 		key:       key,
+		rawKey:    rawKey,
 		urls:      urls,
 		certFP:    certFP,
 		headless:  true,
 		keyPath:   keyPath,
 		qrURLIdx:  -1,
 	}
+}
+
+// setURLs replaces the addresses the dashboard offers and rebuilds their QR
+// codes.
+//
+// The list is not fixed for the life of the process any more: turning remote
+// access on adds a public URL and turning it off removes one. A stale QR code
+// is worse than none — it is an address the user will scan and then wait at.
+func (sb *statusBar) setURLs(urls []string) {
+	sb.mu.Lock()
+	rawKey, certFP := sb.rawKey, sb.certFP
+	sb.mu.Unlock()
+
+	codes := make([][]string, 0, len(urls))
+	for _, u := range urls {
+		lines, err := qr.Lines(pairingURL(u, rawKey, certFP))
+		if err != nil {
+			log.Warnf("Could not render QR code for %s: %v", u, err)
+			lines = nil
+		}
+		codes = append(codes, lines)
+	}
+
+	sb.mu.Lock()
+	sb.urls = urls
+	sb.qrCodes = codes
+	if sb.qrURLIdx >= len(urls) {
+		sb.qrURLIdx = 0
+	}
+	sb.mu.Unlock()
+
+	sb.refresh()
+}
+
+// urlList returns the addresses currently on offer.
+func (sb *statusBar) urlList() []string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return append([]string(nil), sb.urls...)
+}
+
+// setRemoteStatus replaces the dashboard's remote-access line.
+func (sb *statusBar) setRemoteStatus(status string) {
+	sb.mu.Lock()
+	sb.remoteStatus = status
+	sb.mu.Unlock()
+	sb.refresh()
+}
+
+// setCertFP records the fingerprint the QR codes and the header should carry.
+// It changes when remote access comes up or goes away, because the certificate
+// belongs to that listener.
+func (sb *statusBar) setCertFP(fp string) {
+	sb.mu.Lock()
+	sb.certFP = fp
+	sb.mu.Unlock()
 }
 
 func visLen(s string) int {
@@ -492,83 +557,46 @@ func main() {
 		}
 	}
 
-	// Remote access: set up TLS, UPnP, and public IP
-	var portMapping *network.PortMapping
-	var publicIP string
-	srvCfg := server.Config{Hub: hub, Port: port, DevMode: *devMode}
-
-	var certFP string
-	if remoteEnabled {
-		if port == 0 {
-			port = cfg.RemotePort
-			srvCfg.Port = port
-		}
-
-		cert, fp, err := server.GenerateOrLoadCert(config.ConfigDir())
-		if err != nil {
-			// Remote access publishes this port to the internet. Serving it
-			// over plain HTTP would put the pairing key — the only thing
-			// guarding the alarm — in cleartext on the wire. Staying on the LAN
-			// is the safe failure, so remote access does not come up at all.
-			log.Errorf("TLS certificate error: %v", err)
-			log.Error("Remote access DISABLED: refusing to expose this port without TLS.")
-			log.Error("Pairing is still available on the local network. Fix the certificate to restore remote access.")
-			remoteEnabled = false
-		} else {
-			srvCfg.TLSCert = &cert
-			srvCfg.CertFP = fp
-			certFP = fp
-			// Announced to every connecting client, so a phone that arrived by
-			// QR code can check it reached the server the code was printed for
-			// before it offers the pairing key.
-			hub.SetCertFingerprint(fp)
-		}
-	}
-
-	srv := server.New(srvCfg)
+	// The local listener is plain HTTP and stays that way whether remote access
+	// is on or off. It opens once here and is never closed again, which is what
+	// lets the phone that turns remote access on stay connected while it
+	// happens — remote access is a second listener rather than a different mode
+	// for this one.
+	srv := server.New(server.Config{Hub: hub, Port: port, DevMode: *devMode})
 	if err := srv.Listen(); err != nil {
 		log.Fatalf("Failed to bind port: %v", err)
 	}
 
-	if remoteEnabled {
-		pm, err := network.OpenPort(srv.Port())
-		if err != nil {
-			log.Warnf("UPnP failed: %v — manual port forwarding required (port %d)", err, srv.Port())
-		} else {
-			portMapping = pm
-		}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		// Asked of the internet first, and of the router only if that fails.
-		//
-		// This address becomes the first URL on the dashboard, and the dashboard
-		// renders the first URL as a QR code with the pairing key in it. The
-		// router's answer arrives over unauthenticated SSDP from whatever
-		// replied fastest on the local network, so taking it first meant a
-		// machine on the same café Wi-Fi could name the address the owner's
-		// phone would scan. STUN and the HTTPS lookup are answered by hosts
-		// outside that network, which is the whole difference.
-		if ip, err := network.GetPublicIP(); err == nil {
-			publicIP = ip
-		} else {
-			log.Warnf("Could not determine public IP: %v", err)
-		}
-		if publicIP == "" && portMapping != nil {
-			if ip, err := portMapping.ExternalIP(); err == nil {
-				log.Infof("Using the address the router reports, %s, as the public one", ip)
-				publicIP = ip
-			} else {
-				log.Warnf("The router's idea of the public address was not usable: %v", err)
-			}
+	remoteCtl := remote.NewController(srv, config.ConfigDir(), cfg.RemotePort, remote.Deps{
+		Cert: server.GenerateOrLoadCert,
+		OpenPort: func(p int) (remote.PortMapping, error) {
+			return network.OpenPort(p)
+		},
+		PublicIP: network.GetPublicIP,
+	})
+	if remoteEnabled {
+		if st := remoteCtl.Enable(ctx); st.Reason != "" {
+			log.Warn(st.Reason)
 		}
 	}
+	remoteState := remoteCtl.State()
+	certFP := remoteState.CertFP
+	// Announced to every connecting client, so a phone that arrived by QR code
+	// can check it reached the server the code was printed for before it offers
+	// the pairing key.
+	hub.SetCertFingerprint(certFP)
+	hub.SetRemoteState(remoteState)
 
 	var sb *statusBar
 	if *headless {
-		sb = newHeadlessStatusBar(hub, sensorMgr, authMgr.PairingKey(),
-			reachableURLs(srv, publicIP), certFP, keyPath)
+		sb = newHeadlessStatusBar(hub, sensorMgr, authMgr.PairingKey(), authMgr.RawPairingKey(),
+			reachableURLs(srv, remoteState), certFP, keyPath)
 		logHeadlessStartup(sb, srv, certFP)
 	} else {
-		sb = buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, publicIP, certFP)
+		sb = buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, remoteState)
 		// The dashboard owns the terminal, so log lines have to be routed
 		// through it to land inside its scrolling region rather than on top of
 		// the QR code. Headless has no such constraint.
@@ -623,9 +651,6 @@ func main() {
 		sb.refresh()
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	hub.SetLocationTracker(ctx, buildLocationTracker(cfg))
 
 	// Which sensors can work here is reported once, in the background, because
@@ -645,9 +670,25 @@ func main() {
 		})
 	}
 
-	if portMapping != nil {
-		safe.Supervise(ctx, "upnp-keepalive", portMapping.KeepAlive)
-	}
+	// The connection mode can be changed from the phone or from the console
+	// while the program runs. Both end here, and both end by pushing the result
+	// onto the dashboard and every paired phone.
+	//
+	// Disabling first rather than branching makes it idempotent for the enable
+	// case too: a change of remote_port arrives as the same signal and has to
+	// rebind rather than return the port already in use.
+	hub.SetRemoteToggle(func(enable bool) {
+		st := remoteCtl.Disable()
+		if enable {
+			st = remoteCtl.Enable(ctx)
+		}
+		applyRemoteState(sb, hub, srv, st)
+	})
+
+	// The startup state has to reach the dashboard the same way a later change
+	// does, or the first draw and every draw after it would come from different
+	// code.
+	applyRemoteState(sb, hub, srv, remoteCtl.State())
 
 	// Checking repeatedly, rather than once at startup, is the whole point: a copy
 	// installed as a service runs for weeks, and asking only at startup means the
@@ -696,9 +737,10 @@ func main() {
 		cancel()
 		localAlarm.Stop()
 		sensorMgr.StopAll()
-		if portMapping != nil {
-			_ = portMapping.Close()
-		}
+		// Closes the remote listener and takes the router's port mapping back
+		// down with it. Leaving a mapping behind would leave a hole in the
+		// router pointing at a machine that is no longer listening.
+		remoteCtl.Disable()
 		if el := hub.EventLogger(); el != nil {
 			_ = el.Close()
 		}
@@ -753,16 +795,43 @@ func pairingURL(base, rawKey, certFP string) string {
 
 // reachableURLs returns every address a phone could connect to, public one
 // first when remote access is up.
-func reachableURLs(srv *server.Server, publicIP string) []string {
+func reachableURLs(srv *server.Server, st remote.State) []string {
 	urls := srv.URLs()
-	if publicIP == "" {
+	if st.PublicURL == "" {
 		return urls
 	}
-	scheme := "http"
-	if srv.IsTLS() {
-		scheme = "https"
+	return append([]string{st.PublicURL}, urls...)
+}
+
+// applyRemoteState is what every path that changes the connection mode ends
+// with: the addresses on the dashboard, the certificate the QR codes carry, the
+// status the phones hold, and the reason if there is one, all from the same
+// State.
+func applyRemoteState(sb *statusBar, hub *ws.Hub, srv *server.Server, st remote.State) {
+	sb.setCertFP(st.CertFP)
+	sb.setURLs(reachableURLs(srv, st))
+	sb.setRemoteStatus(remoteStatusLine(st))
+	hub.SetCertFingerprint(st.CertFP)
+	hub.SetRemoteState(st)
+	if st.Reason != "" {
+		sb.writeLine("  %s[NET]%s %s", cYellow, cReset, st.Reason)
 	}
-	return append([]string{fmt.Sprintf("%s://%s:%d", scheme, publicIP, srv.Port())}, urls...)
+}
+
+// remoteStatusLine is the dashboard's one-line summary of remote access.
+func remoteStatusLine(st remote.State) string {
+	switch {
+	case !st.Enabled && st.UPnP == remote.UPnPCarrierNAT:
+		return "OFF — carrier-grade NAT"
+	case !st.Enabled:
+		return ""
+	case st.UPnP == remote.UPnPFailed:
+		return fmt.Sprintf("ACTIVE — forward TCP %d by hand", st.ManualPort)
+	case st.PublicURL == "":
+		return "ACTIVE — public address unknown"
+	default:
+		return "ACTIVE — " + strings.TrimPrefix(st.PublicURL, "https://")
+	}
 }
 
 // logHeadlessStartup writes what the dashboard would have shown.
@@ -920,7 +989,8 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 }
 
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
-	hub *ws.Hub, sensorMgr *monitor.Manager, publicIP, certFP string) *statusBar {
+	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State) *statusBar {
+	certFP := remoteState.CertFP
 	termW, termH, err := term.GetSize(int(out.Fd()))
 	if err != nil || termW < 80 || termH < 20 {
 		termW, termH = 120, 40
@@ -952,7 +1022,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	fmt.Fprintf(out, "\n")
 	row++
 
-	urls := reachableURLs(srv, publicIP)
+	urls := reachableURLs(srv, remoteState)
 
 	// A QR code is rendered for every reachable URL, not just the first. With
 	// remote access on, the public URL only works from outside the network:
@@ -998,11 +1068,6 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	qrStartRow := row
 
-	remoteStatus := ""
-	if publicIP != "" {
-		remoteStatus = fmt.Sprintf("ACTIVE — %s:%d", publicIP, srv.Port())
-	}
-
 	sb := &statusBar{
 		out:          out,
 		hub:          hub,
@@ -1015,8 +1080,9 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		qrBoxH:       qrH,
 		qrCodes:      qrCodes,
 		key:          authMgr.PairingKey(),
+		rawKey:       authMgr.RawPairingKey(),
 		urls:         urls,
-		remoteStatus: remoteStatus,
+		remoteStatus: remoteStatusLine(remoteState),
 		certFP:       certFP,
 	}
 

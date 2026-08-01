@@ -108,6 +108,8 @@ func (c *Controller) Enable(ctx context.Context) State {
 		// key — the only thing guarding the alarm — in cleartext on the wire.
 		// Staying on the LAN is the safe failure.
 		log.Errorf("TLS certificate error: %v", err)
+		log.Error("Remote access DISABLED: refusing to expose this port without TLS.")
+		log.Error("Pairing is still available on the local network. Fix the certificate to restore remote access.")
 		c.state = State{Reason: fmt.Sprintf("Could not create the TLS certificate: %v. "+
 			"Remote access will not run without one; the local network is unaffected.", err)}
 		return c.state

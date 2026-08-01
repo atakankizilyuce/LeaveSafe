@@ -158,7 +158,7 @@ func TestParseRejectsAWrongMagicCookie(t *testing.T) {
 // keeps the routable address for itself. A port mapping on the home router
 // cannot make this machine reachable, so telling the user their router is fine
 // would be telling them to keep trying something that cannot work.
-func TestCarrierGradeNATIsRecognised(t *testing.T) {
+func TestCarrierGradeNATIsRecognized(t *testing.T) {
 	cgnat := []string{
 		"100.64.0.0",
 		"100.64.0.1",
@@ -167,7 +167,7 @@ func TestCarrierGradeNATIsRecognised(t *testing.T) {
 	}
 	for _, ip := range cgnat {
 		if !IsCarrierGradeNAT(ip) {
-			t.Errorf("%s is inside 100.64.0.0/10 but was not recognised as CGNAT", ip)
+			t.Errorf("%s is inside 100.64.0.0/10 but was not recognized as CGNAT", ip)
 		}
 	}
 }
