@@ -373,20 +373,26 @@ func main() {
 		log.Warnf("Config: %s", note)
 	}
 
-	// First-run: ask connection mode if not yet configured. There is nobody at
-	// a headless start to answer, and blocking on stdin there would hang the
-	// service forever, so it takes the safe answer: local network only.
-	if cfg.RemoteAccess == nil {
-		if *headless {
+	// The connection mode is asked on every interactive start, with the saved
+	// value as the default, so a user who changed it from their phone sees what
+	// is in force and can change it back without hunting for the setting.
+	//
+	// A headless start has nobody to answer and blocking on stdin there would
+	// hang the service forever, so it takes what is stored. Every autostart
+	// entry this program writes passes -headless, so no unattended start can
+	// reach the prompt.
+	if *headless {
+		if cfg.RemoteAccess == nil {
 			local := false
 			cfg.RemoteAccess = &local
 			if err := config.Save(cfg); err != nil {
 				log.Warnf("Failed to save config: %v", err)
 			}
-			log.Info("First headless start: remote access left off. Run LeaveSafe in a terminal to change it.")
-		} else {
-			promptRemoteAccess(cfg)
 		}
+		log.Infof("Connection mode: %s (from config, no terminal to ask)",
+			connectionModeName(*cfg.RemoteAccess))
+	} else {
+		promptRemoteAccess(cfg)
 	}
 
 	// Migrate a cleartext PIN left by an older version: hash it and rewrite the
@@ -1060,22 +1066,70 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	return sb
 }
 
-func promptRemoteAccess(cfg *config.Config) {
-	fmt.Printf("\n  %s%sBağlantı modu seçin / Select connection mode:%s\n\n", cBold, cCyan, cReset)
-	fmt.Printf("  %s[1]%s WiFi (aynı ağ / same network)\n", cBold, cReset)
-	fmt.Printf("      %sYalnızca aynı WiFi ağından bağlantı%s\n\n", cDim, cReset)
-	fmt.Printf("  %s[2]%s Uzaktan Erişim / Remote Access\n", cBold, cReset)
-	fmt.Printf("      %sMobil veri veya farklı ağdan bağlantı (UPnP gerekir)%s\n\n", cDim, cReset)
-	fmt.Printf("  Seçiminiz / Your choice (1/2): ")
-
-	scanner := bufio.NewScanner(os.Stdin)
-	remote := false
-	if scanner.Scan() {
-		choice := strings.TrimSpace(scanner.Text())
-		if choice == "2" {
-			remote = true
-		}
+// askConnectionMode prints the connection-mode question and returns the chosen
+// setting. current is what the config holds, and it is the answer to a bare
+// Enter.
+//
+// It takes its reader and writer rather than reaching for os.Stdin so the
+// decision can be tested without a terminal — which matters more than usual
+// here, because getting the default wrong would silently switch off a setting
+// the user had turned on from their phone.
+func askConnectionMode(in io.Reader, out io.Writer, current bool) bool {
+	def := "1"
+	if current {
+		def = "2"
 	}
+
+	fmt.Fprintf(out, "\n  %s%sBağlantı modu seçin / Select connection mode:%s\n\n", cBold, cCyan, cReset)
+	fmt.Fprintf(out, "  %s[1]%s WiFi (aynı ağ / same network)%s\n", cBold, cReset, currentMark(!current))
+	fmt.Fprintf(out, "      %sYalnızca aynı WiFi ağından bağlantı%s\n\n", cDim, cReset)
+	fmt.Fprintf(out, "  %s[2]%s Uzaktan Erişim / Remote Access%s\n", cBold, cReset, currentMark(current))
+	fmt.Fprintf(out, "      %sMobil veri veya farklı ağdan bağlantı (UPnP gerekir)%s\n\n", cDim, cReset)
+	fmt.Fprintf(out, "  %sEnter = mevcut ayarı koru / keep the current setting%s\n", cDim, cReset)
+	fmt.Fprintf(out, "  Seçiminiz / Your choice (1/2) [%s]: ", def)
+
+	scanner := bufio.NewScanner(in)
+	if !scanner.Scan() {
+		// No answer at all — a closed or redirected stdin. The saved choice
+		// stands; it is the one thing here that is certainly not a guess.
+		fmt.Fprintln(out)
+		return current
+	}
+	switch strings.TrimSpace(scanner.Text()) {
+	case "1":
+		return false
+	case "2":
+		return true
+	default:
+		return current
+	}
+}
+
+// currentMark labels the option the config currently holds.
+func currentMark(isCurrent bool) string {
+	if !isCurrent {
+		return ""
+	}
+	return fmt.Sprintf("  %s← şu an aktif / current%s", cGreen, cReset)
+}
+
+// connectionModeName names a connection mode for a log line.
+func connectionModeName(remote bool) string {
+	if remote {
+		return "remote access"
+	}
+	return "local network only"
+}
+
+// promptRemoteAccess asks the connection-mode question and saves the answer.
+//
+// This runs on every interactive start rather than only the first, because the
+// first-run-only version was answered by accident: the phone's settings screen
+// sends remote_access on every save, so saving any unrelated setting turned the
+// unset value into a definite false and the question never came back.
+func promptRemoteAccess(cfg *config.Config) {
+	current := cfg.RemoteAccess != nil && *cfg.RemoteAccess
+	remote := askConnectionMode(os.Stdin, os.Stdout, current)
 	cfg.RemoteAccess = &remote
 
 	if err := config.Save(cfg); err != nil {
