@@ -85,6 +85,23 @@ export interface UpdatePayload {
     command?: string;
 }
 
+/**
+ * What remote access is actually doing, as opposed to `remote_access`, which is
+ * what was asked for.
+ *
+ * The two differ whenever something went wrong, and the difference is the only
+ * thing that tells a router which refused a port mapping apart from an ISP that
+ * cannot offer one at all — two problems needing entirely different responses.
+ */
+export interface RemoteState {
+    enabled: boolean;
+    public_url?: string;
+    cert_fp?: string;
+    upnp?: 'ok' | 'failed' | 'cgnat';
+    manual_port?: number;
+    reason?: string;
+}
+
 export interface AppConfig {
     port: number;
     max_sessions: number;
@@ -100,6 +117,7 @@ export interface AppConfig {
     update_check_hours?: number;
     remote_access: boolean;
     remote_port: number;
+    remote_state?: RemoteState;
     alarm: AlarmConfig;
     pin_protection: { enabled: boolean; has_pin?: boolean; pin?: string };
     location: LocationConfig;

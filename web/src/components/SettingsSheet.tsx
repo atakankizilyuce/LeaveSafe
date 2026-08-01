@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { AppConfig, ClientMessage } from '../lib/protocol';
+import type { AppConfig, ClientMessage, RemoteState } from '../lib/protocol';
 import { clearSession } from '../lib/session';
 import {
     closeTransport,
@@ -129,18 +129,18 @@ export function SettingsSheet() {
                             />
                             <Toggle
                                 label="Reach it from anywhere"
-                                hint="Publishes the port to the internet over HTTPS. Restart required."
+                                hint="Lets your phone connect over mobile data or another network, over HTTPS."
                                 value={draft.remote_access}
                                 onChange={(remote_access) => patch({ remote_access })}
                             />
                             <Num
                                 label="Port used for that"
-                                hint="restart required"
                                 value={draft.remote_port}
                                 min={1024}
                                 max={65535}
                                 onChange={(remote_port) => patch({ remote_port })}
                             />
+                            <RemoteStatus state={current?.remote_state} on={draft.remote_access} />
                         </Group>
 
                         <Group title="Keeping others out" note="Limits on pairing attempts and sessions.">
@@ -377,6 +377,57 @@ function safeHttpUrl(raw: string): string {
     } catch {
         return fallback;
     }
+}
+
+/**
+ * Whether remote access is actually reachable, which the toggle alone cannot
+ * say.
+ *
+ * A user who turns this on and gets nothing has no way to tell a router that
+ * refused the port mapping from an ISP that cannot offer one at all, and the
+ * two need entirely different responses — so the laptop names which it is
+ * rather than leaving the phone to guess.
+ *
+ * It reads the saved config rather than the unsaved draft on purpose: this
+ * describes what the laptop is doing now, not what the switch is about to ask
+ * for.
+ */
+function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
+    if (!on) return null;
+    if (!state) return <p class="group-note">Checking…</p>;
+
+    if (state.upnp === 'cgnat') {
+        return (
+            <p class="group-note">
+                Your internet provider puts this connection behind carrier-grade NAT, so the laptop
+                cannot be reached from outside your network. Nothing on the laptop or the router
+                changes that. The local network still works normally.
+            </p>
+        );
+    }
+
+    return (
+        <>
+            {state.public_url ? (
+                <Field label="Reachable at">
+                    <span class="field-readout figure">{state.public_url}</span>
+                </Field>
+            ) : (
+                <p class="group-note">No public address found yet.</p>
+            )}
+            {state.upnp === 'failed' && (
+                <p class="group-note">
+                    Your router refused an automatic port mapping. Forward TCP port{' '}
+                    {state.manual_port} to this laptop in the router's admin page.
+                </p>
+            )}
+            {state.cert_fp && (
+                <Field label="Certificate">
+                    <span class="field-readout figure">{state.cert_fp.slice(0, 11)}…</span>
+                </Field>
+            )}
+        </>
+    );
 }
 
 function UpdateStatus() {
