@@ -92,6 +92,36 @@ diff is small.
 
 ### Changed
 
+- **The connection mode is asked on every start, not only the first.** The
+  question comes up whenever LeaveSafe is started in a terminal, with the
+  current setting shown as the default so pressing enter keeps it. Asking once
+  turned out to mean never asking again for most people: the phone's settings
+  screen sends `remote_access` on every save, so saving any unrelated setting
+  answered the question by accident and it never returned. A `-headless` start,
+  or one with no usable stdin, takes the stored value and says which mode it
+  came up in.
+- **Remote access is switched on and off while LeaveSafe runs.** Changing it —
+  from the phone, from the new `mode` console command, or at startup — takes
+  effect immediately instead of asking for a restart. It runs on a second
+  listener of its own, so **a phone connected over Wi-Fi stays connected while
+  the setting changes**; previously the only listener moved to a new port and
+  switched to TLS, dropping every paired phone and forcing a re-pair from the
+  QR code. As a consequence the local-network listener is now plain HTTP whether
+  remote access is on or off, which also removes the certificate warning that
+  used to appear on local connections. See SECURITY.md.
+- **The phone reports whether remote access actually works.** The settings
+  screen shows the public URL, the certificate fingerprint, and — when the
+  router refused an automatic port mapping — the TCP port to forward by hand.
+  The switch could be flipped with no way to learn it had achieved nothing.
+- **Carrier-grade NAT is detected and named.** When the ISP hands out an address
+  in `100.64.0.0/10` it keeps the routable one, and no port forwarding on the
+  user's own router can help. LeaveSafe now stops remote access and says so
+  rather than leaving a listener up and the user forwarding ports at a problem
+  that is not theirs.
+- **Resetting every setting closes remote access.** The defaults leave it off,
+  but the listener used to stay up — so "reset everything" could leave a port
+  open to the internet while the config it had just written asked for nothing of
+  the sort.
 - **PIN hashing moved to scrypt.** Existing SHA-256 hashes still verify and are
   rewritten on the next successful disarm — the only moment the PIN is in hand.
 - **`ReadLast` tails the event log** instead of reading the whole file, so
