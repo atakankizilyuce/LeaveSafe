@@ -30,6 +30,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/qr"
+	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/state"
@@ -78,7 +79,12 @@ type statusBar struct {
 	qrCodes  [][]string
 	qrURLIdx int
 
-	key          string
+	key string
+	// rawKey is the pairing key as it goes into a QR code, without the grouping
+	// that makes `key` readable on screen. The two are kept side by side
+	// because the URL list is rebuilt whenever remote access comes or goes, and
+	// rebuilding a QR code needs the raw form.
+	rawKey       string
 	urls         []string
 	remoteStatus string // e.g. "ACTIVE — 85.1.2.3:9443" or "" if not remote
 	certFP       string // SHA-256 fingerprint of the TLS certificate, "" if plain HTTP
@@ -96,18 +102,77 @@ type statusBar struct {
 
 // newHeadlessStatusBar returns a status bar that draws nothing, for runs with
 // no terminal attached.
-func newHeadlessStatusBar(hub *ws.Hub, sensorMgr *monitor.Manager, key string, urls []string, certFP, keyPath string) *statusBar {
+func newHeadlessStatusBar(hub *ws.Hub, sensorMgr *monitor.Manager, key, rawKey string,
+	urls []string, certFP, keyPath string,
+) *statusBar {
 	return &statusBar{
 		out:       io.Discard,
 		hub:       hub,
 		sensorMgr: sensorMgr,
 		key:       key,
+		rawKey:    rawKey,
 		urls:      urls,
 		certFP:    certFP,
 		headless:  true,
 		keyPath:   keyPath,
 		qrURLIdx:  -1,
 	}
+}
+
+// setURLs replaces the addresses the dashboard offers and rebuilds their QR
+// codes.
+//
+// The list is not fixed for the life of the process any more: turning remote
+// access on adds a public URL and turning it off removes one. A stale QR code
+// is worse than none — it is an address the user will scan and then wait at.
+func (sb *statusBar) setURLs(urls []string) {
+	sb.mu.Lock()
+	rawKey, certFP := sb.rawKey, sb.certFP
+	sb.mu.Unlock()
+
+	codes := make([][]string, 0, len(urls))
+	for _, u := range urls {
+		lines, err := qr.Lines(pairingURL(u, rawKey, certFP))
+		if err != nil {
+			log.Warnf("Could not render QR code for %s: %v", u, err)
+			lines = nil
+		}
+		codes = append(codes, lines)
+	}
+
+	sb.mu.Lock()
+	sb.urls = urls
+	sb.qrCodes = codes
+	if sb.qrURLIdx >= len(urls) {
+		sb.qrURLIdx = 0
+	}
+	sb.mu.Unlock()
+
+	sb.refresh()
+}
+
+// urlList returns the addresses currently on offer.
+func (sb *statusBar) urlList() []string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return append([]string(nil), sb.urls...)
+}
+
+// setRemoteStatus replaces the dashboard's remote-access line.
+func (sb *statusBar) setRemoteStatus(status string) {
+	sb.mu.Lock()
+	sb.remoteStatus = status
+	sb.mu.Unlock()
+	sb.refresh()
+}
+
+// setCertFP records the fingerprint the QR codes and the header should carry.
+// It changes when remote access comes up or goes away, because the certificate
+// belongs to that listener.
+func (sb *statusBar) setCertFP(fp string) {
+	sb.mu.Lock()
+	sb.certFP = fp
+	sb.mu.Unlock()
 }
 
 func visLen(s string) int {
@@ -373,20 +438,26 @@ func main() {
 		log.Warnf("Config: %s", note)
 	}
 
-	// First-run: ask connection mode if not yet configured. There is nobody at
-	// a headless start to answer, and blocking on stdin there would hang the
-	// service forever, so it takes the safe answer: local network only.
-	if cfg.RemoteAccess == nil {
-		if *headless {
+	// The connection mode is asked on every interactive start, with the saved
+	// value as the default, so a user who changed it from their phone sees what
+	// is in force and can change it back without hunting for the setting.
+	//
+	// A headless start has nobody to answer and blocking on stdin there would
+	// hang the service forever, so it takes what is stored. Every autostart
+	// entry this program writes passes -headless, so no unattended start can
+	// reach the prompt.
+	if *headless {
+		if cfg.RemoteAccess == nil {
 			local := false
 			cfg.RemoteAccess = &local
 			if err := config.Save(cfg); err != nil {
 				log.Warnf("Failed to save config: %v", err)
 			}
-			log.Info("First headless start: remote access left off. Run LeaveSafe in a terminal to change it.")
-		} else {
-			promptRemoteAccess(cfg)
 		}
+		log.Infof("Connection mode: %s (from config, no terminal to ask)",
+			connectionModeName(*cfg.RemoteAccess))
+	} else {
+		promptRemoteAccess(cfg)
 	}
 
 	// Migrate a cleartext PIN left by an older version: hash it and rewrite the
@@ -486,83 +557,46 @@ func main() {
 		}
 	}
 
-	// Remote access: set up TLS, UPnP, and public IP
-	var portMapping *network.PortMapping
-	var publicIP string
-	srvCfg := server.Config{Hub: hub, Port: port, DevMode: *devMode}
-
-	var certFP string
-	if remoteEnabled {
-		if port == 0 {
-			port = cfg.RemotePort
-			srvCfg.Port = port
-		}
-
-		cert, fp, err := server.GenerateOrLoadCert(config.ConfigDir())
-		if err != nil {
-			// Remote access publishes this port to the internet. Serving it
-			// over plain HTTP would put the pairing key — the only thing
-			// guarding the alarm — in cleartext on the wire. Staying on the LAN
-			// is the safe failure, so remote access does not come up at all.
-			log.Errorf("TLS certificate error: %v", err)
-			log.Error("Remote access DISABLED: refusing to expose this port without TLS.")
-			log.Error("Pairing is still available on the local network. Fix the certificate to restore remote access.")
-			remoteEnabled = false
-		} else {
-			srvCfg.TLSCert = &cert
-			srvCfg.CertFP = fp
-			certFP = fp
-			// Announced to every connecting client, so a phone that arrived by
-			// QR code can check it reached the server the code was printed for
-			// before it offers the pairing key.
-			hub.SetCertFingerprint(fp)
-		}
-	}
-
-	srv := server.New(srvCfg)
+	// The local listener is plain HTTP and stays that way whether remote access
+	// is on or off. It opens once here and is never closed again, which is what
+	// lets the phone that turns remote access on stay connected while it
+	// happens — remote access is a second listener rather than a different mode
+	// for this one.
+	srv := server.New(server.Config{Hub: hub, Port: port, DevMode: *devMode})
 	if err := srv.Listen(); err != nil {
 		log.Fatalf("Failed to bind port: %v", err)
 	}
 
-	if remoteEnabled {
-		pm, err := network.OpenPort(srv.Port())
-		if err != nil {
-			log.Warnf("UPnP failed: %v — manual port forwarding required (port %d)", err, srv.Port())
-		} else {
-			portMapping = pm
-		}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		// Asked of the internet first, and of the router only if that fails.
-		//
-		// This address becomes the first URL on the dashboard, and the dashboard
-		// renders the first URL as a QR code with the pairing key in it. The
-		// router's answer arrives over unauthenticated SSDP from whatever
-		// replied fastest on the local network, so taking it first meant a
-		// machine on the same café Wi-Fi could name the address the owner's
-		// phone would scan. STUN and the HTTPS lookup are answered by hosts
-		// outside that network, which is the whole difference.
-		if ip, err := network.GetPublicIP(); err == nil {
-			publicIP = ip
-		} else {
-			log.Warnf("Could not determine public IP: %v", err)
-		}
-		if publicIP == "" && portMapping != nil {
-			if ip, err := portMapping.ExternalIP(); err == nil {
-				log.Infof("Using the address the router reports, %s, as the public one", ip)
-				publicIP = ip
-			} else {
-				log.Warnf("The router's idea of the public address was not usable: %v", err)
-			}
+	remoteCtl := remote.NewController(srv, config.ConfigDir(), cfg.RemotePort, remote.Deps{
+		Cert: server.GenerateOrLoadCert,
+		OpenPort: func(p int) (remote.PortMapping, error) {
+			return network.OpenPort(p)
+		},
+		PublicIP: network.GetPublicIP,
+	})
+	if remoteEnabled {
+		if st := remoteCtl.Enable(ctx); st.Reason != "" {
+			log.Warn(st.Reason)
 		}
 	}
+	remoteState := remoteCtl.State()
+	certFP := remoteState.CertFP
+	// Announced to every connecting client, so a phone that arrived by QR code
+	// can check it reached the server the code was printed for before it offers
+	// the pairing key.
+	hub.SetCertFingerprint(certFP)
+	hub.SetRemoteState(remoteState)
 
 	var sb *statusBar
 	if *headless {
-		sb = newHeadlessStatusBar(hub, sensorMgr, authMgr.PairingKey(),
-			reachableURLs(srv, publicIP), certFP, keyPath)
+		sb = newHeadlessStatusBar(hub, sensorMgr, authMgr.PairingKey(), authMgr.RawPairingKey(),
+			reachableURLs(srv, remoteState), certFP, keyPath)
 		logHeadlessStartup(sb, srv, certFP)
 	} else {
-		sb = buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, publicIP, certFP)
+		sb = buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, remoteState)
 		// The dashboard owns the terminal, so log lines have to be routed
 		// through it to land inside its scrolling region rather than on top of
 		// the QR code. Headless has no such constraint.
@@ -617,9 +651,6 @@ func main() {
 		sb.refresh()
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	hub.SetLocationTracker(ctx, buildLocationTracker(cfg))
 
 	// Which sensors can work here is reported once, in the background, because
@@ -634,14 +665,31 @@ func main() {
 	if !*headless {
 		safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, sb) })
 		// No terminal means no stdin to read commands from.
-		safe.Supervise(ctx, "console", func(context.Context) {
-			runConsole(hub, sb, localAlarm, authMgr, installMethod, updateLedger)
+		safe.Supervise(ctx, "console", func(c context.Context) {
+			runConsole(c, hub, sb, localAlarm, authMgr, installMethod, updateLedger,
+				srv, remoteCtl, cfg)
 		})
 	}
 
-	if portMapping != nil {
-		safe.Supervise(ctx, "upnp-keepalive", portMapping.KeepAlive)
-	}
+	// The connection mode can be changed from the phone or from the console
+	// while the program runs. Both end here, and both end by pushing the result
+	// onto the dashboard and every paired phone.
+	//
+	// Disabling first rather than branching makes it idempotent for the enable
+	// case too: a change of remote_port arrives as the same signal and has to
+	// rebind rather than return the port already in use.
+	hub.SetRemoteToggle(func(enable bool) {
+		st := remoteCtl.Disable()
+		if enable {
+			st = remoteCtl.Enable(ctx)
+		}
+		applyRemoteState(sb, hub, srv, st)
+	})
+
+	// The startup state has to reach the dashboard the same way a later change
+	// does, or the first draw and every draw after it would come from different
+	// code.
+	applyRemoteState(sb, hub, srv, remoteCtl.State())
 
 	// Checking repeatedly, rather than once at startup, is the whole point: a copy
 	// installed as a service runs for weeks, and asking only at startup means the
@@ -690,9 +738,10 @@ func main() {
 		cancel()
 		localAlarm.Stop()
 		sensorMgr.StopAll()
-		if portMapping != nil {
-			_ = portMapping.Close()
-		}
+		// Closes the remote listener and takes the router's port mapping back
+		// down with it. Leaving a mapping behind would leave a hole in the
+		// router pointing at a machine that is no longer listening.
+		remoteCtl.Disable()
 		if el := hub.EventLogger(); el != nil {
 			_ = el.Close()
 		}
@@ -747,16 +796,43 @@ func pairingURL(base, rawKey, certFP string) string {
 
 // reachableURLs returns every address a phone could connect to, public one
 // first when remote access is up.
-func reachableURLs(srv *server.Server, publicIP string) []string {
+func reachableURLs(srv *server.Server, st remote.State) []string {
 	urls := srv.URLs()
-	if publicIP == "" {
+	if st.PublicURL == "" {
 		return urls
 	}
-	scheme := "http"
-	if srv.IsTLS() {
-		scheme = "https"
+	return append([]string{st.PublicURL}, urls...)
+}
+
+// applyRemoteState is what every path that changes the connection mode ends
+// with: the addresses on the dashboard, the certificate the QR codes carry, the
+// status the phones hold, and the reason if there is one, all from the same
+// State.
+func applyRemoteState(sb *statusBar, hub *ws.Hub, srv *server.Server, st remote.State) {
+	sb.setCertFP(st.CertFP)
+	sb.setURLs(reachableURLs(srv, st))
+	sb.setRemoteStatus(remoteStatusLine(st))
+	hub.SetCertFingerprint(st.CertFP)
+	hub.SetRemoteState(st)
+	if st.Reason != "" {
+		sb.writeLine("  %s[NET]%s %s", cYellow, cReset, st.Reason)
 	}
-	return append([]string{fmt.Sprintf("%s://%s:%d", scheme, publicIP, srv.Port())}, urls...)
+}
+
+// remoteStatusLine is the dashboard's one-line summary of remote access.
+func remoteStatusLine(st remote.State) string {
+	switch {
+	case !st.Enabled && st.UPnP == remote.UPnPCarrierNAT:
+		return "OFF — carrier-grade NAT"
+	case !st.Enabled:
+		return ""
+	case st.UPnP == remote.UPnPFailed:
+		return fmt.Sprintf("ACTIVE — forward TCP %d by hand", st.ManualPort)
+	case st.PublicURL == "":
+		return "ACTIVE — public address unknown"
+	default:
+		return "ACTIVE — " + strings.TrimPrefix(st.PublicURL, "https://")
+	}
 }
 
 // logHeadlessStartup writes what the dashboard would have shown.
@@ -914,7 +990,8 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 }
 
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
-	hub *ws.Hub, sensorMgr *monitor.Manager, publicIP, certFP string) *statusBar {
+	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State) *statusBar {
+	certFP := remoteState.CertFP
 	termW, termH, err := term.GetSize(int(out.Fd()))
 	if err != nil || termW < 80 || termH < 20 {
 		termW, termH = 120, 40
@@ -946,7 +1023,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	fmt.Fprintf(out, "\n")
 	row++
 
-	urls := reachableURLs(srv, publicIP)
+	urls := reachableURLs(srv, remoteState)
 
 	// A QR code is rendered for every reachable URL, not just the first. With
 	// remote access on, the public URL only works from outside the network:
@@ -992,11 +1069,6 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	qrStartRow := row
 
-	remoteStatus := ""
-	if publicIP != "" {
-		remoteStatus = fmt.Sprintf("ACTIVE — %s:%d", publicIP, srv.Port())
-	}
-
 	sb := &statusBar{
 		out:          out,
 		hub:          hub,
@@ -1009,8 +1081,9 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		qrBoxH:       qrH,
 		qrCodes:      qrCodes,
 		key:          authMgr.PairingKey(),
+		rawKey:       authMgr.RawPairingKey(),
 		urls:         urls,
-		remoteStatus: remoteStatus,
+		remoteStatus: remoteStatusLine(remoteState),
 		certFP:       certFP,
 	}
 
@@ -1044,7 +1117,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
+	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
@@ -1060,22 +1133,70 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	return sb
 }
 
-func promptRemoteAccess(cfg *config.Config) {
-	fmt.Printf("\n  %s%sBağlantı modu seçin / Select connection mode:%s\n\n", cBold, cCyan, cReset)
-	fmt.Printf("  %s[1]%s WiFi (aynı ağ / same network)\n", cBold, cReset)
-	fmt.Printf("      %sYalnızca aynı WiFi ağından bağlantı%s\n\n", cDim, cReset)
-	fmt.Printf("  %s[2]%s Uzaktan Erişim / Remote Access\n", cBold, cReset)
-	fmt.Printf("      %sMobil veri veya farklı ağdan bağlantı (UPnP gerekir)%s\n\n", cDim, cReset)
-	fmt.Printf("  Seçiminiz / Your choice (1/2): ")
-
-	scanner := bufio.NewScanner(os.Stdin)
-	remote := false
-	if scanner.Scan() {
-		choice := strings.TrimSpace(scanner.Text())
-		if choice == "2" {
-			remote = true
-		}
+// askConnectionMode prints the connection-mode question and returns the chosen
+// setting. current is what the config holds, and it is the answer to a bare
+// Enter.
+//
+// It takes its reader and writer rather than reaching for os.Stdin so the
+// decision can be tested without a terminal — which matters more than usual
+// here, because getting the default wrong would silently switch off a setting
+// the user had turned on from their phone.
+func askConnectionMode(in io.Reader, out io.Writer, current bool) bool {
+	def := "1"
+	if current {
+		def = "2"
 	}
+
+	fmt.Fprintf(out, "\n  %s%sBağlantı modu seçin / Select connection mode:%s\n\n", cBold, cCyan, cReset)
+	fmt.Fprintf(out, "  %s[1]%s WiFi (aynı ağ / same network)%s\n", cBold, cReset, currentMark(!current))
+	fmt.Fprintf(out, "      %sYalnızca aynı WiFi ağından bağlantı%s\n\n", cDim, cReset)
+	fmt.Fprintf(out, "  %s[2]%s Uzaktan Erişim / Remote Access%s\n", cBold, cReset, currentMark(current))
+	fmt.Fprintf(out, "      %sMobil veri veya farklı ağdan bağlantı (UPnP gerekir)%s\n\n", cDim, cReset)
+	fmt.Fprintf(out, "  %sEnter = mevcut ayarı koru / keep the current setting%s\n", cDim, cReset)
+	fmt.Fprintf(out, "  Seçiminiz / Your choice (1/2) [%s]: ", def)
+
+	scanner := bufio.NewScanner(in)
+	if !scanner.Scan() {
+		// No answer at all — a closed or redirected stdin. The saved choice
+		// stands; it is the one thing here that is certainly not a guess.
+		fmt.Fprintln(out)
+		return current
+	}
+	switch strings.TrimSpace(scanner.Text()) {
+	case "1":
+		return false
+	case "2":
+		return true
+	default:
+		return current
+	}
+}
+
+// currentMark labels the option the config currently holds.
+func currentMark(isCurrent bool) string {
+	if !isCurrent {
+		return ""
+	}
+	return fmt.Sprintf("  %s← şu an aktif / current%s", cGreen, cReset)
+}
+
+// connectionModeName names a connection mode for a log line.
+func connectionModeName(remote bool) string {
+	if remote {
+		return "remote access"
+	}
+	return "local network only"
+}
+
+// promptRemoteAccess asks the connection-mode question and saves the answer.
+//
+// This runs on every interactive start rather than only the first, because the
+// first-run-only version was answered by accident: the phone's settings screen
+// sends remote_access on every save, so saving any unrelated setting turned the
+// unset value into a definite false and the question never came back.
+func promptRemoteAccess(cfg *config.Config) {
+	current := cfg.RemoteAccess != nil && *cfg.RemoteAccess
+	remote := askConnectionMode(os.Stdin, os.Stdout, current)
 	cfg.RemoteAccess = &remote
 
 	if err := config.Save(cfg); err != nil {
@@ -1089,8 +1210,23 @@ func promptRemoteAccess(cfg *config.Config) {
 	}
 }
 
-func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *auth.Manager,
-	installMethod update.Method, updateLedger *update.Ledger,
+// parseModeChoice reads a connection-mode answer. ok is false when the user
+// pressed enter, typed something else, or the input ended — all of which mean
+// "leave it alone" rather than a mode.
+func parseModeChoice(typed string) (want, ok bool) {
+	switch strings.TrimSpace(typed) {
+	case "1":
+		return false, true
+	case "2":
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm,
+	authMgr *auth.Manager, installMethod update.Method, updateLedger *update.Ledger,
+	srv *server.Server, remoteCtl *remote.Controller, cfg *config.Config,
 ) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -1235,8 +1371,43 @@ func runConsole(hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm, authMgr *au
 		case line == "update":
 			checkForUpdateNow(sb, hub, installMethod, updateLedger)
 
+		case line == "mode":
+			st := remoteCtl.State()
+			cur := 1
+			if st.Enabled {
+				cur = 2
+			}
+			sb.writeLine("  [1] Wi-Fi only   [2] Remote access   (currently %d)", cur)
+			sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
+			if !scanner.Scan() {
+				break
+			}
+			want, ok := parseModeChoice(scanner.Text())
+			if !ok {
+				sb.writeLine("  Left unchanged")
+				break
+			}
+			if want == st.Enabled {
+				sb.writeLine("  Already in that mode")
+				break
+			}
+			// Written to disk before the listener moves, so a crash in between
+			// leaves the config saying what the user asked for rather than what
+			// the process happened to be doing.
+			cfg.RemoteAccess = &want
+			if err := config.Save(cfg); err != nil {
+				sb.writeLine("  %s[NET]%s Could not save the setting: %v", cRed, cReset, err)
+				break
+			}
+			next := remoteCtl.Disable()
+			if want {
+				next = remoteCtl.Enable(ctx)
+			}
+			applyRemoteState(sb, hub, srv, next)
+			sb.writeLine("  %s[NET]%s Connection mode: %s", cGreen, cReset, connectionModeName(want))
+
 		case line == "help":
-			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, update, rotate-key, help")
+			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, update, rotate-key, help")
 		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)

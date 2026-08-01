@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -35,6 +36,18 @@ type Server struct {
 	tlsCert    *tls.Certificate
 	certFP     string
 	devMode    bool
+	mux        *http.ServeMux
+
+	// The remote listener is a second front door onto the same application:
+	// TLS, on its own port, published to the internet. It is separate from the
+	// local one rather than a different mode for it, so that opening and
+	// closing it — which is what the connection mode toggle does — never
+	// disturbs a phone already connected over Wi-Fi.
+	remoteMu     sync.Mutex
+	remoteServer *http.Server
+	remoteLn     net.Listener
+	remotePort   int
+	remoteCertFP string
 }
 
 // New creates a new HTTP server.
@@ -58,6 +71,9 @@ func New(cfg Config) *Server {
 		mux.Handle("/", http.FileServer(http.FS(web.StaticFiles())))
 	}
 	mux.HandleFunc("/ws", s.handleWebSocket)
+	// Kept on the struct so the remote listener can serve the same application
+	// rather than building a second, separately-wired copy of it.
+	s.mux = mux
 
 	s.httpServer = &http.Server{
 		Handler:           requireAddressHost(securityHeaders(mux, cfg.TLSCert != nil), cfg.DevMode),
@@ -136,6 +152,110 @@ func (s *Server) Start() error {
 // Shutdown gracefully stops the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
+}
+
+// StartRemote opens a TLS listener on port and serves the same application on
+// it. A port of 0 asks the OS for a free one. It returns the bound port.
+//
+// Calling it while a remote listener is already running is a no-op that returns
+// the running port: the startup path, the phone's settings screen and the
+// console command all drive this and none of them coordinates with the others.
+func (s *Server) StartRemote(cert tls.Certificate, certFP string, port int) (int, error) {
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+
+	if s.remoteLn != nil {
+		return s.remotePort, nil
+	}
+
+	// #nosec G102 -- binding to all interfaces is the point: this listener is
+	// the one the phone reaches from another network through the UPnP mapping.
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return 0, fmt.Errorf("listen on the remote port: %w", err)
+	}
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		_ = ln.Close()
+		return 0, fmt.Errorf("listen on the remote port: unexpected address type %T", ln.Addr())
+	}
+
+	tlsLn := tls.NewListener(ln, &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	})
+
+	srv := &http.Server{
+		// The handler chain is built separately from the local one because the
+		// tls flag differs: HSTS and the socket origin have to describe the
+		// listener actually answering, not the other one.
+		Handler:           requireAddressHost(securityHeaders(s.mux, true), s.devMode),
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
+	}
+
+	s.remoteServer = srv
+	s.remoteLn = tlsLn
+	s.remotePort = addr.Port
+	s.remoteCertFP = certFP
+
+	go func() {
+		if err := srv.Serve(tlsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Errorf("Remote listener stopped: %v", err)
+		}
+	}()
+
+	log.Infof("HTTPS server bound to port %d (remote access)", addr.Port)
+	return addr.Port, nil
+}
+
+// remoteShutdownGrace bounds how long a closing remote listener waits for
+// in-flight requests. A phone on the far end of a mobile connection is not
+// worth blocking the toggle on.
+const remoteShutdownGrace = 2 * time.Second
+
+// StopRemote closes the remote listener. It is safe to call when none is
+// running.
+//
+// Sockets already open on it are closed with it: a phone connected from another
+// network is exactly what turning remote access off is meant to cut. The local
+// listener is untouched, which is the whole reason the two are separate.
+func (s *Server) StopRemote() {
+	s.remoteMu.Lock()
+	srv, ln := s.remoteServer, s.remoteLn
+	s.remoteServer, s.remoteLn = nil, nil
+	s.remotePort, s.remoteCertFP = 0, ""
+	s.remoteMu.Unlock()
+
+	if srv == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), remoteShutdownGrace)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Warnf("Remote listener did not shut down cleanly: %v", err)
+		_ = ln.Close()
+	}
+	log.Info("Remote listener closed")
+}
+
+// RemotePort returns the port the remote listener is bound to, or 0 when it is
+// not running.
+func (s *Server) RemotePort() int {
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+	return s.remotePort
+}
+
+// RemoteCertFP returns the fingerprint of the certificate the remote listener
+// presents, empty when it is not running.
+func (s *Server) RemoteCertFP() string {
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+	return s.remoteCertFP
 }
 
 // URLs returns the HTTP(S) URLs clients can connect to.

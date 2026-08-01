@@ -319,7 +319,7 @@ Each one is implemented natively per platform — `/sys` and `/proc` on Linux, W
 - **QR code pairing** — Scan once from your phone's browser, no app required
 - **Dual transport** — Wi-Fi (WebSocket) everywhere, or Bluetooth Low Energy on macOS
 - **No cloud, no accounts** — Your phone connects directly to your laptop, never through a server
-- **Mobile data** — Optional remote access over HTTPS for reaching the laptop from another network
+- **Mobile data** — Optional remote access over HTTPS for reaching the laptop from another network, switched on and off while it runs
 
 ### Monitoring
 - **Six sensors** — Power, lid, USB, screen lock, network and input
@@ -387,7 +387,11 @@ is what the QR code uses.
 
 ## Remote access (over mobile data)
 
-By default LeaveSafe only accepts connections from your local network. **Remote access** publishes the port so your phone can reach the laptop over mobile data or from another network. You are asked which mode you want on first run, and can change it later from the phone's settings screen. Either way it takes a restart.
+By default LeaveSafe only accepts connections from your local network. **Remote access** publishes the port so your phone can reach the laptop over mobile data or from another network.
+
+You are asked which mode you want **every time you start LeaveSafe in a terminal**, with your current setting as the default — pressing enter keeps it. You can also change it at any time from the phone's settings screen, or with the `mode` command in the terminal.
+
+**The change takes effect immediately.** Nothing restarts, and a phone connected over Wi-Fi stays connected while it happens: remote access runs on a second listener of its own, and the local one is never touched. Turning it off drops phones connected *through* it, which is the point.
 
 Understand what you are turning on: remote access makes the port reachable from the internet, and the 16-digit pairing key becomes the only thing between a stranger and your alarm.
 
@@ -410,7 +414,13 @@ That catches a connection that landed somewhere unintended. It is not proof agai
 
 ### If your router has no UPnP
 
-UPnP is off by default on many routers. When it fails, LeaveSafe logs the port it needs and keeps running. Forward that TCP port to your laptop manually in your router's admin page, and the public URL works as normal.
+UPnP is off by default on many routers. When it fails, LeaveSafe keeps running and names the port on the dashboard and in the phone's settings screen. Forward that TCP port to your laptop manually in your router's admin page, and the public URL works as normal.
+
+### If your ISP uses carrier-grade NAT
+
+This one no amount of port forwarding fixes. Some providers — mobile networks especially, and plenty of home connections in some countries — hand out an address in `100.64.0.0/10` and keep the routable one for themselves. Your router cannot forward a port it does not own, so the laptop simply cannot be reached from outside.
+
+LeaveSafe detects this and says so plainly rather than leaving you to guess why nothing connects: remote access is stopped, and the phone's settings screen explains why. Your local network is unaffected. Getting past it means asking your provider for a public address, or putting both devices on a VPN or mesh network — neither of which LeaveSafe does for you.
 
 ### Pairing at home while remote access is on
 

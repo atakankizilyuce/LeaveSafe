@@ -122,6 +122,18 @@ holding an unlocked paired phone, not a second factor.
 it is off by default and opt-in per install. With it on, the pairing key is the
 only thing between the internet and the alarm.
 
+**The local network listener is plain HTTP, remote access or not.** Remote
+access runs on a second listener of its own rather than converting the only one,
+so the local-network path is unencrypted whether remote access is on or off: a
+pairing key sent over the LAN can be read by a hostile machine on the same
+Wi-Fi. This is the same posture as the default Wi-Fi-only mode, which is how
+almost every install runs. Earlier versions upgraded the *local* listener to TLS
+whenever remote access was on, which meant a self-signed certificate warning on
+every local connection and a re-pair every time the setting changed; the two
+listeners are what let the setting change without disturbing a connected phone.
+The internet-facing listener is TLS-only and refuses to start without a
+certificate.
+
 **Bluetooth pairing runs on macOS only.** Not for want of a driver: the Windows
 and Linux Bluetooth stacks do not tell the application which device performed a
 write — the library reports a connection ID of zero for every one — so every

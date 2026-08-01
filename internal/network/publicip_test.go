@@ -153,3 +153,42 @@ func TestParseRejectsAWrongMagicCookie(t *testing.T) {
 		t.Error("a response with the wrong magic cookie parsed without error")
 	}
 }
+
+// 100.64.0.0/10 is shared address space: the ISP hands it to the subscriber and
+// keeps the routable address for itself. A port mapping on the home router
+// cannot make this machine reachable, so telling the user their router is fine
+// would be telling them to keep trying something that cannot work.
+func TestCarrierGradeNATIsRecognized(t *testing.T) {
+	cgnat := []string{
+		"100.64.0.0",
+		"100.64.0.1",
+		"100.100.50.7",
+		"100.127.255.255",
+	}
+	for _, ip := range cgnat {
+		if !IsCarrierGradeNAT(ip) {
+			t.Errorf("%s is inside 100.64.0.0/10 but was not recognized as CGNAT", ip)
+		}
+	}
+}
+
+// The boundaries matter: 100.63.x and 100.128.x are ordinary public addresses,
+// and calling them CGNAT would tell a user with a working connection that their
+// ISP has broken it.
+func TestAddressesOutsideSharedSpaceAreNotCGNAT(t *testing.T) {
+	notCGNAT := []string{
+		"100.63.255.255",
+		"100.128.0.0",
+		"198.51.100.4",
+		"203.0.113.9",
+		"2001:db8::1",
+		"192.168.1.5",
+		"not-an-ip",
+		"",
+	}
+	for _, ip := range notCGNAT {
+		if IsCarrierGradeNAT(ip) {
+			t.Errorf("%s was wrongly reported as CGNAT", ip)
+		}
+	}
+}
