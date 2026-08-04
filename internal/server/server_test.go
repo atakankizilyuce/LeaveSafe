@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/ws"
-	"nhooyr.io/websocket"
 )
 
 func startTestServer(t *testing.T) *Server {

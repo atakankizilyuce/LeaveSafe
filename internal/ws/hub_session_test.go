@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/leavesafe/leavesafe/internal/auth"
-	"nhooyr.io/websocket"
 )
 
 // The phone shows how long the machine has been armed. That counter has to come

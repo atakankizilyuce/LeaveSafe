@@ -14,9 +14,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/coder/websocket"
 	"github.com/leavesafe/leavesafe/internal/ws"
 	"github.com/leavesafe/leavesafe/web"
-	"nhooyr.io/websocket"
 )
 
 // Config holds server configuration.
