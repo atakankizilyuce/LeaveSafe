@@ -262,12 +262,27 @@
  * and unmistakable once it has fired — the same job an annunciator panel does
  * in a cockpit, and for the same reason.
  */
+/* The tile and its "i" together. The two are siblings rather than nested,
+   because a button inside a button is not a thing a browser will build — and
+   they press as one, because from the thumb's point of view they are one tile. */
+.cap-slot {
+    position: relative;
+    display: flex;
+    transition: transform var(--swift);
+}
+
+.cap-slot:active {
+    transform: scale(0.97);
+}
+
 .cap {
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    justify-content: space-between;
     gap: 5px;
+    width: 100%;
     min-height: 74px;
     padding: 11px 10px;
     border: 1px solid var(--edge);
@@ -275,11 +290,7 @@
     background: var(--raised);
     text-align: left;
     overflow: hidden;
-    transition: border-color var(--settle), background var(--settle), transform var(--swift);
-}
-
-.cap:active {
-    transform: scale(0.97);
+    transition: border-color var(--settle), background var(--settle);
 }
 
 .cap-label {
@@ -288,7 +299,95 @@
     font-weight: 600;
     letter-spacing: 0.13em;
     color: var(--faint);
+    /* Clear of the "i" in the corner. */
+    padding-right: 20px;
+    overflow-wrap: anywhere;
     transition: color var(--settle);
+}
+
+.cap-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 5px;
+    width: 100%;
+}
+
+/*
+ * The switch on the face of the caption light.
+ *
+ * The tile was already the only thing on this screen that said whether a sensor
+ * was on, and it was not the thing that changed it — the change lived a tap
+ * deeper, in a panel that opened first. Drawing the switch where the state is
+ * makes the tap that changes it the obvious one, and shows which way it goes
+ * before it is made.
+ */
+.cap-switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 27px;
+    height: 16px;
+    border: 1px solid var(--edge);
+    border-radius: 100px;
+    background: var(--panel);
+    transition: background var(--swift), border-color var(--swift);
+}
+
+.cap-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--faint);
+    transition: transform var(--swift), background var(--swift);
+}
+
+.cap[aria-checked='true'] .cap-switch {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.cap[aria-checked='true'] .cap-knob {
+    transform: translateX(11px);
+    background: #060a12;
+}
+
+/* A sensor this machine does not have has no switch position worth showing. */
+.cap[aria-disabled='true'] .cap-switch {
+    opacity: 0.5;
+}
+
+/* Small, quiet, and out of the way of the thumb that wants the switch: this is
+   for the first visit and the one time a sensor says it is unavailable, not for
+   every day. */
+.cap-info {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 21px;
+    height: 21px;
+    padding: 0;
+    border: 1px solid var(--edge);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--faint);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    line-height: 1;
+    transition: color var(--swift), border-color var(--swift);
+}
+
+.cap-info:hover,
+.cap-info:focus-visible,
+.cap-info[aria-expanded='true'] {
+    color: var(--text);
+    border-color: var(--accent);
 }
 
 .cap-state {
@@ -309,7 +408,11 @@
     color: var(--text);
 }
 
-.cap[data-off='true'] {
+/* The "i" dims with the tile it belongs to, since it is only a sibling of it —
+   but it stays usable, because on an unavailable sensor it is the one control
+   with something left to say. */
+.cap[data-off='true'],
+.cap[data-off='true'] ~ .cap-info {
     opacity: 0.42;
 }
 
@@ -338,6 +441,11 @@
 .cap[data-lit='true'] .cap-label,
 .cap[data-lit='true'] .cap-state {
     color: var(--trip);
+}
+
+.cap[data-lit='true'][aria-checked='true'] .cap-switch {
+    background: var(--trip);
+    border-color: var(--trip);
 }
 
 @keyframes capflash {
@@ -624,6 +732,7 @@
     justify-content: center;
     background: rgba(3, 6, 11, 0.72);
     backdrop-filter: blur(6px);
+    overscroll-behavior: contain;
     animation: fade var(--swift) both;
 }
 
@@ -646,17 +755,30 @@
     }
 }
 
+/*
+ * `backwards` rather than `both`, and the difference matters: a filled-forwards
+ * animation keeps applying its own `transform: none` after it has finished, and
+ * that beats an inline transform in the cascade — so the sheet would refuse to
+ * follow a finger dragging it down. With no delay to cover, `backwards` looks
+ * identical on the way in and lets go of the property afterwards.
+ *
+ * `overscroll-behavior` stops a scroll that runs off the end of this list from
+ * being handed to the page behind, which is what made a pull-down at the top
+ * bounce the whole screen instead of moving the sheet.
+ */
 .sheet {
     width: 100%;
     max-width: 560px;
     max-height: 88dvh;
     overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--panel);
     border: 1px solid var(--edge);
     border-bottom: none;
     border-radius: 20px 20px 0 0;
-    padding: 10px 18px calc(24px + env(safe-area-inset-bottom));
-    animation: slideup var(--settle) both;
+    padding: 0 18px calc(24px + env(safe-area-inset-bottom));
+    animation: slideup var(--settle) backwards;
+    will-change: transform;
 }
 
 @keyframes slideup {
@@ -677,19 +799,47 @@
     }
 }
 
+/*
+ * The grip and the title travel with the list rather than scrolling away with
+ * it, so the way out of the sheet is on screen at every point in it — which is
+ * the same reason `touch-action: none` sits here: this strip is dragged, never
+ * scrolled, and the browser is told so rather than being raced for the gesture.
+ *
+ * The negative margin is only there to let the background reach the sheet's
+ * edges through its horizontal padding.
+ */
+.sheet-handle {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    touch-action: none;
+    margin: 0 -18px;
+    padding: 10px 18px 13px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--edge);
+}
+
 .sheet-grip {
-    width: 38px;
+    width: 42px;
     height: 4px;
     border-radius: 4px;
     background: var(--edge);
-    margin: 2px auto 14px;
+    margin: 0 auto 12px;
+    transition: background var(--swift);
+}
+
+.sheet-handle:active .sheet-grip {
+    background: var(--quiet);
 }
 
 .sheet-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 18px;
+}
+
+.sheet-body {
+    padding-top: 20px;
 }
 
 .group {

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useDragDismiss } from '../lib/dragDismiss';
 import type { AppConfig, ClientMessage, RemoteState } from '../lib/protocol';
 import { clearSession } from '../lib/session';
 import {
@@ -30,6 +31,30 @@ export function SettingsSheet() {
     const open = settingsOpen.value;
     const current = config.value;
 
+    /**
+     * Edits the user has made and not saved.
+     *
+     * Closing the sheet has always thrown these away. It matters more now that
+     * the sheet can be flicked shut with a thumb, because that is a far easier
+     * thing to do by accident than pressing Done — so the sheet says what it
+     * just discarded rather than letting the settings quietly snap back.
+     */
+    // `saved` covers the gap between sending the change and the laptop echoing
+    // its new config back, during which the draft still differs from what the
+    // sheet has been told is current.
+    const unsaved =
+        !saved &&
+        draft !== null &&
+        current !== null &&
+        (pin !== '' || geoKey !== '' || JSON.stringify(draft) !== JSON.stringify(current));
+
+    const close = useCallback(() => {
+        if (unsaved) showToast('Closed without saving');
+        settingsOpen.value = false;
+    }, [unsaved]);
+
+    const sheetRef = useDragDismiss(close, open);
+
     useEffect(() => {
         if (open) {
             send({ type: 'get_config' });
@@ -44,10 +69,6 @@ export function SettingsSheet() {
     }, [current]);
 
     if (!open) return null;
-
-    const close = () => {
-        settingsOpen.value = false;
-    };
 
     const patch = (changes: Partial<AppConfig>) => {
         if (!draft) return;
@@ -94,13 +115,19 @@ export function SettingsSheet() {
 
     return (
         <Scrim onClose={close} label="Settings">
-            <div class="sheet">
-                <div class="sheet-grip" aria-hidden="true" />
-                <div class="sheet-head">
-                    <h2 class="readout">Settings</h2>
-                    <button type="button" class="chip" onClick={close}>
-                        Done
-                    </button>
+            <div class="sheet" ref={sheetRef}>
+                {/* Grip and title in one strip, which stays put while the list
+                    scrolls under it: the way out of a sheet this long should
+                    not be something you have to scroll back to find. It is also
+                    the part you can always drag, whatever the list is doing. */}
+                <div class="sheet-handle">
+                    <div class="sheet-grip" aria-hidden="true" />
+                    <div class="sheet-head">
+                        <h2 class="readout">Settings</h2>
+                        <button type="button" class="chip" onClick={close}>
+                            Done
+                        </button>
+                    </div>
                 </div>
 
                 {!draft ? (

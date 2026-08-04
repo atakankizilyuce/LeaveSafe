@@ -92,6 +92,15 @@ diff is small.
 
 ### Changed
 
+- **A sensor tile on the phone is now the switch.** Tapping one turns that
+  sensor on or off there and then, and the tile carries a switch showing which
+  way the next tap will go. It used to open a panel first, and the switch lived
+  inside that — so the tile that was the only thing on the screen saying whether
+  a sensor was watching was not the thing that changed it, and turning one off
+  took three taps. What two words cannot say — what the sensor actually watches,
+  why it is unavailable on this machine, and the self-test — moved to an **i**
+  in the tile's corner.
+
 - **The connection mode is asked on every start, not only the first.** The
   question comes up whenever LeaveSafe is started in a terminal, with the
   current setting shown as the default so pressing enter keeps it. Asking once
@@ -136,6 +145,27 @@ diff is small.
 
 ### Fixed
 
+- **The settings sheet closes when it is pulled down.** It had always looked
+  like something you could push out of the way — it sits on the bottom edge with
+  a grip drawn across the top — and dragging it did nothing. What closed it was
+  a thumb landing on the dimmed area above it, which is why it seemed to work
+  some of the time and not others: where the gesture started was being read, not
+  the gesture. The sheet now follows the finger and goes away when let go past
+  roughly a third of the way down, or on a flick. A drag that begins partway
+  down the list still scrolls the list, and a scroll that runs off the end of it
+  no longer bounces the page behind. The grip and the title stay on screen while
+  the list scrolls under them, so *Done* is never something to scroll back up
+  and find.
+- **Closing the settings sheet says when it has thrown edits away.** It always
+  discarded unsaved changes, which mattered less when closing took a deliberate
+  press of *Done*; now that a thumb can flick the sheet shut, it says so instead
+  of letting the switches quietly snap back.
+- **Press animations work again.** Everything that animates into place on the
+  phone — sensor tiles, the log, the alert overlay — did so with an animation
+  filling forwards, and a filled animation keeps applying its own `transform`
+  afterwards, beating the `:active` rule underneath it. Every one of those
+  elements had a press animation written for it and none of them had played
+  since.
 - **The winget submission no longer fails its own validation.** The generated
   installer manifest carried `PortableCommandAlias` on the installer entry, but
   the 1.6.0 schema only defines that field for files nested inside an archive.
