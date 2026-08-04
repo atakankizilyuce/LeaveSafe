@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -388,21 +389,62 @@ const hostWarnInterval = time.Minute
 // isAddressHost reports whether host is an IP literal or localhost, with or
 // without a port.
 func isAddressHost(host string) bool {
+	_, ok := canonicalAddressHost(host)
+	return ok
+}
+
+// canonicalAddressHost checks a Host header and rebuilds it from the parts that
+// passed. ok is false for anything this server would not have handed out.
+//
+// The rebuild is the point, not a tidy-up. This value is written into the
+// Content-Security-Policy of every response, so an unchecked byte of it is a
+// byte of the policy that the requester chose. Returning a string assembled from
+// a validated address and a validated port means there is nothing left to
+// choose: whatever arrived either matched the shape or was refused, and what
+// goes out is built here rather than copied from the request.
+func canonicalAddressHost(host string) (string, bool) {
 	if host == "" {
 		// HTTP/1.1 requires a Host and Go rejects a request without one before
 		// it reaches here. A non-browser client on HTTP/1.0 has no Origin to
 		// abuse and no DNS name to rebind, so there is nothing to refuse.
-		return true
+		return "", true
 	}
-	h := host
-	if hostOnly, _, err := net.SplitHostPort(host); err == nil {
-		h = hostOnly
+
+	h, port := host, ""
+	if hostOnly, portOnly, err := net.SplitHostPort(host); err == nil {
+		h, port = hostOnly, portOnly
 	}
 	h = strings.Trim(h, "[]")
-	if strings.EqualFold(h, "localhost") {
-		return true
+
+	// A port is not a port merely because SplitHostPort was willing to cut at
+	// the last colon. It hands back whatever followed, without looking at it —
+	// so "127.0.0.1:1;style-src" splits cleanly, the host half parses as an
+	// address, and the rest of it rides through this check into the policy
+	// header. Digits, inside the range a port has, or it is not one.
+	if port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return "", false
+		}
 	}
-	return net.ParseIP(h) != nil
+
+	switch {
+	case strings.EqualFold(h, "localhost"):
+	case net.ParseIP(h) != nil:
+	default:
+		return "", false
+	}
+
+	authority := h
+	if ip := net.ParseIP(h); ip != nil && ip.To4() == nil {
+		// An IPv6 literal has to go back inside its brackets, or the colons in
+		// it read as the separator before a port.
+		authority = "[" + h + "]"
+	}
+	if port != "" {
+		authority += ":" + port
+	}
+	return authority, true
 }
 
 // hstsMaxAge is how long a browser should refuse to talk to this origin over
@@ -463,19 +505,24 @@ func securityHeaders(next http.Handler, tls bool) http.Handler {
 // The Host header is the address the browser actually asked for, which is the
 // address its socket has to match — this machine answers on several (every
 // local interface, plus the public one when remote access is on) and a
-// certificate or a config file would only name one of them. A request with no
-// Host is not one a browser makes; it gets the schemes alone, which is the old
-// behavior and no worse than it was.
+// certificate or a config file would only name one of them.
+//
+// What goes into the header is the canonical form rather than the header as it
+// arrived. A request that names a host this server would never hand out gets the
+// schemes alone, which is the old behavior for a request with no Host at all and
+// no worse than it was: requireAddressHost has already refused that request, and
+// this stays correct even if these two are ever mounted apart.
 func socketOrigins(r *http.Request, tls bool) string {
-	if r.Host == "" {
+	host, ok := canonicalAddressHost(r.Host)
+	if !ok || host == "" {
 		return "ws: wss:"
 	}
 	if tls {
-		return "wss://" + r.Host
+		return "wss://" + host
 	}
 	// Plain HTTP still allows wss:// to the same host so that turning on remote
 	// access does not require a stale page to be reloaded before it reconnects.
-	return "ws://" + r.Host + " wss://" + r.Host
+	return "ws://" + host + " wss://" + host
 }
 
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual

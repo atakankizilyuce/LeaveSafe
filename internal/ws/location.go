@@ -46,22 +46,16 @@ func fixToWire(fix *location.Fix) *LocationFix {
 // else that has the pairing key, and a bogus anchor would silently poison every
 // movement calculation that follows.
 //
-// NaN and the infinities are rejected first, because a range check alone lets
-// them through: every comparison against NaN is false. One would reach the
-// tracker, spread to the distance-moved figure, and then fail to encode as
-// JSON — so the position panel would go quiet for the rest of the session,
-// which is the moment it exists for.
+// The range check is location.ValidCoordinates, which is the same rule the
+// Wi-Fi and IP sources are held to. It has to be one rule rather than three:
+// the anchor and a provider's fix end up in the same distance calculation and
+// on the same panel, so a value one of them refuses and another accepts is a
+// gap that only shows up in what the owner is told.
 func anchorFromWire(in *LocationFix) *location.Fix {
 	if in == nil {
 		return nil
 	}
-	if !isFinite(in.Latitude) || !isFinite(in.Longitude) || !isFinite(in.AccuracyM) {
-		return nil
-	}
-	if in.Latitude < -90 || in.Latitude > 90 {
-		return nil
-	}
-	if in.Longitude < -180 || in.Longitude > 180 {
+	if !location.ValidCoordinates(in.Latitude, in.Longitude) || !isFinite(in.AccuracyM) {
 		return nil
 	}
 

@@ -136,6 +136,52 @@ func TestParseRejectsAForeignTransactionID(t *testing.T) {
 	}
 }
 
+// The transaction ID only proves the datagram answers the question this program
+// asked. It says nothing about who answered it: a STUN exchange carries no
+// signature and no certificate, and the server is reached by a name that a
+// hostile network's own DNS resolver is free to answer. So a network that wants
+// to choose this address does not have to forge anything — and the address it
+// chooses is what the QR code points at, with the pairing key in the same URL.
+//
+// Refusing the addresses that could not possibly be this machine's on the
+// internet is what takes the easy version of that away. It is the same rule the
+// router's answer is already held to; this is the path that reaches the QR code
+// first.
+func TestAnAddressThatCannotBePublicIsRefused(t *testing.T) {
+	refused := map[string][]byte{
+		"a LAN address":     {192, 168, 1, 50},
+		"loopback":          {127, 0, 0, 1},
+		"link-local":        {169, 254, 3, 3},
+		"the unspecified":   {0, 0, 0, 0},
+		"multicast":         {224, 0, 0, 1},
+		"private ten-net":   {10, 9, 9, 9},
+		"private 172.16/12": {172, 16, 0, 9},
+	}
+	for what, octets := range refused {
+		data := stunResponse(0x0020, xorMappedIPv4(octets[0], octets[1], octets[2], octets[3], 3478))
+		if got, err := parseSTUNResponse(data, testTxID); err == nil {
+			t.Errorf("%s was accepted as this machine's public address and became %q", what, got)
+		}
+	}
+}
+
+// A MAPPED-ADDRESS attribute says which family it carries, and an IPv6 one
+// carries sixteen octets rather than four. Reading its first four as an IPv4
+// address produces something that looks like an address and belongs to nobody,
+// which for a value the owner's phone is about to be pointed at is worse than
+// having no answer at all.
+func TestParseRejectsANonIPv4MappedAddress(t *testing.T) {
+	// Family 0x02 with a sixteen-octet address.
+	value := []byte{0x00, 0x02, 0xd4, 0x31}
+	value = append(value, make([]byte, 16)...)
+
+	for _, attrType := range []uint16{0x0020, 0x0001} {
+		if got, err := parseSTUNResponse(stunResponse(attrType, value), testTxID); err == nil {
+			t.Errorf("an IPv6 mapped address in attribute 0x%04x parsed as %q", attrType, got)
+		}
+	}
+}
+
 func TestParseRejectsANonBindingSuccess(t *testing.T) {
 	data := stunResponse(0x0020, xorMappedIPv4(203, 0, 113, 45, 1234))
 	data[0], data[1] = 0x01, 0x11 // Binding Error Response

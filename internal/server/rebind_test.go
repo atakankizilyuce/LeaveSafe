@@ -92,3 +92,52 @@ func TestAddressHostsAreAccepted(t *testing.T) {
 		}
 	}
 }
+
+// The port half of a Host header is not free-form text.
+//
+// net.SplitHostPort cuts at the last colon and hands back whatever followed it
+// without looking at it, so a host that is a real address followed by a port
+// that is not one splits cleanly and passes an address check that only examines
+// the half in front. The half behind it is written into this server's own
+// Content-Security-Policy, which makes it a piece of the policy chosen by
+// whoever sent the request.
+func TestAHostWhosePortIsNotAPortIsRefused(t *testing.T) {
+	for _, host := range []string{
+		"127.0.0.1:1;style-src",
+		"127.0.0.1:;script-src",
+		"192.168.1.20:not-a-port",
+		"[::1]:9443'",
+		"127.0.0.1:99999",
+		"127.0.0.1:0",
+		"127.0.0.1:-1",
+	} {
+		if isAddressHost(host) {
+			t.Errorf("host %q was accepted; everything after the colon reaches the policy header", host)
+		}
+	}
+}
+
+// What the server says about itself is rebuilt from the parts that were
+// checked, never copied out of the request, so there is nothing left for a
+// header to smuggle through.
+func TestTheAcceptedHostIsRebuiltFromItsParts(t *testing.T) {
+	cases := map[string]string{
+		"127.0.0.1":         "127.0.0.1",
+		"127.0.0.1:9443":    "127.0.0.1:9443",
+		"192.168.1.20:8080": "192.168.1.20:8080",
+		"localhost:5173":    "localhost:5173",
+		"[::1]:9443":        "[::1]:9443",
+		"[::1]":             "[::1]",
+		"::1":               "[::1]",
+	}
+	for host, want := range cases {
+		got, ok := canonicalAddressHost(host)
+		if !ok {
+			t.Errorf("host %q was refused; it is an address LeaveSafe hands out", host)
+			continue
+		}
+		if got != want {
+			t.Errorf("host %q was rebuilt as %q, want %q", host, got, want)
+		}
+	}
+}

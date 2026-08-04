@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
+
+	"github.com/leavesafe/leavesafe/internal/network"
 )
 
 // DefaultGeolocateURL is Google's Geolocation API. The request and response
@@ -55,15 +58,43 @@ type geolocateClient struct {
 	client *http.Client
 }
 
-func newGeolocateClient(url, apiKey string) *geolocateClient {
-	if url == "" {
-		url = DefaultGeolocateURL
+func newGeolocateClient(endpoint, apiKey string) *geolocateClient {
+	if endpoint == "" {
+		endpoint = DefaultGeolocateURL
 	}
 	return &geolocateClient{
-		url:    url,
+		url:    endpoint,
 		apiKey: apiKey,
-		client: &http.Client{Timeout: geolocateTimeout},
+		// The endpoint is configurable from the phone, and the laptop is the one
+		// that fetches it. A client that refuses to dial a non-public address is
+		// what keeps that from being a way to probe the laptop's own network.
+		client: network.PublicOnlyClient(geolocateTimeout),
 	}
+}
+
+// requestURL is the configured endpoint with the API key attached.
+//
+// Built through net/url rather than by concatenation. The key is a secret whose
+// bytes this package does not choose — it arrives from the phone's settings
+// screen or from a hand-edited config file — and pasting it after a "?" assumes
+// two things that do not hold. It assumes the key needs no escaping, when a '#'
+// in one silently truncates it and a '&' splits it into a second parameter that
+// the endpoint will log rather than read; and it assumes the endpoint carries no
+// query string of its own, when one that does gets a second '?' and the key
+// becomes part of a value instead of a parameter. Either way the request goes
+// out unauthenticated and the key goes somewhere it was not meant to.
+func (c *geolocateClient) requestURL() (string, error) {
+	if c.apiKey == "" {
+		return c.url, nil
+	}
+	u, err := url.Parse(c.url)
+	if err != nil {
+		return "", fmt.Errorf("geolocation endpoint is not a URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("key", c.apiKey)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 // Resolve sends the access points to the geolocation service.
@@ -77,12 +108,12 @@ func (c *geolocateClient) Resolve(ctx context.Context, aps []AccessPoint) (*Fix,
 		return nil, fmt.Errorf("encode geolocation request: %w", err)
 	}
 
-	url := c.url
-	if c.apiKey != "" {
-		url += "?key=" + c.apiKey
+	endpoint, err := c.requestURL()
+	if err != nil {
+		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build geolocation request: %w", err)
 	}
@@ -119,6 +150,13 @@ func parseGeolocateResponse(body []byte, statusCode, apCount int) (*Fix, error) 
 	}
 	if r.Location == nil {
 		return nil, fmt.Errorf("geolocation response carried no location")
+	}
+	// The endpoint is configurable, so this is not always the service the
+	// default names — and even when it is, it is a third party answering a
+	// question about where the owner's laptop is. Its answer is held to the same
+	// range the phone's own is.
+	if !ValidCoordinates(r.Location.Lat, r.Location.Lng) {
+		return nil, fmt.Errorf("geolocation response carried coordinates outside the valid range")
 	}
 
 	// The service reports its own accuracy, and it is the only party that knows

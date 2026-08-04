@@ -20,6 +20,7 @@ package location
 
 import (
 	"context"
+	"math"
 	"time"
 )
 
@@ -45,6 +46,26 @@ type Fix struct {
 	// Label is a human-readable place name when the source produced one, such
 	// as the city an IP lookup resolved to. Empty otherwise.
 	Label string `json:"label,omitempty"`
+}
+
+// ValidCoordinates reports whether lat and lon are an ordinary point on the
+// globe rather than a number that only survives because nothing looked.
+//
+// Every fix in this package comes from outside it — a third-party service over
+// the network, or the paired phone — and none of those is a source this program
+// gets to assume good behavior from. A pair of coordinates that is out of range
+// or not a number reaches the tracker, spreads into the distance-moved figure
+// the phone reads as "moved 40 m from where you armed it", and settles there:
+// the panel that exists to say where the machine is would be stating something
+// nobody measured. The infinities are named separately because a range check
+// alone lets them through — every comparison against NaN is false, and one that
+// gets this far then fails to encode as JSON, which takes the position panel
+// quiet for the rest of the session.
+func ValidCoordinates(lat, lon float64) bool {
+	if math.IsNaN(lat) || math.IsNaN(lon) || math.IsInf(lat, 0) || math.IsInf(lon, 0) {
+		return false
+	}
+	return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
 }
 
 // Provider produces fixes from one source.
