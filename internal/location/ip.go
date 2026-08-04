@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // DefaultIPLookupURL resolves the caller's own public address, so no IP has to
@@ -120,6 +122,11 @@ func parseIPLookup(body []byte) (*Fix, error) {
 	if r.Latitude == nil || r.Longitude == nil {
 		return nil, fmt.Errorf("IP lookup returned no coordinates")
 	}
+	// Held to the same range as every other source. This one is a third party
+	// answering over a connection this program did not choose the far end of.
+	if !ValidCoordinates(*r.Latitude, *r.Longitude) {
+		return nil, fmt.Errorf("IP lookup returned coordinates outside the valid range")
+	}
 
 	return &Fix{
 		Latitude:  *r.Latitude,
@@ -131,6 +138,10 @@ func parseIPLookup(body []byte) (*Fix, error) {
 	}, nil
 }
 
+// maxPlaceNameRunes bounds one place name from the lookup service. A city and a
+// country fit in far less; anything longer is not a place name.
+const maxPlaceNameRunes = 64
+
 func ipLabel(r ipLookupResponse) string {
 	country := r.CountryName
 	if country == "" {
@@ -138,11 +149,35 @@ func ipLabel(r ipLookupResponse) string {
 	}
 
 	parts := make([]string, 0, 2)
-	if r.City != "" {
-		parts = append(parts, r.City)
+	if city := placeName(r.City); city != "" {
+		parts = append(parts, city)
 	}
-	if country != "" {
-		parts = append(parts, country)
+	if name := placeName(country); name != "" {
+		parts = append(parts, name)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// placeName is what this package is willing to repeat from a lookup service.
+//
+// The result is rendered on the owner's phone, next to the coordinates, as a
+// statement about where their laptop is. It arrives from a third party over a
+// connection to an endpoint the config can point anywhere, which makes it
+// untrusted text going onto a screen — so it is filtered rather than passed
+// through, the same way a version tag from the releases endpoint is. Control
+// characters go, and so does anything past the length a place name has.
+func placeName(s string) string {
+	var b strings.Builder
+	count := 0
+	for _, r := range s {
+		if r == utf8.RuneError || unicode.IsControl(r) {
+			continue
+		}
+		if count == maxPlaceNameRunes {
+			break
+		}
+		b.WriteRune(r)
+		count++
+	}
+	return strings.TrimSpace(b.String())
 }

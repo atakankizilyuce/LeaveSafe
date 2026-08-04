@@ -120,6 +120,13 @@ func parseGeolocateResponse(body []byte, statusCode, apCount int) (*Fix, error) 
 	if r.Location == nil {
 		return nil, fmt.Errorf("geolocation response carried no location")
 	}
+	// The endpoint is configurable, so this is not always the service the
+	// default names — and even when it is, it is a third party answering a
+	// question about where the owner's laptop is. Its answer is held to the same
+	// range the phone's own is.
+	if !ValidCoordinates(r.Location.Lat, r.Location.Lng) {
+		return nil, fmt.Errorf("geolocation response carried coordinates outside the valid range")
+	}
 
 	// The service reports its own accuracy, and it is the only party that knows
 	// how good the fix is. A missing value means we cannot make that claim, so
