@@ -457,7 +457,9 @@ func main() {
 		log.Infof("Connection mode: %s (from config, no terminal to ask)",
 			connectionModeName(*cfg.RemoteAccess))
 	} else {
-		promptRemoteAccess(cfg)
+		// Language first, and only once. It decides how the next question is
+		// worded, so there is no order in which it could come second.
+		promptRemoteAccess(cfg, ensureLanguage(cfg))
 	}
 
 	// Migrate a cleartext PIN left by an older version: hash it and rewrite the
@@ -1117,7 +1119,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
+	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
@@ -1131,53 +1133,6 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)
 
 	return sb
-}
-
-// askConnectionMode prints the connection-mode question and returns the chosen
-// setting. current is what the config holds, and it is the answer to a bare
-// Enter.
-//
-// It takes its reader and writer rather than reaching for os.Stdin so the
-// decision can be tested without a terminal — which matters more than usual
-// here, because getting the default wrong would silently switch off a setting
-// the user had turned on from their phone.
-func askConnectionMode(in io.Reader, out io.Writer, current bool) bool {
-	def := "1"
-	if current {
-		def = "2"
-	}
-
-	fmt.Fprintf(out, "\n  %s%sBağlantı modu seçin / Select connection mode:%s\n\n", cBold, cCyan, cReset)
-	fmt.Fprintf(out, "  %s[1]%s WiFi (aynı ağ / same network)%s\n", cBold, cReset, currentMark(!current))
-	fmt.Fprintf(out, "      %sYalnızca aynı WiFi ağından bağlantı%s\n\n", cDim, cReset)
-	fmt.Fprintf(out, "  %s[2]%s Uzaktan Erişim / Remote Access%s\n", cBold, cReset, currentMark(current))
-	fmt.Fprintf(out, "      %sMobil veri veya farklı ağdan bağlantı (UPnP gerekir)%s\n\n", cDim, cReset)
-	fmt.Fprintf(out, "  %sEnter = mevcut ayarı koru / keep the current setting%s\n", cDim, cReset)
-	fmt.Fprintf(out, "  Seçiminiz / Your choice (1/2) [%s]: ", def)
-
-	scanner := bufio.NewScanner(in)
-	if !scanner.Scan() {
-		// No answer at all — a closed or redirected stdin. The saved choice
-		// stands; it is the one thing here that is certainly not a guess.
-		fmt.Fprintln(out)
-		return current
-	}
-	switch strings.TrimSpace(scanner.Text()) {
-	case "1":
-		return false
-	case "2":
-		return true
-	default:
-		return current
-	}
-}
-
-// currentMark labels the option the config currently holds.
-func currentMark(isCurrent bool) string {
-	if !isCurrent {
-		return ""
-	}
-	return fmt.Sprintf("  %s← şu an aktif / current%s", cGreen, cReset)
 }
 
 // connectionModeName names a connection mode for a log line.
@@ -1194,20 +1149,25 @@ func connectionModeName(remote bool) string {
 // first-run-only version was answered by accident: the phone's settings screen
 // sends remote_access on every save, so saving any unrelated setting turned the
 // unset value into a definite false and the question never came back.
-func promptRemoteAccess(cfg *config.Config) {
+func promptRemoteAccess(cfg *config.Config, lang language) {
 	current := cfg.RemoteAccess != nil && *cfg.RemoteAccess
-	remote := askConnectionMode(os.Stdin, os.Stdout, current)
+	remote := askConnectionMode(os.Stdin, os.Stdout, lang, current)
 	cfg.RemoteAccess = &remote
 
 	if err := config.Save(cfg); err != nil {
 		log.Warnf("Failed to save config: %v", err)
 	}
 
+	// "Trying" rather than "enabled", because at this point it is a request:
+	// the listener, the router and the ISP all still get a say, and the
+	// dashboard reports what they said. Announcing success here is how a user
+	// ends up scanning a QR code for an address nothing will answer.
 	if remote {
-		fmt.Printf("\n  %s✓ Uzaktan erişim aktif — Remote access enabled%s\n\n", cGreen, cReset)
+		promptResult(os.Stdout, lang.remoteAsked)
 	} else {
-		fmt.Printf("\n  %s✓ WiFi modu seçildi — WiFi mode selected%s\n\n", cGreen, cReset)
+		promptResult(os.Stdout, lang.wifiChosen)
 	}
+	fmt.Fprintln(os.Stdout)
 }
 
 // parseModeChoice reads a connection-mode answer. ok is false when the user
@@ -1406,8 +1366,31 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 			applyRemoteState(sb, hub, srv, next)
 			sb.writeLine("  %s[NET]%s Connection mode: %s", cGreen, cReset, connectionModeName(want))
 
+		case line == "lang":
+			sb.writeLine("  [1] Türkçe   [2] English   (currently %s)", languageByCode(cfg.Language).code)
+			sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
+			if !scanner.Scan() {
+				break
+			}
+			code, ok := parseLanguageChoice(scanner.Text())
+			if !ok {
+				sb.writeLine("  Left unchanged")
+				break
+			}
+			cfg.Language = code
+			if err := config.Save(cfg); err != nil {
+				sb.writeLine("  %s[LANG]%s Could not save the setting: %v", cRed, cReset, err)
+				break
+			}
+			// Said plainly rather than implied. The language reaches the two
+			// questions asked before this dashboard exists and nothing on it, so
+			// a user who changes it here and watches for the screen to turn
+			// would be waiting for something that is never going to happen.
+			sb.writeLine("  %s[LANG]%s Startup questions will be in %s from the next start.",
+				cGreen, cReset, code)
+
 		case line == "help":
-			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, update, rotate-key, help")
+			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, update, rotate-key, help")
 		case line == "":
 		default:
 			sb.writeLine("  Unknown command: %q  (type 'help')", line)

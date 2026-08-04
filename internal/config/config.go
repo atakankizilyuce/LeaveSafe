@@ -99,14 +99,23 @@ type Config struct {
 	// The check has to repeat: a copy installed as a service runs for weeks, and
 	// asking only at startup means the longest-running installations are the
 	// least likely to hear that a fix exists.
-	UpdateCheckHours int             `json:"update_check_hours,omitempty"`
-	Alarm            AlarmConfig     `json:"alarm"`
-	PinProtection    PinProtection   `json:"pin_protection"`
-	ConnectionMode   string          `json:"connection_mode,omitempty"`
-	EnabledSensors   map[string]bool `json:"enabled_sensors,omitempty"`
-	RemoteAccess     *bool           `json:"remote_access,omitempty"`
-	RemotePort       int             `json:"remote_port,omitempty"`
-	Location         Location        `json:"location"`
+	UpdateCheckHours int `json:"update_check_hours,omitempty"`
+	// Language is which of the two languages the terminal's first-run questions
+	// are asked in: "tr" or "en". Empty means nobody has been asked yet, which
+	// is what makes the question a first-run one rather than a nag — and why it
+	// is a plain string with a meaningful zero rather than a defaulted one.
+	//
+	// It reaches no further than those questions. The dashboard, the log and the
+	// phone are in English, and claiming otherwise by translating the first
+	// screen and nothing else would be worse than not asking.
+	Language       string          `json:"language,omitempty"`
+	Alarm          AlarmConfig     `json:"alarm"`
+	PinProtection  PinProtection   `json:"pin_protection"`
+	ConnectionMode string          `json:"connection_mode,omitempty"`
+	EnabledSensors map[string]bool `json:"enabled_sensors,omitempty"`
+	RemoteAccess   *bool           `json:"remote_access,omitempty"`
+	RemotePort     int             `json:"remote_port,omitempty"`
+	Location       Location        `json:"location"`
 }
 
 // Default returns a Config with sensible defaults.
@@ -305,6 +314,19 @@ func (c *Config) Validate() []string {
 		default:
 			notes = append(notes, fmt.Sprintf("connection_mode was %q, which is not one of wifi, bluetooth or both — using wifi", c.ConnectionMode))
 			c.ConnectionMode = "wifi"
+		}
+	}
+
+	// A value nobody recognizes is cleared rather than replaced with a guess:
+	// empty means "ask", and asking is a better answer than picking a language
+	// for someone on the strength of a typo.
+	if c.Language != "" {
+		switch c.Language {
+		case "tr", "en":
+		default:
+			notes = append(notes, fmt.Sprintf(
+				"language was %q, which is not one of tr or en — asking again", c.Language))
+			c.Language = ""
 		}
 	}
 
