@@ -274,6 +274,41 @@ diff is small.
   café Wi-Fi that replied to the discovery first got to choose where the owner's
   phone tried to pair. STUN and the HTTPS lookup are now preferred, and the
   router's claim is refused unless it is a public IP address.
+- **Every answer to "what is my public address" is held to the same rule.** The
+  router's was checked; the two that are preferred over it were not. STUN carries
+  no signature and no certificate and reaches its server by a name the network's
+  own resolver answers, so the reply is a claim like any other — and this claim
+  becomes the first URL on the dashboard, which is the one rendered as a QR code
+  with the pairing key in it. The HTTPS lookup is now asked first, because a
+  certificate check is a claim a hostile network cannot make, and STUN is the
+  fallback. Both answers, like the router's, are refused unless they could be
+  this machine's address on the internet. A mapped address that says it is not
+  IPv4 is refused rather than read as one anyway.
+- **The Host header can no longer write part of the policy it is answered with.**
+  The address a request asked for is named in the `connect-src` of that response,
+  which is the directive that keeps script on the page from opening a socket to
+  anywhere but this machine. It used to be copied out of the header as it
+  arrived: the address half was checked and everything after the colon was not,
+  because splitting a host from a port hands back whatever followed it without
+  looking. A semicolon is legal in a `Host` and is the separator between
+  directives in a policy. The port is now held to being a port, and what the
+  server says about itself is rebuilt from the parts that passed rather than
+  echoed.
+- **A position source cannot report a place that is not one.** Coordinates from
+  the Wi-Fi and IP lookups went to the phone unchecked, while the same values
+  from the phone were held to the globe — so a point outside it reached the
+  distance-moved figure and settled there, and the panel whose whole job is to
+  say where the machine is would be stating something nobody measured. One rule
+  now covers all three. The place name that comes back with an IP fix is filtered
+  and bounded before it is repeated onto the owner's screen.
+- **The geolocation API key is attached as a parameter rather than pasted on.**
+  It travels in the endpoint's query string, and it was concatenated after a `?`
+  — which assumed the key needed no escaping and that the endpoint carried no
+  query string of its own. Neither holds: a `#` in a key truncates it, an `&`
+  splits it into a second parameter the service logs rather than reads, and an
+  endpoint that already had a query string got a second `?`. The key is a secret
+  and the endpoint is configurable from the phone, so neither was this code's to
+  assume.
 - **The Windows system directory comes from the kernel.** It was read from
   `%SystemRoot%`/`%windir%`, which an ordinary user can set through
   `HKCU\Environment` — so the absolute-path hardening added for `powershell`,
