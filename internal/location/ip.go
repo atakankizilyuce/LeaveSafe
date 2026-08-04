@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/leavesafe/leavesafe/internal/network"
 )
 
 // DefaultIPLookupURL resolves the caller's own public address, so no IP has to
@@ -40,8 +42,12 @@ func NewIPProvider(url string) *IPProvider {
 		url = DefaultIPLookupURL
 	}
 	return &IPProvider{
-		url:    url,
-		client: &http.Client{Timeout: ipLookupTimeout},
+		url: url,
+		// The endpoint is configurable, and the laptop is the one that fetches
+		// it. Refusing to dial a non-public address keeps a redirected or
+		// hand-edited endpoint from turning this into a probe of the local
+		// network. The same guard the Wi-Fi geolocation client uses.
+		client: network.PublicOnlyClient(ipLookupTimeout),
 	}
 }
 

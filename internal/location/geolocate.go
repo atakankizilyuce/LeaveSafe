@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/leavesafe/leavesafe/internal/network"
 )
 
 // DefaultGeolocateURL is Google's Geolocation API. The request and response
@@ -63,7 +65,10 @@ func newGeolocateClient(endpoint, apiKey string) *geolocateClient {
 	return &geolocateClient{
 		url:    endpoint,
 		apiKey: apiKey,
-		client: &http.Client{Timeout: geolocateTimeout},
+		// The endpoint is configurable from the phone, and the laptop is the one
+		// that fetches it. A client that refuses to dial a non-public address is
+		// what keeps that from being a way to probe the laptop's own network.
+		client: network.PublicOnlyClient(geolocateTimeout),
 	}
 }
 
