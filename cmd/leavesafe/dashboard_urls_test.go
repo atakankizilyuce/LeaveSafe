@@ -69,9 +69,16 @@ func TestRemoteStatusLineNamesWhatHappened(t *testing.T) {
 			remote.State{Enabled: true, PublicURL: "https://198.51.100.4:9443", UPnP: remote.UPnPOK},
 			"ACTIVE — 198.51.100.4:9443",
 		},
+		// The listener is up and the router has not answered yet. Saying
+		// anything definite here would be a wrong answer rather than an early
+		// one, and the wait is long enough to look like a hang.
+		"still asking the router": {
+			remote.State{Enabled: true, Probing: true},
+			"ON — checking whether it can be reached…",
+		},
 		"upnp refused": {
 			remote.State{Enabled: true, UPnP: remote.UPnPFailed, ManualPort: 9443},
-			"ACTIVE — forward TCP 9443 by hand",
+			"ON — not reachable yet, forward TCP 9443 by hand",
 		},
 		"no public address": {
 			remote.State{Enabled: true, UPnP: remote.UPnPOK},
@@ -91,12 +98,10 @@ func TestRemoteStatusLineNamesWhatHappened(t *testing.T) {
 	}
 }
 
-// The public URL goes first because the dashboard renders the first URL as its
-// QR code, and it is the one a phone on another network needs. The local
-// addresses stay behind it rather than being replaced — with remote access on,
-// scanning the public URL from the same Wi-Fi needs NAT hairpinning, which
-// plenty of routers do not do.
-func TestReachableURLsPutsThePublicAddressFirstWithoutDroppingTheLocalOnes(t *testing.T) {
+// testServer is a listening server the URL tests can ask for its addresses.
+func testServer(t *testing.T) *server.Server {
+	t.Helper()
+
 	authMgr, err := auth.NewManager()
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
@@ -113,6 +118,16 @@ func TestReachableURLsPutsThePublicAddressFirstWithoutDroppingTheLocalOnes(t *te
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 	})
+	return srv
+}
+
+// The public URL goes first because the dashboard renders the first URL as its
+// QR code, and it is the one a phone on another network needs. The local
+// addresses stay behind it rather than being replaced — with remote access on,
+// scanning the public URL from the same Wi-Fi needs NAT hairpinning, which
+// plenty of routers do not do.
+func TestReachableURLsPutsThePublicAddressFirstWithoutDroppingTheLocalOnes(t *testing.T) {
+	srv := testServer(t)
 
 	local := reachableURLs(srv, remote.State{})
 	if len(local) == 0 {
@@ -121,6 +136,7 @@ func TestReachableURLsPutsThePublicAddressFirstWithoutDroppingTheLocalOnes(t *te
 
 	withPublic := reachableURLs(srv, remote.State{
 		Enabled:   true,
+		UPnP:      remote.UPnPOK,
 		PublicURL: "https://198.51.100.4:9443",
 	})
 
@@ -134,5 +150,47 @@ func TestReachableURLsPutsThePublicAddressFirstWithoutDroppingTheLocalOnes(t *te
 		if withPublic[i+1] != u {
 			t.Errorf("local URL %d changed from %q to %q", i, u, withPublic[i+1])
 		}
+	}
+}
+
+// Without a port mapping the public address is a hope, not a route: this
+// machine has an address on the internet and nothing on the path will carry a
+// connection to it. The dashboard draws the first URL as its QR code, so
+// leaving it first is how a phone ends up on a spinner forever — which is
+// exactly what happened on a network with no UPnP gateway.
+//
+// It stays in the list, because the message beside it tells the user to forward
+// the port by hand and it has to be there to scan once they have.
+func TestReachableURLsDoesNotOfferAnUnmappedPublicAddressFirst(t *testing.T) {
+	srv := testServer(t)
+
+	local := reachableURLs(srv, remote.State{})
+
+	for name, st := range map[string]remote.State{
+		"router refused the mapping": {
+			Enabled:    true,
+			UPnP:       remote.UPnPFailed,
+			ManualPort: 9443,
+			PublicURL:  "https://198.51.100.4:9443",
+		},
+		"still asking the router": {
+			Enabled:   true,
+			Probing:   true,
+			PublicURL: "https://198.51.100.4:9443",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := reachableURLs(srv, st)
+
+			if len(got) != len(local)+1 {
+				t.Fatalf("got %d URLs, want %d", len(got), len(local)+1)
+			}
+			if got[0] != local[0] {
+				t.Errorf("an unreachable address is the QR code the user scans: %v", got)
+			}
+			if got[len(got)-1] != "https://198.51.100.4:9443" {
+				t.Errorf("the public address was dropped rather than moved: %v", got)
+			}
+		})
 	}
 }

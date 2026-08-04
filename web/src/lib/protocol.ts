@@ -95,6 +95,15 @@ export interface UpdatePayload {
  */
 export interface RemoteState {
     enabled: boolean;
+    /**
+     * True between the laptop's internet-facing listener coming up and the
+     * router and the internet having answered how reachable it is.
+     *
+     * That answer takes the better part of a minute on a network with no UPnP
+     * gateway, and "no public address" during it is a wrong answer rather than
+     * an early one.
+     */
+    probing?: boolean;
     public_url?: string;
     cert_fp?: string;
     upnp?: 'ok' | 'failed' | 'cgnat';

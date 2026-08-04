@@ -13,6 +13,14 @@ diff is small.
 
 ### Added
 
+- **A language for the startup questions.** The first start in a terminal asks
+  Turkish or English, remembers the answer, and asks the connection question in
+  it. Those two questions used to carry both languages on every line, which read
+  as neither. The choice reaches the startup questions and stops there — the
+  dashboard, the log and the phone are in English, and translating the first
+  screen alone while implying more would be worse than not asking. `lang` in the
+  console changes it for the next start.
+
 - **Autostart.** `leavesafe install-service` registers LeaveSafe to start at
   login — a systemd user unit on Linux, a LaunchAgent on macOS, a Scheduled Task
   on Windows. `uninstall-service` and `service-status` go with it. A reboot used
@@ -144,6 +152,25 @@ diff is small.
   `Permissions-Policy` denies every capability the UI does not use.
 
 ### Fixed
+
+- **Choosing remote access no longer offers a QR code that cannot connect.**
+  When the router refuses a port mapping, the laptop still has an address on the
+  internet — and nothing on the path will carry a connection to it. That address
+  went to the front of the URL list, which is the one the dashboard draws as its
+  QR code, so the phone scanned it and waited forever. It is still listed, and
+  `urls` and `qr <n>` reach it once the port has been forwarded by hand, but the
+  code on screen stays on an address that works. The phone's settings screen no
+  longer labels it "reachable at" while saying underneath that it is not.
+
+- **The dashboard no longer waits half a minute on a router that is not
+  answering.** Enabling remote access asked the router for a port mapping and
+  the internet for the public address before doing anything else, and a network
+  with no UPnP gateway takes about thirty-five seconds to say so. Every one of
+  those seconds was spent between answering the connection question and the
+  dashboard appearing — with nothing on screen to say what was being waited for,
+  and the sensors not yet started. The listener now comes up first and the
+  network is asked in the background; the dashboard and the phone say
+  "checking…" until it answers, then update themselves.
 
 - **The settings sheet closes when it is pulled down.** It had always looked
   like something you could push out of the way — it sits on the bottom edge with

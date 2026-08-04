@@ -421,7 +421,9 @@ function safeHttpUrl(raw: string): string {
  */
 function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
     if (!on) return null;
-    if (!state) return <p class="group-note">Checking…</p>;
+    if (!state || state.probing) {
+        return <p class="group-note">Checking whether it can be reached from outside…</p>;
+    }
 
     if (state.upnp === 'cgnat') {
         return (
@@ -433,20 +435,28 @@ function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
         );
     }
 
+    // The router refused a port mapping. The laptop has an address on the
+    // internet and nothing on the path will carry a connection to it, so the
+    // address is a destination the user has to make work rather than one that
+    // does — and labelling it "reachable at" was the app asserting the opposite
+    // of what it had just found out.
+    const reachable = state.upnp === 'ok';
+
     return (
         <>
+            {state.upnp === 'failed' && (
+                <p class="group-note">
+                    Your router refused an automatic port mapping, so nothing outside your network can reach
+                    the laptop yet. Forward TCP port {state.manual_port} to it in the router's admin page.
+                    Pairing over the local network is unaffected.
+                </p>
+            )}
             {state.public_url ? (
-                <Field label="Reachable at">
+                <Field label={reachable ? 'Reachable at' : 'Will be reachable at'}>
                     <span class="field-readout figure">{state.public_url}</span>
                 </Field>
             ) : (
-                <p class="group-note">No public address found yet.</p>
-            )}
-            {state.upnp === 'failed' && (
-                <p class="group-note">
-                    Your router refused an automatic port mapping. Forward TCP port {state.manual_port} to
-                    this laptop in the router's admin page.
-                </p>
+                state.upnp !== 'failed' && <p class="group-note">No public address found.</p>
             )}
             {state.cert_fp && (
                 <Field label="Certificate">
