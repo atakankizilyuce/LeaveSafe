@@ -244,6 +244,8 @@ Type any of these into the dashboard while it runs:
 | `urls` | Every address the server is reachable on; `*` marks the one in the QR code |
 | `qr <n>` | Show the QR code for URL `n` from that list |
 | `cert` | Print the TLS fingerprint, to compare against your phone's warning |
+| `mode` | Switch between Wi-Fi only and remote access, without restarting |
+| `lang` | Which language the startup questions are asked in, Turkish or English |
 | `update` | Ask GitHub now whether a newer release exists, and say either way |
 | `rotate-key` | New pairing key, all sessions invalidated |
 | `help` | The list above |
@@ -391,6 +393,8 @@ By default LeaveSafe only accepts connections from your local network. **Remote 
 
 You are asked which mode you want **every time you start LeaveSafe in a terminal**, with your current setting as the default — pressing enter keeps it. You can also change it at any time from the phone's settings screen, or with the `mode` command in the terminal.
 
+The very first start asks one question before that: Turkish or English. It is asked once, remembered, and reaches those startup questions and nothing else — the dashboard, the log and the phone are in English. `lang` changes it for the next start.
+
 **The change takes effect immediately.** Nothing restarts, and a phone connected over Wi-Fi stays connected while it happens: remote access runs on a second listener of its own, and the local one is never touched. Turning it off drops phones connected *through* it, which is the point.
 
 Understand what you are turning on: remote access makes the port reachable from the internet, and the 16-digit pairing key becomes the only thing between a stranger and your alarm.
@@ -398,9 +402,10 @@ Understand what you are turning on: remote access makes the port reachable from 
 ### What happens when you enable it
 
 1. A self-signed TLS certificate is generated in the config directory, so the connection is HTTPS and the pairing key is encrypted in transit.
-2. A UPnP port mapping is requested from your router and renewed every 30 minutes.
-3. The public IP is discovered over STUN, falling back to an HTTPS lookup.
-4. The dashboard lists the public URL alongside the local ones.
+2. The internet-facing listener comes up, and LeaveSafe carries on starting. Steps 3 and 4 happen in the background — a network with no UPnP gateway takes the better part of a minute to say so, and none of it is worth waiting at a blank screen for.
+3. A UPnP port mapping is requested from your router and renewed every 30 minutes.
+4. The public IP is discovered over STUN, falling back to an HTTPS lookup.
+5. The dashboard lists the public URL alongside the local ones, and says whether it can actually be reached. **The QR code stays on a local address until the port mapping succeeds** — an address nothing will carry a connection to is worse than no address at all, because a phone scans it and waits.
 
 **If the certificate cannot be created, remote access does not start.** LeaveSafe will not serve an internet-facing port over plain HTTP, because that would put your pairing key on the wire in cleartext. It stays available on the local network and tells you what went wrong.
 
@@ -415,6 +420,8 @@ That catches a connection that landed somewhere unintended. It is not proof agai
 ### If your router has no UPnP
 
 UPnP is off by default on many routers. When it fails, LeaveSafe keeps running and names the port on the dashboard and in the phone's settings screen. Forward that TCP port to your laptop manually in your router's admin page, and the public URL works as normal.
+
+Until you have, the public address is listed but is **not** the code on screen: the QR stays on a local address, because one pointing outside would not connect. Run `urls` and `qr <n>` to switch to it once the port is forwarded.
 
 ### If your ISP uses carrier-grade NAT
 
