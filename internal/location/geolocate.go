@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -55,15 +56,40 @@ type geolocateClient struct {
 	client *http.Client
 }
 
-func newGeolocateClient(url, apiKey string) *geolocateClient {
-	if url == "" {
-		url = DefaultGeolocateURL
+func newGeolocateClient(endpoint, apiKey string) *geolocateClient {
+	if endpoint == "" {
+		endpoint = DefaultGeolocateURL
 	}
 	return &geolocateClient{
-		url:    url,
+		url:    endpoint,
 		apiKey: apiKey,
 		client: &http.Client{Timeout: geolocateTimeout},
 	}
+}
+
+// requestURL is the configured endpoint with the API key attached.
+//
+// Built through net/url rather than by concatenation. The key is a secret whose
+// bytes this package does not choose — it arrives from the phone's settings
+// screen or from a hand-edited config file — and pasting it after a "?" assumes
+// two things that do not hold. It assumes the key needs no escaping, when a '#'
+// in one silently truncates it and a '&' splits it into a second parameter that
+// the endpoint will log rather than read; and it assumes the endpoint carries no
+// query string of its own, when one that does gets a second '?' and the key
+// becomes part of a value instead of a parameter. Either way the request goes
+// out unauthenticated and the key goes somewhere it was not meant to.
+func (c *geolocateClient) requestURL() (string, error) {
+	if c.apiKey == "" {
+		return c.url, nil
+	}
+	u, err := url.Parse(c.url)
+	if err != nil {
+		return "", fmt.Errorf("geolocation endpoint is not a URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("key", c.apiKey)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 // Resolve sends the access points to the geolocation service.
@@ -77,12 +103,12 @@ func (c *geolocateClient) Resolve(ctx context.Context, aps []AccessPoint) (*Fix,
 		return nil, fmt.Errorf("encode geolocation request: %w", err)
 	}
 
-	url := c.url
-	if c.apiKey != "" {
-		url += "?key=" + c.apiKey
+	endpoint, err := c.requestURL()
+	if err != nil {
+		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build geolocation request: %w", err)
 	}
