@@ -22,16 +22,46 @@ const (
 	stunHeaderLen      = 20
 	stunTxIDLen        = 12
 	stunBindingSuccess = 0x0101
+	// stunFamilyIPv4 is the address-family byte of a MAPPED-ADDRESS attribute
+	// that carries four octets rather than sixteen.
+	stunFamilyIPv4 = 0x01
 )
 
 var stunMagicCookie = []byte{0x21, 0x12, 0xA4, 0x42}
 
-// GetPublicIP discovers the public IP address using STUN, falling back to HTTP.
+// GetPublicIP discovers this machine's address on the internet.
+//
+// The answer is not decoration. It becomes the front of the URL list, and the
+// dashboard renders the first of those as a QR code with the pairing key in its
+// fragment — so whoever chooses this string chooses where the owner's phone
+// tries to pair, and the key goes with it. That is the same reasoning
+// PortMapping.ExternalIP already carries for the router's answer, and both
+// halves of it apply here too.
+//
+// So: the HTTPS lookup is asked first and the STUN one second, which is the
+// reverse of the order this used to use. STUN is plain UDP to a name resolved
+// by whatever DNS the network handed out — a café access point that answers its
+// own resolver picks the address without having to forge a packet, and one that
+// can see the request can race a reply because the transaction ID is on the wire
+// in clear. The HTTPS lookup is a certificate check against a public name, which
+// is a claim a hostile network cannot make. STUN stays as the fallback, because
+// a network that blocks the lookup is far more common than one that attacks it.
+//
+// Either way the result is held to what a public address can look like. Private,
+// loopback, link-local, multicast and unspecified addresses are refused: none is
+// reachable from the internet, so none is an honest answer to this question, and
+// every one of them would aim the owner's phone somewhere on the local network.
 func GetPublicIP() (string, error) {
-	if ip, err := getPublicIPviaSTUN(); err == nil {
+	ip, httpErr := getPublicIPviaHTTP()
+	if httpErr == nil {
 		return ip, nil
 	}
-	return getPublicIPviaHTTP()
+
+	ip, stunErr := getPublicIPviaSTUN()
+	if stunErr == nil {
+		return ip, nil
+	}
+	return "", fmt.Errorf("no public address: %w; %w", httpErr, stunErr)
 }
 
 func getPublicIPviaSTUN() (string, error) {
@@ -82,7 +112,12 @@ func getPublicIPviaSTUN() (string, error) {
 
 // parseSTUNResponse extracts the mapped address from a Binding Success
 // Response, rejecting anything that is not a reply to the request that carried
-// txID.
+// txID and anything that could not be this machine's address on the internet.
+//
+// Nothing about a STUN exchange is authenticated: no signature, no certificate,
+// and a name resolved by whatever DNS the network handed out. What comes back is
+// therefore a claim, and this is where the claim is held to a shape. See
+// GetPublicIP for what an unchecked one buys whoever makes it.
 func parseSTUNResponse(data []byte, txID []byte) (string, error) {
 	if len(data) < stunHeaderLen {
 		return "", fmt.Errorf("STUN response too short")
@@ -111,20 +146,29 @@ func parseSTUNResponse(data []byte, txID []byte) (string, error) {
 			break
 		}
 
-		// XOR-MAPPED-ADDRESS (0x0020) or MAPPED-ADDRESS (0x0001)
+		// XOR-MAPPED-ADDRESS (0x0020) or MAPPED-ADDRESS (0x0001). Both carry the
+		// family at byte 1, the port at 2-3 and the address from byte 4 on.
+		//
+		// The family is checked rather than assumed. An IPv6 attribute is
+		// sixteen bytes of address, and reading its first four as an IPv4 one
+		// produces a plausible-looking address that belongs to nobody — which,
+		// for a value the owner's phone is about to be pointed at, is worse than
+		// having no answer at all.
+		if (attrType == 0x0020 || attrType == 0x0001) && attrLen >= 8 && data[pos+1] != stunFamilyIPv4 {
+			return "", fmt.Errorf("STUN response carries a non-IPv4 mapped address")
+		}
 		if attrType == 0x0020 && attrLen >= 8 {
-			// XOR-MAPPED-ADDRESS: family at byte 1, port at 2-3, IP at 4-7
 			ip := net.IPv4(
 				data[pos+4]^0x21,
 				data[pos+5]^0x12,
 				data[pos+6]^0xA4,
 				data[pos+7]^0x42,
 			)
-			return ip.String(), nil
+			return publicAddr(ip.String())
 		}
 		if attrType == 0x0001 && attrLen >= 8 {
 			ip := net.IPv4(data[pos+4], data[pos+5], data[pos+6], data[pos+7])
-			return ip.String(), nil
+			return publicAddr(ip.String())
 		}
 
 		// Pad to 4-byte boundary
@@ -179,9 +223,9 @@ func getPublicIPviaHTTP() (string, error) {
 		return "", err
 	}
 
-	ip := strings.TrimSpace(string(body))
-	if net.ParseIP(ip) == nil {
-		return "", fmt.Errorf("invalid IP from HTTP: %q", ip)
-	}
-	return ip, nil
+	// The transport is authenticated, so this is the trustworthy of the two
+	// sources — but the endpoint is still a third party answering a question
+	// about the owner's machine, and the answer still ends up in a QR code. It
+	// is held to the same shape as the other two.
+	return publicAddr(strings.TrimSpace(string(body)))
 }
