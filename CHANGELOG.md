@@ -309,6 +309,17 @@ diff is small.
   endpoint that already had a query string got a second `?`. The key is a secret
   and the endpoint is configurable from the phone, so neither was this code's to
   assume.
+- **The laptop will not fetch a geolocation endpoint that is not public.** Both
+  location endpoints are configurable — the Wi-Fi one from the phone's settings
+  screen — and the laptop is the one that fetches them, so a paired phone could
+  point `geolocate_url` at an address on the laptop's own network and use the
+  laptop as a blind probe of hosts it cannot reach itself. The https-only rule
+  bounded the protocol but not the host. The two location clients now dial
+  through a guard that refuses any resolved address that is not public unicast —
+  loopback, private, link-local, multicast and the unspecified address are all
+  turned away. The check runs at connect time, per resolved address, so a
+  hostname that resolves to an internal address is caught where it matters and a
+  redirect is re-checked on every hop.
 - **The Windows system directory comes from the kernel.** It was read from
   `%SystemRoot%`/`%windir%`, which an ordinary user can set through
   `HKCU\Environment` — so the absolute-path hardening added for `powershell`,
