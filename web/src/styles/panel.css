@@ -732,6 +732,7 @@
     justify-content: center;
     background: rgba(3, 6, 11, 0.72);
     backdrop-filter: blur(6px);
+    overscroll-behavior: contain;
     animation: fade var(--swift) both;
 }
 
@@ -754,17 +755,30 @@
     }
 }
 
+/*
+ * `backwards` rather than `both`, and the difference matters: a filled-forwards
+ * animation keeps applying its own `transform: none` after it has finished, and
+ * that beats an inline transform in the cascade — so the sheet would refuse to
+ * follow a finger dragging it down. With no delay to cover, `backwards` looks
+ * identical on the way in and lets go of the property afterwards.
+ *
+ * `overscroll-behavior` stops a scroll that runs off the end of this list from
+ * being handed to the page behind, which is what made a pull-down at the top
+ * bounce the whole screen instead of moving the sheet.
+ */
 .sheet {
     width: 100%;
     max-width: 560px;
     max-height: 88dvh;
     overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--panel);
     border: 1px solid var(--edge);
     border-bottom: none;
     border-radius: 20px 20px 0 0;
-    padding: 10px 18px calc(24px + env(safe-area-inset-bottom));
-    animation: slideup var(--settle) both;
+    padding: 0 18px calc(24px + env(safe-area-inset-bottom));
+    animation: slideup var(--settle) backwards;
+    will-change: transform;
 }
 
 @keyframes slideup {
@@ -785,19 +799,47 @@
     }
 }
 
+/*
+ * The grip and the title travel with the list rather than scrolling away with
+ * it, so the way out of the sheet is on screen at every point in it — which is
+ * the same reason `touch-action: none` sits here: this strip is dragged, never
+ * scrolled, and the browser is told so rather than being raced for the gesture.
+ *
+ * The negative margin is only there to let the background reach the sheet's
+ * edges through its horizontal padding.
+ */
+.sheet-handle {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    touch-action: none;
+    margin: 0 -18px;
+    padding: 10px 18px 13px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--edge);
+}
+
 .sheet-grip {
-    width: 38px;
+    width: 42px;
     height: 4px;
     border-radius: 4px;
     background: var(--edge);
-    margin: 2px auto 14px;
+    margin: 0 auto 12px;
+    transition: background var(--swift);
+}
+
+.sheet-handle:active .sheet-grip {
+    background: var(--quiet);
 }
 
 .sheet-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 18px;
+}
+
+.sheet-body {
+    padding-top: 20px;
 }
 
 .group {
