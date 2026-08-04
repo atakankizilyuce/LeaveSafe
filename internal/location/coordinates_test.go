@@ -64,8 +64,9 @@ func TestAnOrdinaryPositionIsStillAccepted(t *testing.T) {
 // characters go, and so does anything past the length a place name has.
 func TestThePlaceNameIsFiltered(t *testing.T) {
 	// A NUL and an ANSI escape, encoded the way a service would have to send
-	// them: a literal control byte is not valid JSON.
-	city, err := json.Marshal("Ist\x00anbul\x1b[31m")
+	// them: a literal control byte is not valid JSON. The NUL sits inside the
+	// name rather than at the end, because trimming the ends is the easy half.
+	city, err := json.Marshal("New \x00York\x1b[31m")
 	if err != nil {
 		t.Fatalf("encode the city name: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestThePlaceNameIsFiltered(t *testing.T) {
 			t.Errorf("label kept control character %U: %q", r, fix.Label)
 		}
 	}
-	const wantPrefix = "Istanbul[31m, "
+	const wantPrefix = "New York[31m, "
 	if !strings.HasPrefix(fix.Label, wantPrefix) {
 		t.Errorf("label is %q, want it to start with %q", fix.Label, wantPrefix)
 	}
