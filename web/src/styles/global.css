@@ -204,8 +204,16 @@ button {
     }
 }
 
+/*
+ * `backwards`, not `both`. Every one of these carries a stagger delay, and
+ * `backwards` is what holds the element at its starting frame through that
+ * delay — but filling forwards as well left `transform: none` applied for good
+ * afterwards, and an animation beats an inline or a `:active` rule in the
+ * cascade. That silently swallowed every press animation on anything that rose
+ * into place.
+ */
 .rise {
-    animation: rise var(--settle) both;
+    animation: rise var(--settle) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {

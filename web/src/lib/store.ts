@@ -195,6 +195,19 @@ export function showToast(message: string) {
     }, 2600);
 }
 
+/**
+ * Flip a sensor's switch locally, the moment the user asks for it.
+ *
+ * The laptop broadcasts its own status straight after it handles the change, so
+ * this only ever stands in for the round trip — and is corrected by it if the
+ * laptop refuses. It exists because the tile is now the switch: one that does
+ * not move until the network answers reads as a tap that missed, and the answer
+ * to that is to tap it again, which puts the sensor back where it started.
+ */
+export function setSensorEnabled(name: string, enabled: boolean) {
+    sensors.value = sensors.value.map((s) => (s.name === name ? { ...s, enabled } : s));
+}
+
 /** Light an annunciator caption and let it decay after a while. */
 export function tripSensor(name: string) {
     if (!name) return;

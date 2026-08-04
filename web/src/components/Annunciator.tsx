@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
-import { SENSOR_CAPTIONS, SENSOR_DESCRIPTIONS } from '../lib/protocol';
-import { armed, send, sensors, showToast, tripped } from '../lib/store';
+import { SENSOR_CAPTIONS, SENSOR_DESCRIPTIONS, type SensorInfo } from '../lib/protocol';
+import { armed, send, sensors, setSensorEnabled, showToast, tripped } from '../lib/store';
 
 /**
  * The sensor list as an annunciator panel.
@@ -10,8 +10,14 @@ import { armed, send, sensors, showToast, tripped } from '../lib/store';
  * that way, so they are drawn that way: a tile is dim when its sensor is quiet,
  * outlined when it is armed and watching, and lit when it has tripped.
  *
- * Tapping a tile expands it for the toggle and the self-test, which keeps the
- * resting state to six words instead of six rows of controls.
+ * The tile is also the switch. Tapping it turns that sensor on or off there and
+ * then, because the question a caption light answers — is this one watching? —
+ * is the same one the user wants to change, and putting a panel in between made
+ * a one-tap answer take three. The switch on the face of the tile says which
+ * way the tap will go before it is made.
+ *
+ * The corner "i" opens what two words cannot say: what the sensor actually
+ * watches, why it is unavailable on this machine, and the self-test.
  */
 export function Annunciator() {
     const [open, setOpen] = useState<string | null>(null);
@@ -21,11 +27,25 @@ export function Annunciator() {
         return null;
     }
 
+    const toggle = (sensor: SensorInfo) => {
+        if (!sensor.available) {
+            showToast(`This machine has no ${sensor.display_name.toLowerCase()} to watch`);
+            return;
+        }
+        if (armed.value) {
+            showToast('Disarm before changing sensors');
+            return;
+        }
+        const next = !sensor.enabled;
+        setSensorEnabled(sensor.name, next);
+        send({ type: 'configure', sensors: { [sensor.name]: next } });
+    };
+
     return (
         <section class="card">
             <div class="card-head">
                 <h2 class="readout">Sensors</h2>
-                <span class="readout">Tap to configure</span>
+                <span class="readout">{armed.value ? 'Disarm to change' : 'Tap to turn on or off'}</span>
             </div>
 
             <div class="grid">
@@ -40,34 +60,54 @@ export function Annunciator() {
                     const watching = sensor.enabled && sensor.available && !failed && armed.value;
 
                     return (
-                        <button
+                        <div
                             key={sensor.name}
-                            type="button"
-                            class="cap rise"
+                            class="cap-slot rise"
                             style={{ animationDelay: `${i * 38}ms` }}
-                            data-lit={lit}
-                            data-off={off}
-                            data-failed={failed}
-                            data-watching={watching}
-                            data-enabled={sensor.enabled}
-                            aria-expanded={open === sensor.name}
-                            onClick={() => setOpen(open === sensor.name ? null : sensor.name)}
                         >
-                            <span class="cap-label">
-                                {SENSOR_CAPTIONS[sensor.name] ?? sensor.display_name}
-                            </span>
-                            <span class="cap-state readout">
-                                {off
-                                    ? 'n/a'
-                                    : lit
-                                      ? 'tripped'
-                                      : failed
-                                        ? 'FAULT'
-                                        : sensor.enabled
-                                          ? 'ready'
-                                          : 'off'}
-                            </span>
-                        </button>
+                            <button
+                                type="button"
+                                class="cap"
+                                role="switch"
+                                aria-checked={sensor.enabled}
+                                aria-disabled={off}
+                                data-lit={lit}
+                                data-off={off}
+                                data-failed={failed}
+                                data-watching={watching}
+                                data-enabled={sensor.enabled}
+                                onClick={() => toggle(sensor)}
+                            >
+                                <span class="cap-label">
+                                    {SENSOR_CAPTIONS[sensor.name] ?? sensor.display_name}
+                                </span>
+                                <span class="cap-foot">
+                                    <span class="cap-state readout">
+                                        {off
+                                            ? 'n/a'
+                                            : lit
+                                              ? 'tripped'
+                                              : failed
+                                                ? 'FAULT'
+                                                : sensor.enabled
+                                                  ? 'ready'
+                                                  : 'off'}
+                                    </span>
+                                    <span class="cap-switch" aria-hidden="true">
+                                        <span class="cap-knob" />
+                                    </span>
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                class="cap-info"
+                                aria-label={`What ${sensor.display_name} watches`}
+                                aria-expanded={open === sensor.name}
+                                onClick={() => setOpen(open === sensor.name ? null : sensor.name)}
+                            >
+                                <span aria-hidden="true">i</span>
+                            </button>
+                        </div>
                     );
                 })}
             </div>
@@ -80,14 +120,6 @@ export function Annunciator() {
 function Detail({ name, onClose }: { name: string; onClose(): void }) {
     const sensor = sensors.value.find((s) => s.name === name);
     if (!sensor) return null;
-
-    const toggle = () => {
-        if (armed.value) {
-            showToast('Disarm before changing sensors');
-            return;
-        }
-        send({ type: 'configure', sensors: { [name]: !sensor.enabled } });
-    };
 
     return (
         <div class="cap-detail rise">
@@ -107,6 +139,9 @@ function Detail({ name, onClose }: { name: string; onClose(): void }) {
                     the tile clears when it comes back.
                 </p>
             )}
+            {/* No on/off button here. The tile above is the switch, and a second
+                one for the same setting only raises the question of which one
+                the sensor is actually following. */}
             <div class="cap-actions">
                 <button
                     type="button"
@@ -115,15 +150,6 @@ function Detail({ name, onClose }: { name: string; onClose(): void }) {
                     onClick={() => send({ type: 'trigger_sensor', sensor: name })}
                 >
                     Test it
-                </button>
-                <button
-                    type="button"
-                    class={sensor.enabled ? 'chip on' : 'chip'}
-                    disabled={!sensor.available}
-                    aria-pressed={sensor.enabled}
-                    onClick={toggle}
-                >
-                    {sensor.enabled ? 'Watching' : 'Not watching'}
                 </button>
             </div>
         </div>
