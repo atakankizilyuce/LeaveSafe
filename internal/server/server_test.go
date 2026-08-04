@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -271,5 +272,46 @@ func TestCSPLimitsSocketsToThisHost(t *testing.T) {
 	}
 	if !strings.Contains(connectSrc, host) {
 		t.Errorf("connect-src does not permit this server's own socket: %q", connectSrc)
+	}
+}
+
+// The same directive, reached from the other side: the Host header used to be
+// copied into it as it arrived. A semicolon is a legal byte in a Host and the
+// directive separator in a policy, so a request could append directives of its
+// own to the policy the page was served with — the one control standing between
+// a bug in the UI and the pairing key leaving the phone.
+//
+// Written as a raw request because an HTTP client would normalize what is being
+// tested away.
+func TestAHostCannotAppendToThePolicy(t *testing.T) {
+	srv := startTestServer(t)
+
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", srv.Port()))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("set deadline: %v", err)
+	}
+	smuggled := fmt.Sprintf("127.0.0.1:%d;script-src", srv.Port())
+	if _, err := fmt.Fprintf(conn,
+		"GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", smuggled); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMisdirectedRequest {
+		t.Errorf("a host carrying a policy directive got HTTP %d, want %d",
+			resp.StatusCode, http.StatusMisdirectedRequest)
+	}
+	if csp := resp.Header.Get("Content-Security-Policy"); strings.Contains(csp, ";script-src ") {
+		t.Errorf("the request wrote a directive into the policy: %q", csp)
 	}
 }
