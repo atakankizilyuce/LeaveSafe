@@ -688,6 +688,13 @@ func main() {
 		applyRemoteState(sb, hub, srv, st)
 	})
 
+	// Reachability arrives on its own, up to a minute after Enable returned, and
+	// it has to land on the dashboard and every paired phone the same way a
+	// change made from the console does.
+	remoteCtl.SetOnUpdate(func(st remote.State) {
+		applyRemoteState(sb, hub, srv, st)
+	})
+
 	// The startup state has to reach the dashboard the same way a later change
 	// does, or the first draw and every draw after it would come from different
 	// code.
@@ -796,12 +803,26 @@ func pairingURL(base, rawKey, certFP string) string {
 	return base + "/#" + fragment
 }
 
-// reachableURLs returns every address a phone could connect to, public one
-// first when remote access is up.
+// reachableURLs returns every address a phone could connect to.
+//
+// The order is the whole point, because the dashboard draws the first of these
+// as a QR code and that is the one the user scans. It goes first only when the
+// router accepted a port mapping — when it did not, the public address is a
+// hope rather than a route: the machine has an address on the internet and
+// nothing on the path will carry a connection to it. Offering that as the code
+// to scan is how a phone ends up on a spinner forever, which is exactly what
+// happened on a network with no UPnP gateway.
+//
+// It stays in the list rather than disappearing, because the accompanying
+// message tells the user to forward the port by hand and it has to be there to
+// scan once they have. `urls` lists it and `qr <n>` shows it.
 func reachableURLs(srv *server.Server, st remote.State) []string {
 	urls := srv.URLs()
 	if st.PublicURL == "" {
 		return urls
+	}
+	if st.UPnP != remote.UPnPOK {
+		return append(urls, st.PublicURL)
 	}
 	return append([]string{st.PublicURL}, urls...)
 }
@@ -828,8 +849,14 @@ func remoteStatusLine(st remote.State) string {
 		return "OFF — carrier-grade NAT"
 	case !st.Enabled:
 		return ""
+	case st.Probing:
+		// Named, because the wait is long enough to look like a hang otherwise:
+		// a network with no UPnP gateway takes about thirty-five seconds to say
+		// so, and "public address unknown" during that is a wrong answer rather
+		// than an early one.
+		return "ON — checking whether it can be reached…"
 	case st.UPnP == remote.UPnPFailed:
-		return fmt.Sprintf("ACTIVE — forward TCP %d by hand", st.ManualPort)
+		return fmt.Sprintf("ON — not reachable yet, forward TCP %d by hand", st.ManualPort)
 	case st.PublicURL == "":
 		return "ACTIVE — public address unknown"
 	default:
