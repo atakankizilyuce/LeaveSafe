@@ -208,8 +208,8 @@ The phone screen is built like an aircraft annunciator panel. Tiles sit dark and
 <table>
 <tr>
 <td width="34%" align="center">
-<img src="docs/assets/phone-sensor-open.png" alt="A sensor tile expanded, showing a self-test button and a toggle" width="100%">
-<br/><sub><b>Tap any tile</b> to read what it watches, run a self-test, or switch it off.</sub>
+<img src="docs/assets/phone-sensor-open.png" alt="A sensor tile expanded, showing what the sensor watches and a self-test button" width="100%">
+<br/><sub><b>Tap any tile</b> to turn that sensor on or off. The <b>i</b> in its corner says what it watches and runs a self-test.</sub>
 </td>
 <td width="33%" align="center">
 <img src="docs/assets/phone-settings.png" alt="The settings sheet showing connection and lockout options" width="100%">
