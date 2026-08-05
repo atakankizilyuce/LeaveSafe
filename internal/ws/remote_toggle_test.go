@@ -112,7 +112,7 @@ func TestTheSettingsScreenTurnsRemoteAccessOnForReal(t *testing.T) {
 	payload.RemoteAccess = true
 	hub.handleUpdateConfig(ClientMessage{Type: MsgTypeUpdateConfig, Config: &payload}, &Client{hub: hub})
 
-	if got := waitForToggle(t, calls); !got {
+	if !waitForToggle(t, calls) {
 		t.Error("the toggle was asked to turn remote access off, want on")
 	}
 }
@@ -156,7 +156,7 @@ func TestResettingEverythingClosesRemoteAccess(t *testing.T) {
 
 	hub.handleResetConfig(ClientMessage{Type: MsgTypeResetConfig}, &Client{hub: hub})
 
-	if got := waitForToggle(t, calls); got {
+	if waitForToggle(t, calls) {
 		t.Error("the toggle was asked to turn remote access on during a reset")
 	}
 }
