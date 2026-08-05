@@ -60,6 +60,17 @@ const (
 	cRed    = "\033[31m"
 )
 
+// statusBar owns the dashboard: the QR box, the status grid and the log lines
+// that scroll beneath them.
+//
+// mu guards every field below it. That is not decoration — four goroutines
+// reach in here. The console reads and writes it as the user types, the status
+// ticker repaints every five seconds, the reachability probe replaces the URL
+// list a minute after startup, and the panic handler writes a line from
+// wherever it happened. Reading a field directly rather than through one of the
+// accessors below is a data race, and the ones that were left were on the
+// pairing key and the address list — precisely the two things a torn read would
+// print on screen for the user to scan.
 type statusBar struct {
 	mu        sync.Mutex
 	hub       *ws.Hub
@@ -156,6 +167,29 @@ func (sb *statusBar) urlList() []string {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	return append([]string(nil), sb.urls...)
+}
+
+// urlListWithSelection is urlList plus which of them the QR box is currently
+// showing, taken together so the two cannot come from either side of a change.
+func (sb *statusBar) urlListWithSelection() ([]string, int) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return append([]string(nil), sb.urls...), sb.qrURLIdx
+}
+
+// setKey records a freshly rotated pairing key for the dashboard to draw.
+func (sb *statusBar) setKey(key string) {
+	sb.mu.Lock()
+	sb.key = key
+	sb.mu.Unlock()
+	sb.refresh()
+}
+
+// certFingerprint returns the fingerprint the QR codes and the header carry.
+func (sb *statusBar) certFingerprint() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.certFP
 }
 
 // setRemoteStatus replaces the dashboard's remote-access line.
@@ -872,7 +906,7 @@ func remoteStatusLine(st remote.State) string {
 // rather than in a log that gets pasted into bug reports.
 func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP string) {
 	log.Infof("LeaveSafe %s started headless — no dashboard on this run", version)
-	for _, u := range sb.urls {
+	for _, u := range sb.urlList() {
 		log.Infof("Reachable at %s", u)
 	}
 	if certFP != "" {
@@ -1310,8 +1344,7 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 			if err != nil {
 				sb.writeLine("  %s[ERROR]%s Failed to rotate key: %v", cRed, cReset, err)
 			} else {
-				sb.key = newKey
-				sb.refresh()
+				sb.setKey(newKey)
 				sb.rekeyQR(authMgr.RawPairingKey())
 				// Without this the stored key still holds the one just
 				// invalidated, and the next start would come back with it.
@@ -1324,9 +1357,10 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 				sb.writeLine("  %s[KEY]%s All existing sessions invalidated. The QR code now encodes the new key.", cYellow, cReset)
 			}
 		case line == "urls":
-			for i, u := range sb.urls {
+			urls, selected := sb.urlListWithSelection()
+			for i, u := range urls {
 				marker := " "
-				if i == sb.qrURLIdx {
+				if i == selected {
 					marker = "*"
 				}
 				sb.writeLine("  %s[%d]%s %s%s", cBold, i+1, marker, u, cReset)
@@ -1346,11 +1380,11 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 			}
 
 		case line == "cert":
-			if sb.certFP == "" {
+			if fp := sb.certFingerprint(); fp == "" {
 				sb.writeLine("  No TLS certificate — this server is running over plain HTTP on the local network.")
 			} else {
 				sb.writeLine("  %sTLS certificate SHA-256 fingerprint:%s", cBold, cReset)
-				sb.writeLine("  %s", sb.certFP)
+				sb.writeLine("  %s", fp)
 				sb.writeLine("  %sYour phone will warn that this certificate is untrusted; it is self-signed.%s", cDim, cReset)
 				sb.writeLine("  %sCompare the fingerprint above with the one the warning shows before accepting.%s", cDim, cReset)
 			}

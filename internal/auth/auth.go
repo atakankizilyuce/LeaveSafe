@@ -141,13 +141,20 @@ func (m *Manager) MaxSessions() int { return m.opts.MaxSessions }
 func (m *Manager) MaxAttempts() int { return m.opts.MaxAttempts }
 
 // PairingKey returns the current pairing key formatted as XXXX-XXXX-XXXX-XXXX.
+//
+// Under the lock, like every other reader of the key. Regenerate replaces it
+// while the dashboard, the QR renderer and the key file writer are all asking
+// for it, so an unguarded read here was a race on the one value the whole
+// pairing story rests on — and the value that a rotation exists to change.
 func (m *Manager) PairingKey() string {
-	k := m.pairingKey
+	k := m.RawPairingKey()
 	return fmt.Sprintf("%s-%s-%s-%s", k[0:4], k[4:8], k[8:12], k[12:16])
 }
 
 // RawPairingKey returns the unformatted 16-digit pairing key.
 func (m *Manager) RawPairingKey() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.pairingKey
 }
 
