@@ -73,8 +73,19 @@ type Hub struct {
 	// above limits how long each one lives; this limits how many there are.
 	pending *pendingConns
 
-	tracker    *location.Tracker
-	trackerCtx context.Context //nolint:containedctx // scopes tracker goroutines to the app lifetime
+	tracker *location.Tracker
+	// startTracking begins location tracking, and is nil until a tracker is
+	// installed.
+	//
+	// The hub held the context this runs under instead, which meant it was
+	// asking the wrong question. What the hub needs on arming is "start
+	// tracking"; whose lifetime that belongs to is the caller's business, and
+	// it is not the hub's to store. Passing a context into Arm instead would
+	// have been worse than either: Arm is called from a phone's socket, from
+	// the auto-arm path and from the console, so the tracker would have
+	// inherited whichever of those happened to arm — and a phone locking its
+	// screen would have stopped the laptop tracking itself.
+	startTracking func()
 
 	cfg *config.Config
 
@@ -197,7 +208,13 @@ func (h *Hub) SetAutoArmOnLock(enabled bool) {
 func (h *Hub) SetLocationTracker(ctx context.Context, tracker *location.Tracker) {
 	h.mu.Lock()
 	h.tracker = tracker
-	h.trackerCtx = ctx
+	// The context is bound to the one thing it scopes rather than kept. It
+	// belongs to whoever built the tracker — the program's own lifetime — and
+	// arming must not narrow it to whatever asked for the arm.
+	h.startTracking = nil
+	if tracker != nil {
+		h.startTracking = func() { tracker.Start(ctx) }
+	}
 	h.mu.Unlock()
 
 	if tracker != nil {
@@ -423,13 +440,12 @@ func (h *Hub) RestoreArmed(since time.Time) {
 	h.mu.Lock()
 	h.armed = true
 	h.armedAt = since
-	tracker := h.tracker
-	trackerCtx := h.trackerCtx
+	start := h.startTracking
 	h.mu.Unlock()
 
 	h.sensorMgr.StartEnabled()
-	if tracker != nil && trackerCtx != nil {
-		tracker.Start(trackerCtx)
+	if start != nil {
+		start()
 	}
 	h.broadcastStatus()
 	h.logEvent(eventlog.Event{Type: eventlog.EventArm, Message: "Armed state restored after restart"})
@@ -455,8 +471,7 @@ func (h *Hub) Arm() {
 	h.mu.Lock()
 	h.armed = true
 	h.armedAt = time.Now()
-	tracker := h.tracker
-	trackerCtx := h.trackerCtx
+	start := h.startTracking
 	h.mu.Unlock()
 
 	h.persistArmed(true)
@@ -466,8 +481,8 @@ func (h *Hub) Arm() {
 	// Location tracking runs only while armed. There is no reason to scan for
 	// Wi-Fi or hit a geolocation service while the user is sitting at the
 	// machine, and every reason not to.
-	if tracker != nil && trackerCtx != nil {
-		tracker.Start(trackerCtx)
+	if start != nil {
+		start()
 	}
 
 	h.broadcastStatus()
