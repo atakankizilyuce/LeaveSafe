@@ -1,0 +1,8 @@
+# Every path in the repository belongs to the maintainer, so a single catch-all
+# is enough. GitHub requests the review automatically when a pull request opens,
+# which means nothing lands on main without it having been asked for.
+#
+# Matching is last-rule-wins, so any narrower rule added below this line will
+# take precedence over it.
+
+*       @atakankizilyuce
