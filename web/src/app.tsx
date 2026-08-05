@@ -393,6 +393,110 @@ function handle(msg: ServerMessage) {
     }
 }
 
+/**
+ * What the transport calls back into, for one attempt at one connection.
+ *
+ * The key and the transport are held here rather than read from the module,
+ * because onClose reconnects with them: a socket that drops has to come back on
+ * the same terms it went out on, and a later attempt with a different key must
+ * not be what the old one reconnects as.
+ */
+function pairHandlers(key: string, over: 'websocket' | 'bluetooth') {
+    return {
+        onMessage: handle,
+        onOpen: () => {
+            // With a fingerprint to check, the key waits for the server to say
+            // which certificate it is serving. Sending it first and checking
+            // afterwards would mean the check protects nothing.
+            if (!expectedFingerprint) {
+                sendPendingKey();
+                return;
+            }
+            helloTimer = window.setTimeout(() => {
+                helloTimer = null;
+                // Measured against this connection, not against holding a token
+                // from an earlier one. A forged auth_ok used to set a token and
+                // so cancel this bail-out, which is the wrong way round: a
+                // server that never greets is precisely what this timer is here
+                // to give up on.
+                if (!sessionLive) {
+                    pendingKey = null;
+                    pairing.value = false;
+                    pairError.value =
+                        'The laptop did not identify itself, so the pairing key was not sent. ' +
+                        'It may be running an older version — rescan the code from a laptop ' +
+                        'running this one.';
+                    closeTransport();
+                }
+            }, HELLO_TIMEOUT_MS);
+        },
+        onClose: () => {
+            clearHelloTimer();
+            stopPinging();
+            // A dialog the laptop asked for must not outlive the laptop. Left
+            // standing across a reconnect, the digits typed into it afterwards
+            // were submitted on a socket that had proved nothing — so the PIN
+            // guarding the alarm went to whatever had answered. Closing it also
+            // means the user is not typing into something whose Disarm button
+            // has quietly stopped working.
+            pinPrompt.value = false;
+            if (hasToken()) {
+                link.value = 'lost';
+                warnDisconnected();
+                window.setTimeout(() => pair(key, over), RECONNECT_MS);
+            } else {
+                pairing.value = false;
+            }
+        },
+        onError: (reason: string) => {
+            clearHelloTimer();
+            pendingKey = null;
+            pairing.value = false;
+            if (!hasToken()) pairError.value = reason;
+        },
+    };
+}
+
+/**
+ * Offers a pairing key to the laptop over one transport.
+ *
+ * Outside the component for the same reason handle is: it touches nothing the
+ * component holds, and it outlives any one render — a dropped socket reconnects
+ * through here three seconds later, whatever the page is doing by then.
+ */
+function pair(key: string, over: 'websocket' | 'bluetooth') {
+    pairing.value = true;
+    pairError.value = null;
+    pendingKey = key;
+    activeKey = key;
+    // A new socket has proved nothing, including the one that replaces a
+    // dropped connection. Reconnecting is exactly when a different machine can
+    // answer at the same address, so the reconnect starts from the same
+    // suspicion a first connection does.
+    authSent = false;
+    sessionLive = false;
+
+    const handlers = pairHandlers(key, over);
+
+    if (over === 'bluetooth') {
+        connectBluetooth(handlers)
+            .then((t) => {
+                // Register first, then announce. The other way round sends the
+                // pairing key before there is anything to send it over.
+                setTransport(t);
+                handlers.onOpen();
+            })
+            .catch((err: Error) => {
+                pairing.value = false;
+                pairError.value = err.message;
+            });
+        return;
+    }
+
+    closeTransport();
+    setTransport(connectWebSocket(handlers));
+}
+
 export function App() {
     const [counting, setCounting] = useState<number | null>(null);
     const [autoKey, setAutoKey] = useState('');
@@ -453,91 +557,6 @@ export function App() {
             window.setTimeout(() => pair(stored.key, 'websocket'), 100);
         }
     }, []);
-
-    function pair(key: string, over: 'websocket' | 'bluetooth') {
-        pairing.value = true;
-        pairError.value = null;
-        pendingKey = key;
-        activeKey = key;
-        // A new socket has proved nothing, including the one that replaces a
-        // dropped connection. Reconnecting is exactly when a different machine
-        // can answer at the same address, so the reconnect starts from the same
-        // suspicion a first connection does.
-        authSent = false;
-        sessionLive = false;
-
-        const handlers = {
-            onMessage: handle,
-            onOpen: () => {
-                // With a fingerprint to check, the key waits for the server to
-                // say which certificate it is serving. Sending it first and
-                // checking afterwards would mean the check protects nothing.
-                if (!expectedFingerprint) {
-                    sendPendingKey();
-                    return;
-                }
-                helloTimer = window.setTimeout(() => {
-                    helloTimer = null;
-                    // Measured against this connection, not against holding a
-                    // token from an earlier one. A forged auth_ok used to set a
-                    // token and so cancel this bail-out, which is the wrong way
-                    // round: a server that never greets is precisely what this
-                    // timer is here to give up on.
-                    if (!sessionLive) {
-                        pendingKey = null;
-                        pairing.value = false;
-                        pairError.value =
-                            'The laptop did not identify itself, so the pairing key was not sent. ' +
-                            'It may be running an older version — rescan the code from a laptop ' +
-                            'running this one.';
-                        closeTransport();
-                    }
-                }, HELLO_TIMEOUT_MS);
-            },
-            onClose: () => {
-                clearHelloTimer();
-                stopPinging();
-                // A dialog the laptop asked for must not outlive the laptop.
-                // Left standing across a reconnect, the digits typed into it
-                // afterwards were submitted on a socket that had proved
-                // nothing — so the PIN guarding the alarm went to whatever had
-                // answered. Closing it also means the user is not typing into
-                // something whose Disarm button has quietly stopped working.
-                pinPrompt.value = false;
-                if (hasToken()) {
-                    link.value = 'lost';
-                    warnDisconnected();
-                    window.setTimeout(() => pair(key, over), RECONNECT_MS);
-                } else {
-                    pairing.value = false;
-                }
-            },
-            onError: (reason: string) => {
-                clearHelloTimer();
-                pendingKey = null;
-                pairing.value = false;
-                if (!hasToken()) pairError.value = reason;
-            },
-        };
-
-        if (over === 'bluetooth') {
-            connectBluetooth(handlers)
-                .then((t) => {
-                    // Register first, then announce. The other way round sends
-                    // the pairing key before there is anything to send it over.
-                    setTransport(t);
-                    handlers.onOpen();
-                })
-                .catch((err: Error) => {
-                    pairing.value = false;
-                    pairError.value = err.message;
-                });
-            return;
-        }
-
-        closeTransport();
-        setTransport(connectWebSocket(handlers));
-    }
 
     if (screen.value === 'pair') {
         return <PairScreen onPair={pair} initialKey={autoKey} />;
