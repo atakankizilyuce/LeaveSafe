@@ -162,6 +162,10 @@ coverage*.json
 coverage*.xml
 coverage*.info
 
+# Go's own coverage profile. CI writes one and the analyser reads it, so anyone
+# running the suite the way CI does ends up with a copy they never meant to keep.
+coverage.out
+
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
