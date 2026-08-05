@@ -59,7 +59,7 @@ func TestKeepsOnlyMaxFilesGenerations(t *testing.T) {
 		t.Error("a third generation survived a MaxFiles of 2")
 	}
 	// The oldest content must be the one that fell off the end.
-	if got := readFile(t, path+".2"); got == "1111" {
+	if readFile(t, path+".2") == "1111" {
 		t.Error("the oldest generation was kept instead of being dropped")
 	}
 	if got := readFile(t, path); got != "4444" {

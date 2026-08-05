@@ -253,7 +253,7 @@ func TestAProbeThatOutlivesItsListenerPublishesNothing(t *testing.T) {
 	if c.State().Enabled {
 		t.Error("a stale probe brought remote access back")
 	}
-	if closed := mapping.closeCount(); closed == 0 {
+	if mapping.closeCount() == 0 {
 		t.Error("the mapping a stale probe opened was left on the router")
 	}
 }

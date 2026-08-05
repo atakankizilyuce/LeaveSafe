@@ -19,17 +19,17 @@ for tool in qemu-system-x86_64 qemu-img cloud-localds ssh scp ssh-keygen curl; d
   command -v "$tool" >/dev/null 2>&1 || fail "$tool is required but not installed"
 done
 
-[ -e /dev/kvm ] || fail "/dev/kvm is missing; this machine cannot boot the sandbox VM"
+[[ -e /dev/kvm ]] || fail "/dev/kvm is missing; this machine cannot boot the sandbox VM"
 # Presence is not access: on stock CI images /dev/kvm is root:kvm 0660 and QEMU
 # fails with "Permission denied" well after the boot appears to start.
-if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
   fail "/dev/kvm is not readable and writable by $(id -un); add the user to the kvm group"
 fi
 
 mkdir -p "$WORK"
 cd "$WORK"
 
-if [ ! -f base.img ]; then
+if [[ ! -f base.img ]]; then
   echo "Downloading the Ubuntu cloud image (this happens once)..."
   curl -fsSL -o base.img.part "$IMG_URL"
   mv base.img.part base.img
@@ -39,7 +39,7 @@ fi
 rm -f disk.qcow2
 qemu-img create -f qcow2 -F qcow2 -b base.img disk.qcow2 20G >/dev/null
 
-if [ ! -f id_sandbox ]; then
+if [[ ! -f id_sandbox ]]; then
   ssh-keygen -t ed25519 -N "" -f id_sandbox -q
 fi
 sed "s|SSH_PUBLIC_KEY_PLACEHOLDER|$(cat id_sandbox.pub)|" \
@@ -100,11 +100,11 @@ set -e
 
 # The suite prints its coverage matrix inside the guest, where the runner's
 # summary file is out of reach. Forward it so the gaps stay visible in the PR.
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && grep -q "Real-trigger coverage" guest-output.log; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && grep -q "Real-trigger coverage" guest-output.log; then
   sed -n '/### Real-trigger coverage/,$p' guest-output.log >> "$GITHUB_STEP_SUMMARY"
 fi
 
-if [ "$RESULT" -ne 0 ]; then
+if [[ "$RESULT" -ne 0 ]]; then
   echo "--- VM console (last 60 lines) ---" >&2
   tail -60 vm-console.log >&2
 fi

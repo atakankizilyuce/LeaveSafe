@@ -243,10 +243,36 @@ jobs:
             exit 1
           fi
 
+      # A runner whose apt-daily timer is midway through its own upgrade pass
+      # holds the dpkg lock, and apt waits for that lock with no deadline. One
+      # run sat here for 23 minutes while three concurrent jobs installed the
+      # same packages in 20 seconds each, and only cleared with 5 minutes left
+      # of the job timeout — so this was minutes away from failing the whole
+      # run with a log that explained nothing. Stopping the timers removes the
+      # contention, -q rather than -qq keeps apt's lock-wait lines in the log
+      # if it happens again, and the deadlines turn a poisoned runner into a
+      # quick retry instead of a silent hang that eats the entire job budget.
       - name: Install QEMU and cloud-image tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils
+          sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer || true
+          sudo systemctl stop apt-daily.service apt-daily-upgrade.service || true
+
+          for attempt in 1 2; do
+            if sudo -E timeout 120 apt-get update -q \
+              && sudo -E timeout 300 apt-get install -y -q \
+                qemu-system-x86 qemu-utils cloud-image-utils; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt stalled or failed; the runner's"
+            echo "::warning::package state is being repaired before the next try."
+            sudo dpkg --configure -a || true
+          done
+
+          echo "::error::apt could not install the QEMU tooling in two attempts."
+          echo "::error::This is a runner or mirror problem, not a test failure."
+          exit 1
 
       - name: Cache the Ubuntu cloud image
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -295,6 +321,24 @@ jobs:
       - name: Typecheck
         working-directory: web
         run: npm run typecheck
+
+      - name: Test
+        working-directory: web
+        run: npm run coverage
+
+      # vitest names each file relative to web/, because that is where it runs.
+      # SonarQube reads the report from the repository root, where a bare
+      # public/sw.js exists nowhere. Prefixing here keeps the test command the
+      # same whether a person or CI runs it.
+      - name: Point the coverage report at the repository root
+        run: sed -i 's|^SF:|SF:web/|' web/coverage/lcov.info
+
+      - name: Upload the phone interface's coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: web-coverage
+          path: web/coverage/lcov.info
+          retention-days: 14
 
       - name: Build
         working-directory: web
@@ -392,6 +436,49 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           govulncheck ./...
+
+  # ---------------------------------------------------------------------------
+  # Code quality. SonarQube Cloud reads the coverage profile the Linux test leg
+  # already produces and reports a quality gate on the pull request.
+  #
+  # This job is deliberately absent from ci-success's needs list below. It cannot
+  # run without SONAR_TOKEN, a pull request opened from a fork never receives
+  # secrets, and ci-success counts a skipped job as a failure — wiring it in
+  # would permanently block every outside contribution.
+  # ---------------------------------------------------------------------------
+  sonar:
+    name: Sonar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test, frontend]
+    # Forks have no secrets. Dependabot's runs read from a separate secret store,
+    # so drop the second clause once SONAR_TOKEN is added there too.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Sonar attributes each issue to whoever wrote the line, which it reads
+          # from git blame. The default shallow checkout has no blame to read.
+          fetch-depth: 0
+
+      - name: Fetch the coverage profile from the Linux test run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-report
+
+      - name: Fetch the phone interface's coverage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-coverage
+          path: web/coverage
+
+      - name: Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   # ---------------------------------------------------------------------------
   # Single required status check for branch protection. Fails if any job above

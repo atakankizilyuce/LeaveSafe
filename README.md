@@ -11,6 +11,9 @@ A lightweight, cross-platform device security monitor that turns your phone into
 <br/>
 
 [![CI](https://github.com/atakankizilyuce/LeaveSafe/actions/workflows/ci.yml/badge.svg)](https://github.com/atakankizilyuce/LeaveSafe/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/atakankizilyuce/LeaveSafe/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/atakankizilyuce/LeaveSafe/security/code-scanning)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=atakankizilyuce_LeaveSafe&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=atakankizilyuce_LeaveSafe)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=atakankizilyuce_LeaveSafe&metric=coverage)](https://sonarcloud.io/component_measures?id=atakankizilyuce_LeaveSafe&metric=coverage)
 [![Go](https://img.shields.io/badge/Go-1.25.12-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macOS-lightgrey)](#platform-support)

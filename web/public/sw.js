@@ -7,6 +7,11 @@ self.addEventListener('activate', function (e) {
 });
 
 self.addEventListener('message', function (e) {
+    // Only the pages this worker serves may raise an alarm notification. A
+    // controlled client is same-origin by definition, so this rejects nothing
+    // that legitimately arrives — it just stops the handler from trusting the
+    // sender implicitly.
+    if (e.origin && e.origin !== self.location.origin) return;
     if (!e.data) return;
 
     if (e.data.type === 'alarm') {
@@ -29,8 +34,7 @@ self.addEventListener('notificationclick', function (e) {
     e.notification.close();
     e.waitUntil(
         self.clients.matchAll({ type: 'window' }).then(function (clientList) {
-            for (var i = 0; i < clientList.length; i++) {
-                var client = clientList[i];
+            for (const client of clientList) {
                 if ('focus' in client) return client.focus();
             }
             if (self.clients.openWindow) return self.clients.openWindow('/');
