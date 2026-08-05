@@ -344,3 +344,30 @@ func TestWatcherFirstCheckIsPrompt(t *testing.T) {
 		t.Errorf("jitter for a 10m interval = %v, want under a minute", got)
 	}
 }
+
+// Shutting down while a failed check is backing off ends the schedule. Waiting
+// the retry out and then checking again would mean a laptop being shut down
+// still reaching for GitHub on its way out.
+func TestWatcherStopsWhenShutDownDuringAFailureBackoff(t *testing.T) {
+	// One round: the scheduled wait succeeds, then the failure's retry sleep is
+	// the one that reports the context gone.
+	h := newHarness(t, 1)
+	ledger := NewLedger(t.TempDir())
+	var checks int
+
+	Watcher{
+		Interval: 24 * time.Hour,
+		Ledger:   ledger,
+		Now:      h.clock,
+		Sleep:    h.sleep,
+		Jitter:   func(time.Duration) time.Duration { return 0 },
+		Check: func(context.Context, string) (Result, error) {
+			checks++
+			return Result{}, errors.New("github is down")
+		},
+	}.Run(context.Background())
+
+	if checks != 1 {
+		t.Errorf("checked %d times, want the one attempt before the shutdown", checks)
+	}
+}

@@ -400,3 +400,34 @@ func TestValidateKeepsHTTPSLocationEndpoints(t *testing.T) {
 		t.Errorf("an HTTPS ip_lookup_url was dropped: %q", cfg.Location.IPLookupURL)
 	}
 }
+
+// An unrecognized language is cleared rather than replaced with a guess: empty
+// means "ask", and asking beats picking a language for someone on the strength
+// of a typo.
+func TestValidateAsksAgainAfterAnUnknownLanguage(t *testing.T) {
+	cfg := Default()
+	cfg.Language = "elvish"
+
+	notes := cfg.Validate()
+
+	if cfg.Language != "" {
+		t.Errorf("Language = %q, want it cleared so the user is asked", cfg.Language)
+	}
+	if len(notes) != 1 {
+		t.Errorf("Validate reported %d adjustments, want just the language: %v", len(notes), notes)
+	}
+}
+
+// A language the program does have is left exactly as it was found.
+func TestValidateKeepsALanguageItKnows(t *testing.T) {
+	for _, want := range []string{"tr", "en"} {
+		cfg := Default()
+		cfg.Language = want
+		if notes := cfg.Validate(); len(notes) != 0 {
+			t.Errorf("%q was adjusted: %v", want, notes)
+		}
+		if cfg.Language != want {
+			t.Errorf("Language = %q, want %q left alone", cfg.Language, want)
+		}
+	}
+}

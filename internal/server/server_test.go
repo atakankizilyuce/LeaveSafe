@@ -315,3 +315,41 @@ func TestAHostCannotAppendToThePolicy(t *testing.T) {
 		t.Errorf("the request wrote a directive into the policy: %q", csp)
 	}
 }
+
+// The addresses in the QR code are the ones a phone will dial. An interface
+// that is down, one that only talks to this machine, and the bridges Docker,
+// WSL and the VM tools leave behind all answer here and none of them can be
+// reached from a phone — a code carrying one of those addresses sends the user
+// to a network they are not on.
+func TestOnlyReachableInterfacesGoIntoTheCode(t *testing.T) {
+	tests := []struct {
+		name  string
+		iface net.Interface
+	}{
+		{"an interface that is down", net.Interface{Name: "eth0"}},
+		{"the loopback", net.Interface{Name: "lo", Flags: net.FlagUp | net.FlagLoopback}},
+		{"a Docker bridge", net.Interface{Name: "docker0", Flags: net.FlagUp}},
+		{"a Hyper-V or WSL switch", net.Interface{Name: "vEthernet (WSL)", Flags: net.FlagUp}},
+		{"a VirtualBox host adapter", net.Interface{Name: "vboxnet0", Flags: net.FlagUp}},
+		// An interface the operating system will not describe is not one a
+		// phone can be sent to either.
+		{"an interface with no addresses to read", net.Interface{Index: 1 << 20, Name: "ghost0", Flags: net.FlagUp}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := reachableIPv4(tt.iface); got != nil {
+				t.Errorf("offered %v from %s", got, tt.iface.Name)
+			}
+		})
+	}
+}
+
+// Whatever this machine has, the list is never empty: a code with no address in
+// it is of no use to anyone, and the loopback at least works where the laptop
+// itself is.
+func TestThereIsAlwaysAnAddressToPrint(t *testing.T) {
+	if len(getLocalIPs()) == 0 {
+		t.Error("no address at all was offered for the pairing code")
+	}
+}
