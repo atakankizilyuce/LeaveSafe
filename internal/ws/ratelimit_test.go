@@ -88,6 +88,15 @@ func TestFloodOfConfigWritesIsCutOff(t *testing.T) {
 	hub.SetConfig(config.Default())
 	client := pairedClient(t, hub)
 
+	// The bucket refills from the clock, and every write the limiter allows
+	// touches config.json. On a slow disk the loop below runs long enough to
+	// refill it several times over, so with the real clock the count is a
+	// measure of the filesystem rather than of the limit. Hand the client a
+	// bucket that is standing still, and the flood is cut off at the burst
+	// wherever the test runs.
+	client.limiter = newTokenBucket()
+	client.limiter.now, _ = fixedClock(time.Unix(1000, 0))
+
 	payload := configToPayload(config.Default())
 	handled := 0
 	for range 500 {
@@ -105,8 +114,8 @@ func TestFloodOfConfigWritesIsCutOff(t *testing.T) {
 	if handled >= 500 {
 		t.Errorf("all %d config writes went through; the limiter did nothing", handled)
 	}
-	if handled > messageBurst+messagesPerSecond {
-		t.Errorf("%d config writes went through, expected around the burst of %d",
+	if handled != messageBurst {
+		t.Errorf("%d config writes went through, want the burst of %d",
 			handled, messageBurst)
 	}
 }

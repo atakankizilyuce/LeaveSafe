@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/leavesafe/leavesafe/internal/auth"
-	"nhooyr.io/websocket"
 )
 
 // One host must not be able to take every slot. If it could, the global cap

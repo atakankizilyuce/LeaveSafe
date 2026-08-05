@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/leavesafe/leavesafe/internal/ws"
-	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 )
 
 // Phone is a WebSocket client that speaks the protocol the mobile UI speaks.

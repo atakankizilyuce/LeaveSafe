@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
@@ -18,7 +19,6 @@ import (
 	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/state"
-	"nhooyr.io/websocket"
 )
 
 const (

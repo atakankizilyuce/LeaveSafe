@@ -100,6 +100,11 @@ diff is small.
 
 ### Changed
 
+- **The release attestation runs on a newer action.** `attest-build-provenance`
+  moved from v3 to v4.1.1. It is what lets `gh attestation verify` prove a
+  downloaded binary came out of this repository's release run, so it is worth
+  keeping current even when nothing is wrong with it.
+
 - **A sensor tile on the phone is now the switch.** Tapping one turns that
   sensor on or off there and then, and the tile carries a switch showing which
   way the next tap will go. It used to open a panel first, and the switch lived
@@ -244,6 +249,22 @@ diff is small.
 
 ### Security
 
+- **The WebSocket library is one that is still maintained.** Every byte a phone
+  sends reaches LeaveSafe through this package, and the one in use —
+  `nhooyr.io/websocket` — has been abandoned: upstream renamed the repository to
+  `websocket-old` and published nothing since August 2024. A parser for untrusted
+  network input that nobody will patch is a hole waiting for its advisory, and no
+  advisory would ever arrive to warn about it, because there is no longer anyone
+  to file one. LeaveSafe now uses `github.com/coder/websocket`, the maintained
+  continuation by the same author under a new home. It is the same package at the
+  same version line, so nothing about the protocol or the socket behaviour
+  changes — only whether a fix can be expected to exist.
+- **The phone interface's dependencies are watched.** Dependabot covered Go
+  modules and the workflow actions but not `web/`, so the 138 npm packages behind
+  the phone screen were the one part of the supply chain nobody was told about.
+  The build output of those packages is committed and embedded in the binary, so
+  a bad package there ships to users exactly like a bad Go one. They are now on
+  the same weekly schedule as the rest.
 - **A phone can reconnect as often as it likes.** The cap on sockets that have
   not paired yet counted a peer by its address when it took a slot and by its
   address *and port* when it gave one back, so the per-address count only ever

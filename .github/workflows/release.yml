@@ -234,7 +234,7 @@ jobs:
       # produced this exact file. Verify with:
       #   gh attestation verify leavesafe-linux-amd64 --repo atakankizilyuce/LeaveSafe
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
@@ -291,7 +291,7 @@ jobs:
             -output leavesafe-${{ env.VERSION }}-sbom.cdx.json
 
       - name: Attest the SBOM
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: leavesafe-${{ env.VERSION }}-sbom.cdx.json
 

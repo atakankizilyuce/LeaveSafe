@@ -136,7 +136,12 @@ func TestSelectFix(t *testing.T) {
 				return
 			}
 			if got == nil {
+				// The return is redundant to the test — Fatal already ends it —
+				// but it is what makes the dereference below unreachable to a
+				// reader and to the analyzer, which does not always know that
+				// Fatal has no way back.
 				t.Fatal("got no fix, want one")
+				return
 			}
 			if got.Source != tt.wantSource {
 				t.Errorf("source = %q, want %q", got.Source, tt.wantSource)

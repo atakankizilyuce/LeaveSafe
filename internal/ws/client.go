@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	log "github.com/sirupsen/logrus"
-	"nhooyr.io/websocket"
 )
 
 const writeTimeout = 5 * time.Second

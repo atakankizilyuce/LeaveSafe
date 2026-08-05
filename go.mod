@@ -3,6 +3,7 @@ module github.com/leavesafe/leavesafe
 go 1.25.12
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/ebitengine/purego v0.10.2
 	github.com/sirupsen/logrus v1.9.4
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
@@ -11,11 +12,10 @@ require (
 	golang.org/x/crypto v0.54.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
-	nhooyr.io/websocket v1.8.17
 )
 
 require (
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40 // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )
