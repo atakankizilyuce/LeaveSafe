@@ -25,6 +25,15 @@ const (
 	// stunFamilyIPv4 is the address-family byte of a MAPPED-ADDRESS attribute
 	// that carries four octets rather than sixteen.
 	stunFamilyIPv4 = 0x01
+
+	// The two attributes that can carry the answer. Both hold the family at
+	// byte 1, the port at 2-3 and the address from byte 4 on; the XOR one has
+	// the magic cookie folded into those bytes.
+	attrMappedAddress    = 0x0001
+	attrXORMappedAddress = 0x0020
+	// attrAddressLen is the shortest an address attribute can be and still hold
+	// a family, a port and four octets.
+	attrAddressLen = 8
 )
 
 var stunMagicCookie = []byte{0x21, 0x12, 0xA4, 0x42}
@@ -118,24 +127,41 @@ func getPublicIPviaSTUN() (string, error) {
 // and a name resolved by whatever DNS the network handed out. What comes back is
 // therefore a claim, and this is where the claim is held to a shape. See
 // GetPublicIP for what an unchecked one buys whoever makes it.
-func parseSTUNResponse(data []byte, txID []byte) (string, error) {
+func parseSTUNResponse(data, txID []byte) (string, error) {
+	if err := checkSTUNHeader(data, txID); err != nil {
+		return "", err
+	}
+	return mappedAddress(data)
+}
+
+// checkSTUNHeader rejects everything that says this datagram is not the reply to
+// the request that carried txID.
+func checkSTUNHeader(data, txID []byte) error {
 	if len(data) < stunHeaderLen {
-		return "", fmt.Errorf("STUN response too short")
+		return fmt.Errorf("STUN response too short")
 	}
 
 	if msgType := uint16(data[0])<<8 | uint16(data[1]); msgType != stunBindingSuccess {
-		return "", fmt.Errorf("STUN response has type 0x%04x, want a binding success", msgType)
+		return fmt.Errorf("STUN response has type 0x%04x, want a binding success", msgType)
 	}
 	if !bytes.Equal(data[4:8], stunMagicCookie) {
-		return "", fmt.Errorf("STUN response carries the wrong magic cookie")
+		return fmt.Errorf("STUN response carries the wrong magic cookie")
 	}
 	// Constant time is not the point here — the transaction ID is not a secret
 	// and the attacker cannot see it — but the comparison must happen.
 	if !bytes.Equal(data[8:stunHeaderLen], txID) {
-		return "", fmt.Errorf("STUN response answers a different request")
+		return fmt.Errorf("STUN response answers a different request")
 	}
+	return nil
+}
 
-	// Parse attributes starting at byte 20
+// mappedAddress walks the attributes after the header and returns the address in
+// the first one that carries it.
+//
+// A server is free to put other attributes first, so this cannot simply read the
+// one at byte 20. An attribute that runs off the end of the datagram ends the
+// walk, and one too short to hold an address is stepped over rather than read.
+func mappedAddress(data []byte) (string, error) {
 	pos := stunHeaderLen
 	for pos+4 <= len(data) {
 		attrType := uint16(data[pos])<<8 | uint16(data[pos+1])
@@ -146,29 +172,8 @@ func parseSTUNResponse(data []byte, txID []byte) (string, error) {
 			break
 		}
 
-		// XOR-MAPPED-ADDRESS (0x0020) or MAPPED-ADDRESS (0x0001). Both carry the
-		// family at byte 1, the port at 2-3 and the address from byte 4 on.
-		//
-		// The family is checked rather than assumed. An IPv6 attribute is
-		// sixteen bytes of address, and reading its first four as an IPv4 one
-		// produces a plausible-looking address that belongs to nobody — which,
-		// for a value the owner's phone is about to be pointed at, is worse than
-		// having no answer at all.
-		if (attrType == 0x0020 || attrType == 0x0001) && attrLen >= 8 && data[pos+1] != stunFamilyIPv4 {
-			return "", fmt.Errorf("STUN response carries a non-IPv4 mapped address")
-		}
-		if attrType == 0x0020 && attrLen >= 8 {
-			ip := net.IPv4(
-				data[pos+4]^0x21,
-				data[pos+5]^0x12,
-				data[pos+6]^0xA4,
-				data[pos+7]^0x42,
-			)
-			return publicAddr(ip.String())
-		}
-		if attrType == 0x0001 && attrLen >= 8 {
-			ip := net.IPv4(data[pos+4], data[pos+5], data[pos+6], data[pos+7])
-			return publicAddr(ip.String())
+		if isAddressAttribute(attrType) && attrLen >= attrAddressLen {
+			return addressFrom(attrType, data[pos:pos+attrLen])
 		}
 
 		// Pad to 4-byte boundary
@@ -179,6 +184,33 @@ func parseSTUNResponse(data []byte, txID []byte) (string, error) {
 	}
 
 	return "", fmt.Errorf("no mapped address in STUN response")
+}
+
+func isAddressAttribute(attrType uint16) bool {
+	return attrType == attrXORMappedAddress || attrType == attrMappedAddress
+}
+
+// addressFrom reads the four octets out of an address attribute's value.
+//
+// The family is checked rather than assumed. An IPv6 attribute is sixteen bytes
+// of address, and reading its first four as an IPv4 one produces a
+// plausible-looking address that belongs to nobody — which, for a value the
+// owner's phone is about to be pointed at, is worse than having no answer at all.
+func addressFrom(attrType uint16, value []byte) (string, error) {
+	if value[1] != stunFamilyIPv4 {
+		return "", fmt.Errorf("STUN response carries a non-IPv4 mapped address")
+	}
+	if attrType == attrXORMappedAddress {
+		ip := net.IPv4(
+			value[4]^0x21,
+			value[5]^0x12,
+			value[6]^0xA4,
+			value[7]^0x42,
+		)
+		return publicAddr(ip.String())
+	}
+	ip := net.IPv4(value[4], value[5], value[6], value[7])
+	return publicAddr(ip.String())
 }
 
 // cgnatBlock is RFC 6598 shared address space, the range an ISP assigns to a
