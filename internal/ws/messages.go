@@ -209,6 +209,14 @@ type AlertData struct {
 	Message string `json:"message"`
 }
 
+// SensorSystem is the sensor name an alert carries when it is the laptop
+// talking about itself rather than reporting something that touched it: a
+// setting that needs a restart, a change it would not make while armed.
+//
+// No sensor is registered under it, and that is what the phone reads it by. A
+// notice sent this way is shown as one; anything else raises the alarm.
+const SensorSystem = "system"
+
 // NewAlert creates a new server alert message.
 func NewAlert(sensor, level, message string) ServerMessage {
 	return ServerMessage{

@@ -1158,7 +1158,7 @@ func (h *Hub) handleConfigure(msg ClientMessage) {
 		return
 	}
 	if h.IsArmed() {
-		h.PushAlert(NewAlert("system", "warning", "Cannot change sensors while armed — disarm first"))
+		h.PushAlert(NewAlert(SensorSystem, "warning", "Cannot change sensors while armed — disarm first"))
 		return
 	}
 	for name, enabled := range msg.Sensors {
@@ -1397,10 +1397,10 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	h.broadcastStatus()
 
 	if sensorsRefused {
-		h.PushAlert(NewAlert("system", "warning", "Cannot change sensors while armed — disarm first"))
+		h.PushAlert(NewAlert(SensorSystem, "warning", "Cannot change sensors while armed — disarm first"))
 	}
 	if needsRestart {
-		h.PushAlert(NewAlert("system", "warning",
+		h.PushAlert(NewAlert(SensorSystem, "warning",
 			"The port or the Bluetooth mode changed — restart required to take effect"))
 	}
 	if remoteChanged {
@@ -1415,12 +1415,12 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		}
 	}
 	if geoURLRejected {
-		h.PushAlert(NewAlert("system", "warning", "Geolocation endpoint must use https:// — change ignored"))
+		h.PushAlert(NewAlert(SensorSystem, "warning", "Geolocation endpoint must use https:// — change ignored"))
 	}
 	if locationChanged {
 		// The tracker's providers are built once at startup from this config,
 		// so a source being switched on or off does not take effect until then.
-		h.PushAlert(NewAlert("system", "warning", "Location settings changed — restart required to take effect"))
+		h.PushAlert(NewAlert(SensorSystem, "warning", "Location settings changed — restart required to take effect"))
 	}
 
 	log.Info("Configuration updated from client")
@@ -1486,7 +1486,7 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	h.broadcastStatus()
 
 	if oldPort != cfg.Port || oldMode != cfg.ConnectionMode {
-		h.PushAlert(NewAlert("system", "warning",
+		h.PushAlert(NewAlert(SensorSystem, "warning",
 			"The port or the Bluetooth mode changed — restart required to take effect"))
 	}
 	if oldRemote {
