@@ -528,10 +528,10 @@ func socketOrigins(r *http.Request, tls bool) string {
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual
 // interfaces commonly created by Docker, WSL, and similar tools.
 func getLocalIPs() []net.IP {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return []net.IP{loopbackIP()}
-	}
+	// The error is dropped rather than handled because there is nothing
+	// different to do with it: a failure here leaves the list empty, and an
+	// empty list already means the loopback.
+	ifaces, _ := net.Interfaces()
 	return localIPsFrom(ifaces)
 }
 
@@ -566,10 +566,9 @@ func reachableIPv4(iface net.Interface) []net.IP {
 	if isVirtualInterface(iface.Name) {
 		return nil
 	}
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return nil
-	}
+	// Same again: an interface the operating system will not describe hands back
+	// no addresses, which is already the answer.
+	addrs, _ := iface.Addrs()
 
 	var ips []net.IP
 	for _, addr := range addrs {
