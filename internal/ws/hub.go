@@ -79,8 +79,12 @@ type Hub struct {
 	cfg *config.Config
 
 	// Alarm state tracking to prevent re-trigger loops
-	alarmActive       bool
-	alarmSensor       string
+	alarmActive bool
+	alarmSensor string
+	// alarmMessage is what the alarm said, kept beside the sensor so a phone
+	// that pairs while one is sounding can be shown the same words the phones
+	// already connected were.
+	alarmMessage      string
 	suppressedSensors map[string]time.Time
 
 	// updateAvailable is the newest release the update check found, kept so a
@@ -475,8 +479,6 @@ func (h *Hub) Disarm() {
 	h.mu.Lock()
 	h.armed = false
 	h.armedAt = time.Time{}
-	h.alarmActive = false
-	h.alarmSensor = ""
 	tracker := h.tracker
 	h.mu.Unlock()
 
@@ -488,7 +490,10 @@ func (h *Hub) Disarm() {
 		// machine was rather than an empty panel.
 		tracker.Stop()
 	}
-	h.fireAlarmDismiss()
+	// Through clearAlarm rather than by resetting the fields here, so the phones
+	// are told. Disarming used to silence the laptop and leave every phone
+	// sounding at an alarm the machine had already stopped having.
+	h.clearAlarm()
 	h.broadcastStatus()
 	h.logEvent(eventlog.Event{Type: eventlog.EventDisarm, Message: "System disarmed"})
 }
@@ -653,6 +658,7 @@ func (h *Hub) TriggerSensorTest(sensorName string) bool {
 	if h.armed && !h.alarmActive {
 		h.alarmActive = true
 		h.alarmSensor = sensorName
+		h.alarmMessage = message
 		armed = true
 	}
 	h.mu.Unlock()
@@ -712,6 +718,7 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 			}
 			h.alarmActive = true
 			h.alarmSensor = alert.Sensor
+			h.alarmMessage = alert.Message
 			h.mu.Unlock()
 
 			log.WithFields(log.Fields{"sensor": strings.ToUpper(alert.Sensor)}).Warn(alert.Message)
@@ -1017,41 +1024,52 @@ func clampPauseSeconds(d int) int {
 	}
 }
 
-// clearAlarm resets the alarm state and fires the dismiss callback.
-// Returns the sensor that triggered the alarm.
+// clearAlarm resets the alarm state, stops the laptop's own siren and tells
+// every paired phone. Returns the sensor that triggered the alarm.
+//
+// The broadcast is here rather than at one call site because an alarm is one
+// event on several devices, and only one of them knows it has been called off.
+// It used to be sent only when the console dismissed, on the reasoning that a
+// phone that dismissed knows it did — which is true of that phone and of
+// nothing else. A second paired phone went on sounding at an alarm that had
+// been answered, its overlay offering to pause a sensor that was no longer
+// alarming; and disarming while the siren ran silenced the laptop and left
+// every phone screaming, because Disarm cleared the state without saying so.
 func (h *Hub) clearAlarm() string {
 	h.mu.Lock()
 	sensor := h.alarmSensor
 	h.alarmActive = false
 	h.alarmSensor = ""
+	h.alarmMessage = ""
 	h.mu.Unlock()
+
 	h.fireAlarmDismiss()
+	h.PushAlert(ServerMessage{Type: MsgTypeAlarmCleared, Timestamp: time.Now().Unix()})
 	return sensor
 }
 
-// DismissAlarm stops the alarm everywhere: the laptop's own siren through the
-// dismiss callback, and every paired phone through a broadcast.
-//
-// The message matters because the phone-initiated path never needed one — a
-// phone that dismissed knows it did. Anything dismissing from elsewhere has to
-// say so out loud.
+// DismissAlarm stops the alarm everywhere: the laptop's own siren and every
+// paired phone. Used by the console's `stop` command.
 func (h *Hub) DismissAlarm() {
 	h.clearAlarm()
+}
 
+// activeAlarm reports the alarm currently sounding, if one is.
+//
+// It exists for a phone that has just paired. A phone drops its socket every
+// time its screen locks and the page behind it is thrown away, so the phone
+// that reconnects into a sounding alarm is the ordinary case, not the odd one —
+// and it used to arrive at a calm panel with no overlay and no siren while the
+// laptop screamed on the table.
+//
+// That was worse than a missed notification. The hub suppresses further events
+// while an alarm is active, so the alarm nobody could see was also the reason
+// the next one never fired: the user, seeing nothing to dismiss, dismissed
+// nothing, and the machine stayed silent from then on.
+func (h *Hub) activeAlarm() (sensor, message string, ok bool) {
 	h.mu.RLock()
-	targets := make([]*Client, 0, len(h.clients))
-	for client := range h.clients {
-		if client.authenticated {
-			targets = append(targets, client)
-		}
-	}
-	h.mu.RUnlock()
-
-	// Writes happen with the lock released; see PushAlert.
-	msg := ServerMessage{Type: MsgTypeAlarmCleared, Timestamp: time.Now().Unix()}
-	for _, client := range targets {
-		client.send(msg)
-	}
+	defer h.mu.RUnlock()
+	return h.alarmSensor, h.alarmMessage, h.alarmActive
 }
 
 // DisarmWithPin verifies the PIN, if one is configured, and disarms.
@@ -1130,6 +1148,15 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 
 	infos := h.GetSensorInfos()
 	client.send(NewAuthOK(token, infos, h.version, h.IsArmed(), h.ArmedAt()))
+
+	// An alarm already sounding is the first thing this phone needs, before the
+	// update notice and before anything else. A phone reconnects every time its
+	// screen unlocks, so arriving in the middle of an alarm is the ordinary
+	// case — and arriving to a calm panel meant the one screen the user is
+	// holding showed nothing wrong while the laptop screamed on the table.
+	if sensor, message, active := h.activeAlarm(); active {
+		client.send(NewAlarmActive(sensor, message))
+	}
 
 	// A phone can pair hours after the check ran, so the known result is told to
 	// it on arrival rather than only broadcast at the moment it was found.
