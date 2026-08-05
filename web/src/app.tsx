@@ -122,6 +122,38 @@ function stopPinging() {
     }
 }
 
+/**
+ * Everything the phone only does once the laptop has accepted it.
+ *
+ * It runs again on every reconnect, so each thing in here has to survive being
+ * asked for twice.
+ */
+function afterPairing() {
+    send({ type: 'get_location' });
+
+    // Guarded: this runs again on every reconnect, and an unguarded
+    // setInterval here would stack up a new ping loop each time.
+    pingTimer ??= window.setInterval(() => send({ type: 'ping' }), PING_MS);
+
+    if ('Notification' in window && Notification.permission === 'default') {
+        void Notification.requestPermission();
+    }
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch((err: Error) => {
+            // Browsers refuse to register a worker on an origin with a
+            // certificate error, which is exactly what the laptop's
+            // self-signed certificate produces. Swallowing this made a
+            // notification path that never ran look like one that did.
+            console.warn('LeaveSafe: notifications are unavailable —', err.message);
+        });
+    }
+}
+
+/** "3 attempts left." — what is left after a pairing key was refused. */
+function attemptsLeft(count: number): string {
+    return `${count} attempt${count === 1 ? '' : 's'} left.`;
+}
+
 /** Sends the held key, if there is one still waiting. */
 function sendPendingKey() {
     if (pendingKey === null) return;
@@ -276,10 +308,9 @@ export function App() {
                     // The stored key no longer opens this laptop — rotated, or
                     // from a different one. Keeping it would retry forever.
                     clearSession();
+                    const reason = msg.reason ?? 'That key was refused.';
                     const left = msg.remaining_attempts;
-                    pairError.value = `${msg.reason ?? 'That key was refused.'}${
-                        left ? ` ${left} attempt${left === 1 ? '' : 's'} left.` : ''
-                    }`;
+                    pairError.value = left ? `${reason} ${attemptsLeft(left)}` : reason;
                 } else {
                     showToast(msg.reason ?? 'Refused');
                 }
@@ -380,29 +411,6 @@ export function App() {
 
             default:
                 break;
-        }
-    }
-
-    function afterPairing() {
-        send({ type: 'get_location' });
-
-        // Guarded: this runs again on every reconnect, and an unguarded
-        // setInterval here would stack up a new ping loop each time.
-        if (pingTimer === null) {
-            pingTimer = window.setInterval(() => send({ type: 'ping' }), PING_MS);
-        }
-
-        if ('Notification' in window && Notification.permission === 'default') {
-            void Notification.requestPermission();
-        }
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').catch((err: Error) => {
-                // Browsers refuse to register a worker on an origin with a
-                // certificate error, which is exactly what the laptop's
-                // self-signed certificate produces. Swallowing this made a
-                // notification path that never ran look like one that did.
-                console.warn('LeaveSafe: notifications are unavailable —', err.message);
-            });
         }
     }
 
