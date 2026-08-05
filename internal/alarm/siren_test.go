@@ -380,3 +380,81 @@ func TestEscalationWithNoLevelsStillSoundsTheSiren(t *testing.T) {
 		t.Errorf("maxVolume called %d times, want once", maxCalls)
 	}
 }
+
+// Stop is a report, not a request, and the difference showed up as a data race.
+//
+// Closing the channel only asks the siren to finish; the loop can still be
+// mid-tone, and Stop used to return anyway. So dismissing an alarm said the
+// noise had stopped while the machine was still shrieking, and anything the
+// caller did next ran alongside a loop that was still going — which is how the
+// tests found it, by restoring the audio functions they had swapped in while
+// the siren was still reading them.
+func TestStopDoesNotReturnWhileTheSirenIsStillSounding(t *testing.T) {
+	spy := newAudioSpy()
+	spy.install(t)
+
+	// Park the siren inside a tone, the way a real 400ms beep does.
+	sounding := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	beepToneFn = func(int, int, <-chan struct{}) {
+		once.Do(func() { close(sounding) })
+		<-release
+	}
+
+	a := New(config.AlarmConfig{})
+	a.Start()
+	<-sounding
+
+	stopped := make(chan struct{})
+	go func() {
+		a.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned while the siren was still sounding")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop never returned once the siren had finished")
+	}
+}
+
+// Escalation starts its siren from inside its own goroutine, which is the case
+// where waiting for the loops is easiest to get wrong: a siren arriving after
+// Stop has begun waiting would either be missed or panic the wait.
+func TestStopWaitsForAnEscalatingAlarmToo(t *testing.T) {
+	spy := newAudioSpy()
+	spy.install(t)
+
+	a := New(config.AlarmConfig{
+		EscalationEnabled: true,
+		Levels: []config.AlarmLevel{
+			{Action: "medium_volume", VolumePercent: 50},
+			{Action: "full_volume"},
+		},
+	})
+	a.Start()
+	spy.waitForBeep(t)
+
+	done := make(chan struct{})
+	go func() {
+		a.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop never returned on an escalating alarm")
+	}
+	if a.IsPlaying() {
+		t.Error("the alarm still reports itself sounding after Stop")
+	}
+}
