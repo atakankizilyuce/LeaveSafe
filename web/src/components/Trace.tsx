@@ -13,6 +13,18 @@ const ARMED = '#ff4a35';
 const LOST = '#55637a';
 
 /**
+ * What colour the line is drawn in.
+ *
+ * A lost connection outranks the armed colour, because with the link down the
+ * trace is no longer reporting on the laptop — it is only proof the page itself
+ * is still running, and drawing that in the alarm colour would say otherwise.
+ */
+function traceColour(status: typeof link.value, isArmed: boolean): string {
+    if (status === 'lost') return LOST;
+    return isArmed ? ARMED : STANDBY;
+}
+
+/**
  * A baseline that advances on its own: flat while nothing is happening, with a
  * spike each time a sensor trips.
  *
@@ -50,7 +62,7 @@ export function Trace() {
         const ctx = el.getContext('2d');
         if (!ctx) return;
 
-        const stroke = status === 'lost' ? LOST : isArmed ? ARMED : STANDBY;
+        const stroke = traceColour(status, isArmed);
 
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const resize = () => {
