@@ -5,6 +5,7 @@
             "web/src/**/*.ts",
             "web/src/**/*.tsx",
             "web/public/**/*.js",
+            "web/test/**/*.js",
             "web/*.ts",
             "!web/dist",
             "!web/node_modules"
