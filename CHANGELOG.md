@@ -158,6 +158,67 @@ diff is small.
 
 ### Fixed
 
+- **A fresh installation now watches something.** Sensors are registered
+  switched off and turned on from what the config recorded — and a config
+  written by a first run records nothing at all, so every sensor stayed off.
+  Arming started no watchers: the dashboard read "0 / 6 active", the phone read
+  "0 sensors ready", and anyone who did not stop to read either walked away from
+  a laptop guarding itself against nothing. Every sensor is now on unless the
+  config says otherwise, and a sensor switched off is switched off at startup
+  rather than merely not switched on — so the preference survives a restart in
+  both directions. "Reset to defaults" now reaches the sensors too, instead of
+  writing a config that says every sensor watches while one of them does not.
+
+- **A second alarm sounds.** The hub suppresses further sensor events while an
+  alarm is active, and several things left that state standing with nobody able
+  to clear it — so the first alarm was the last one, on the phone and on the
+  laptop alike. A phone that paired while one was sounding was told nothing
+  about it: its screen had locked, the page behind it was thrown away, and it
+  came back to a calm panel with nothing to dismiss while the laptop screamed.
+  It is now told, with the same words the phones already connected were shown.
+
+- **Answering an alarm reaches every device.** Dismissing from one phone reached
+  no other phone, and disarming reached none of them: the laptop went quiet and
+  every phone kept sounding at an alarm the machine had already stopped having,
+  its overlay offering to pause a sensor that was no longer alarming. Every path
+  that clears the alarm — the phone, the console's `stop`, disarming — now says
+  so to all of them.
+
+- **The phone's siren can sound more than once.** Its audio context was built
+  for each alarm and closed on dismissal. A phone caps how many a page may open
+  and only lets one start off the back of a gesture, so the one built for the
+  second alarm — minutes later, with the phone in a pocket — stayed suspended
+  and played nothing. There is one context now, opened inside the tap on Arm and
+  resumed rather than replaced.
+
+- **Saving the settings sheet no longer sets the alarm off.** The laptop uses
+  the alert channel to say things about itself as well — a setting that needs a
+  restart, a geolocation endpoint it refused, a sensor change it would not make
+  while armed — under the reserved sensor name `system`. The phone treated all
+  of them as intrusions: full-screen overlay, siren, vibration, lock-screen
+  notification, for pressing Save while sitting next to the machine. Worse, the
+  overlay's other two answers are "pause this sensor" and "stop using this
+  sensor", and there is no sensor called `system` to do either to. Notices are
+  now shown as notices, and the alarm is kept for the thing it is for.
+
+- **"Pause this sensor" answers a self-test.** Firing a sensor by hand — from
+  the phone's "Test it" button or `trigger <sensor>` on the dashboard — raised
+  the alarm without recording which sensor raised it. The overlay's pause and
+  disable buttons act on the recorded sensor, never on the name the message
+  carried, so both silently did nothing and the only trace was a debug line on
+  a laptop nobody was standing next to.
+
+- **Quitting is no longer reported as a crash.** Ctrl+C shut the server down and
+  then treated the shutdown it had just asked for as a fatal server error: a red
+  FATAL line and an exit status of 1, racing the orderly exit the signal handler
+  was already running. A listener that dies for any other reason still stops the
+  program.
+
+- **Two data races on values the user reads off the screen.** The pairing key
+  and the dashboard's address list were read without the lock that guards them
+  while `rotate-key` and the reachability probe were replacing them. What that
+  risked was the two things the user is asked to scan or type.
+
 - **Choosing remote access no longer offers a QR code that cannot connect.**
   When the router refuses a port mapping, the laptop still has an address on the
   internet — and nothing on the path will carry a connection to it. That address
