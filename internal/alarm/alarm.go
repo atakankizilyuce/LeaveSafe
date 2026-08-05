@@ -49,10 +49,43 @@ type Alarm struct {
 	playing bool
 	stopCh  chan struct{}
 
+	// loops counts the goroutines this alarm started, so Stop can wait for them
+	// rather than only asking them to finish.
+	//
+	// Closing the channel is a request, and Stop used to return the moment it
+	// had made one — with a siren still mid-tone behind it. On a machine being
+	// carried away that is the wrong report to make: dismissing the alarm said
+	// the noise had stopped while it had not. It also left the loops running
+	// through whatever the caller did next, which is how the tests caught it:
+	// restoring the audio functions they had swapped in raced with a loop still
+	// reading them.
+	loops sync.WaitGroup
+
 	savedVolume float64
 	volumeSaved bool
 
 	alarmCfg config.AlarmConfig
+}
+
+// spawn starts one of the alarm's own goroutines and counts it.
+//
+// Refusing to start once the alarm has stopped is what makes the counting safe.
+// Escalation starts a siren from inside its own goroutine, so without this a
+// late arrival could add to the count after Stop had already begun waiting on
+// it — which is the one way a WaitGroup can be used wrongly.
+func (a *Alarm) spawn(name string, fn func()) {
+	a.mu.Lock()
+	if !a.playing {
+		a.mu.Unlock()
+		return
+	}
+	a.loops.Add(1)
+	a.mu.Unlock()
+
+	safe.Go(name, func() {
+		defer a.loops.Done()
+		fn()
+	})
 }
 
 // New creates a new Alarm instance with the given alarm configuration.
@@ -82,7 +115,7 @@ func (a *Alarm) Start() {
 	// was closed. It would sound past the dismissal, with the new siren
 	// alongside it, and nothing left could stop it.
 	if a.alarmCfg.EscalationEnabled && len(a.alarmCfg.Levels) > 0 {
-		safe.Go("alarm-escalation", func() { a.escalationLoop(stop) })
+		a.spawn("alarm-escalation", func() { a.escalationLoop(stop) })
 	} else {
 		a.startFullSiren(stop)
 	}
@@ -101,7 +134,7 @@ func (a *Alarm) startFullSiren(stop chan struct{}) {
 	// whatever volume the laptop was already at is the whole point; silence is
 	// the one outcome that helps nobody.
 	log.Info("Siren started")
-	safe.Go("alarm-siren", func() { a.sirenLoop(stop) })
+	a.spawn("alarm-siren", func() { a.sirenLoop(stop) })
 
 	log.Info("Forcing system volume to maximum")
 	saved, err := maxVolumeFn()
@@ -155,7 +188,7 @@ func (a *Alarm) escalationLoop(stop chan struct{}) {
 				}
 				a.mu.Unlock()
 			}
-			safe.Go("alarm-siren", func() { a.sirenLoop(stop) })
+			a.spawn("alarm-siren", func() { a.sirenLoop(stop) })
 
 		case "full_volume":
 			log.Info("Alarm escalation: full volume")
@@ -196,6 +229,12 @@ func (a *Alarm) Stop() {
 			log.Warnf("Volume restore error: %v", err)
 		}
 	}
+
+	// Bounded by one tone. Both beep backends select on the same channel that
+	// was just closed, and the Windows one waits only for the call already in
+	// flight — so this is the length of a beep at worst, and it is the
+	// difference between "stopped" and "asked to stop".
+	a.loops.Wait()
 
 	log.Info("Alarm stopped")
 }
