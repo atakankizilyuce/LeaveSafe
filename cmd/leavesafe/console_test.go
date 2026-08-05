@@ -27,16 +27,34 @@ import (
 // without a tty and the assertions stay about content rather than layout.
 func consoleFixture(t *testing.T, typed string, hub *ws.Hub) string {
 	t.Helper()
+	return consoleOutput(t, typed, consoleDeps{
+		hub: hub,
+		sb:  &statusBar{headless: true},
+	})
+}
+
+// consoleOutput is consoleFixture with the dependencies spelled out, for the
+// commands that read more than the hub — the address list, the certificate and
+// the pairing key all live on the status bar or the auth manager.
+func consoleOutput(t *testing.T, typed string, d consoleDeps) string {
+	t.Helper()
+	return captureLog(t, func() {
+		runConsole(context.Background(), strings.NewReader(typed), d)
+	})
+}
+
+// captureLog collects everything written through the logger while fn runs. The
+// headless paths report through the logger rather than drawing a terminal grid,
+// so this is where their output ends up.
+func captureLog(t *testing.T, fn func()) string {
+	t.Helper()
 
 	var out bytes.Buffer
 	previous := log.StandardLogger().Out
 	log.SetOutput(&out)
 	t.Cleanup(func() { log.SetOutput(previous) })
 
-	runConsole(context.Background(), strings.NewReader(typed), consoleDeps{
-		hub: hub,
-		sb:  &statusBar{headless: true},
-	})
+	fn()
 	return out.String()
 }
 
