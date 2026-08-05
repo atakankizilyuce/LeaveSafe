@@ -155,15 +155,7 @@ func (sb *statusBar) setURLs(urls []string) {
 	rawKey, certFP := sb.rawKey, sb.certFP
 	sb.mu.Unlock()
 
-	codes := make([][]string, 0, len(urls))
-	for _, u := range urls {
-		lines, err := qr.Lines(pairingURL(u, rawKey, certFP))
-		if err != nil {
-			log.Warnf("Could not render QR code for %s: %v", u, err)
-			lines = nil
-		}
-		codes = append(codes, lines)
-	}
+	codes := renderQRCodes(urls, rawKey, certFP)
 
 	sb.mu.Lock()
 	sb.urls = urls
@@ -1079,84 +1071,29 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 	hub.RestoreArmed(prev.ChangedAt)
 }
 
+// qrIndent is how far from the left edge the QR box starts, and gap is the space
+// between it and the status grid beside it.
+const (
+	qrIndent = 2
+	gap      = 3
+)
+
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
-	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State) *statusBar {
-	certFP := remoteState.CertFP
-	termW, termH, err := term.GetSize(int(out.Fd()))
-	if err != nil || termW < 80 || termH < 20 {
-		termW, termH = 120, 40
-	}
+	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State,
+) *statusBar {
+	termW, termH := terminalSize(out)
+	sep := "  " + strings.Repeat("─", termW-4)
 
 	fmt.Fprintf(out, "\033[2J\033[H")
-
-	row := 1
-
-	banner := []string{
-		"  ██╗     ███████╗ █████╗ ██╗   ██╗███████╗███████╗ █████╗ ███████╗███████╗",
-		"  ██║     ██╔════╝██╔══██╗██║   ██║██╔════╝██╔════╝██╔══██╗██╔════╝██╔════╝",
-		"  ██║     █████╗  ███████║██║   ██║█████╗  ███████╗███████║█████╗  █████╗  ",
-		"  ██║     ██╔══╝  ██╔══██║╚██╗ ██╔╝██╔══╝  ╚════██║██╔══██║██╔══╝  ██╔══╝  ",
-		"  ███████╗███████╗██║  ██║ ╚████╔╝ ███████╗███████║██║  ██║██║     ███████╗",
-		"  ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝",
-	}
-	for _, line := range banner {
-		fmt.Fprintf(out, "%s%s%s\n", cCyan, line, cReset)
-		row++
-	}
-	fmt.Fprintf(out, "  %s%s%s  %sDevice Security Monitor%s\n", cBold, version, cReset, cDim, cReset)
-	row++
-
-	sep := "  " + strings.Repeat("─", termW-4)
-	fmt.Fprintf(out, "%s%s%s\n", cDim, sep, cReset)
-	row++
-
-	fmt.Fprintf(out, "\n")
-	row++
+	row := drawHeader(out, sep)
 
 	urls := reachableURLs(srv, remoteState)
-
-	// A QR code is rendered for every reachable URL, not just the first. With
-	// remote access on, the public URL only works from outside the network:
-	// scanning it from a phone on the same Wi-Fi needs NAT hairpinning, which
-	// plenty of routers do not do. `qr <n>` switches to the local URL instead.
-	qrCodes := make([][]string, 0, len(urls))
-	for _, u := range urls {
-		lines, err := qr.Lines(pairingURL(u, authMgr.RawPairingKey(), certFP))
-		if err != nil {
-			log.Warnf("Could not render QR code for %s: %v", u, err)
-			lines = nil
-		}
-		qrCodes = append(qrCodes, lines)
-	}
-
-	// Size the box to the largest code so switching between them never
-	// overflows into the rest of the layout.
-	const qrIndent = 2
-	qrW, qrH := 0, 0
-	for _, lines := range qrCodes {
-		if len(lines) > qrH {
-			qrH = len(lines)
-		}
-		if len(lines) > 0 {
-			if w := utf8.RuneCountInString(lines[0]); w > qrW {
-				qrW = w
-			}
-		}
-	}
-
-	const gap = 3
-	statusCol := qrIndent + qrW + gap + 1
-	statusW := termW - statusCol - 1
-	if statusW > 50 {
-		statusW = 50
-	}
-	if statusW < 30 {
-		statusW = 30
-	}
+	qrCodes := renderQRCodes(urls, authMgr.RawPairingKey(), remoteState.CertFP)
+	qrW, qrH := qrBoxSize(qrCodes)
+	statusCol, statusW := statusColumn(termW, qrW)
 
 	fmt.Fprintf(out, "  %sScan to connect:%s\n", cDim, cReset)
 	row++
-
 	qrStartRow := row
 
 	sb := &statusBar{
@@ -1174,20 +1111,115 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		rawKey:       authMgr.RawPairingKey(),
 		urls:         urls,
 		remoteStatus: remoteStatusLine(remoteState),
-		certFP:       certFP,
+		certFP:       remoteState.CertFP,
 	}
 
+	row = qrStartRow + drawCodeAndStatus(out, sb, qrStartRow, statusCol)
+	row = drawFooter(out, sep, row)
+
+	// Everything above is drawn once and must stay put, so the scrolling region
+	// starts below it. Without this the log would scroll over the QR code the
+	// user is trying to scan.
+	headerRows := min(row-1, termH-3)
+	fmt.Fprintf(out, "\033[%d;%dr", headerRows+1, termH)
+	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)
+
+	return sb
+}
+
+// terminalSize is the size of the terminal, or a shape the dashboard fits in
+// when it cannot be asked.
+//
+// A window too small is treated the same as no answer at all. The layout below
+// assumes it has room, and drawing it into eighty by twenty produces a QR code
+// cut in half — which is worse than a layout that runs off the edge of a window
+// the user can resize.
+func terminalSize(out *os.File) (width, height int) {
+	w, h, err := term.GetSize(int(out.Fd()))
+	if err != nil || w < 80 || h < 20 {
+		return 120, 40
+	}
+	return w, h
+}
+
+// drawHeader writes the banner, the version and the rule under them, and returns
+// the row the next thing goes on.
+func drawHeader(out io.Writer, sep string) int {
+	banner := []string{
+		"  ██╗     ███████╗ █████╗ ██╗   ██╗███████╗███████╗ █████╗ ███████╗███████╗",
+		"  ██║     ██╔════╝██╔══██╗██║   ██║██╔════╝██╔════╝██╔══██╗██╔════╝██╔════╝",
+		"  ██║     █████╗  ███████║██║   ██║█████╗  ███████╗███████║█████╗  █████╗  ",
+		"  ██║     ██╔══╝  ██╔══██║╚██╗ ██╔╝██╔══╝  ╚════██║██╔══██║██╔══╝  ██╔══╝  ",
+		"  ███████╗███████╗██║  ██║ ╚████╔╝ ███████╗███████║██║  ██║██║     ███████╗",
+		"  ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝",
+	}
+
+	row := 1
+	for _, line := range banner {
+		fmt.Fprintf(out, "%s%s%s\n", cCyan, line, cReset)
+		row++
+	}
+	fmt.Fprintf(out, "  %s%s%s  %sDevice Security Monitor%s\n", cBold, version, cReset, cDim, cReset)
+	row++
+	fmt.Fprintf(out, "%s%s%s\n", cDim, sep, cReset)
+	row++
+	fmt.Fprintf(out, "\n")
+	return row + 1
+}
+
+// renderQRCodes builds a QR code for every address the laptop can be reached at,
+// not just the first.
+//
+// With remote access on, the public URL only works from outside the network:
+// scanning it from a phone on the same Wi-Fi needs NAT hairpinning, which plenty
+// of routers do not do. `qr <n>` switches to the local URL instead.
+//
+// A code that will not render becomes a nil entry rather than a missing one, so
+// the indexes stay lined up with the address list they came from.
+func renderQRCodes(urls []string, rawKey, certFP string) [][]string {
+	codes := make([][]string, 0, len(urls))
+	for _, u := range urls {
+		lines, err := qr.Lines(pairingURL(u, rawKey, certFP))
+		if err != nil {
+			log.Warnf("Could not render QR code for %s: %v", u, err)
+			lines = nil
+		}
+		codes = append(codes, lines)
+	}
+	return codes
+}
+
+// qrBoxSize is the size of the largest code, which is the size the box has to
+// be: switching between them with `qr <n>` must never overflow the layout.
+func qrBoxSize(codes [][]string) (width, height int) {
+	for _, lines := range codes {
+		height = max(height, len(lines))
+		if len(lines) > 0 {
+			width = max(width, utf8.RuneCountInString(lines[0]))
+		}
+	}
+	return width, height
+}
+
+// statusColumn places the status grid to the right of the QR box and gives it a
+// width it can be read at: wide enough for the longest line it holds, narrow
+// enough not to sprawl across a maximized window.
+func statusColumn(termW, qrW int) (col, width int) {
+	col = qrIndent + qrW + gap + 1
+	width = min(max(termW-col-1, 30), 50)
+	return col, width
+}
+
+// drawCodeAndStatus draws the QR box and the status grid side by side, each
+// centered against the taller of the two, and returns how many rows that took.
+func drawCodeAndStatus(out io.Writer, sb *statusBar, qrStartRow, statusCol int) int {
 	statusLines := sb.gridLines()
 	statusH := len(statusLines)
-
-	totalRows := qrH
-	if statusH > totalRows {
-		totalRows = statusH
-	}
+	totalRows := max(sb.qrBoxH, statusH)
 
 	qrVOff, statusVOff := 0, 0
-	if qrH < totalRows {
-		qrVOff = (totalRows - qrH) / 2
+	if sb.qrBoxH < totalRows {
+		qrVOff = (totalRows - sb.qrBoxH) / 2
 	}
 	if statusH < totalRows {
 		statusVOff = (totalRows - statusH) / 2
@@ -1195,7 +1227,7 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	sb.gridRow = qrStartRow + statusVOff
 	sb.qrRow = qrStartRow + qrVOff
 
-	for i := 0; i < totalRows; i++ {
+	for i := range totalRows {
 		si := i - statusVOff
 		if si >= 0 && si < len(statusLines) {
 			fmt.Fprintf(out, "\033[%d;%dH%s", qrStartRow+i, statusCol, statusLines[si])
@@ -1203,24 +1235,19 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	}
 	sb.drawQR()
 
-	row = qrStartRow + totalRows
+	return totalRows
+}
 
+// drawFooter writes the command list and the rule under it, and returns the row
+// after them.
+func drawFooter(out io.Writer, sep string, row int) int {
 	fmt.Fprintf(out, "\033[%d;1H\n", row)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
 		row, cDim, cReset, cDim, cReset, cDim, cReset)
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
-	row++
-
-	headerRows := row - 1
-	if headerRows > termH-3 {
-		headerRows = termH - 3
-	}
-	fmt.Fprintf(out, "\033[%d;%dr", headerRows+1, termH)
-	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)
-
-	return sb
+	return row + 1
 }
 
 // connectionModeName names a connection mode for a log line.
