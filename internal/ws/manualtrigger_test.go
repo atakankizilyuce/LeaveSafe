@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/leavesafe/leavesafe/internal/auth"
@@ -10,7 +11,14 @@ import (
 
 // quietSensor is registered so the hub knows the name, and never fires. The
 // point of these tests is the manual trigger, which needs no sensor event.
-type quietSensor struct{ name string }
+//
+// turns counts how often the manager started it. Enabling a sensor and starting
+// it are separate steps, and a test that only asks whether it is enabled cannot
+// tell the two apart.
+type quietSensor struct {
+	name  string
+	turns atomic.Int32
+}
 
 func (s *quietSensor) Name() string        { return s.name }
 func (s *quietSensor) DisplayName() string { return s.name }
@@ -18,6 +26,7 @@ func (s *quietSensor) Available() bool     { return true }
 func (s *quietSensor) Stop() error         { return nil }
 
 func (s *quietSensor) Start(ctx context.Context, _ chan<- monitor.Alert) error {
+	s.turns.Add(1)
 	<-ctx.Done()
 	return nil
 }
