@@ -96,40 +96,54 @@ func parseIWScan(raw string) []AccessPoint {
 
 		if rest, ok := strings.CutPrefix(line, "BSS "); ok {
 			flush()
-			// "BSS aa:bb:cc:dd:ee:ff(on wlan0) -- associated"
-			mac := rest
-			if idx := strings.IndexAny(mac, "( \t"); idx >= 0 {
-				mac = mac[:idx]
-			}
-			mac = normalizeBSSID(strings.TrimSpace(mac))
-			if looksLikeBSSID(mac) {
-				current = &AccessPoint{BSSID: mac}
-			}
+			current = beginAP(rest)
 			continue
 		}
 
-		if current == nil {
-			continue
-		}
-
-		if rest, ok := strings.CutPrefix(line, "signal:"); ok {
-			// "signal: -65.00 dBm"
-			value := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rest), "dBm"))
-			if dbm, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
-				current.SignalDBM = int(dbm)
-			}
-			continue
-		}
-
-		if rest, ok := strings.CutPrefix(line, "DS Parameter set: channel"); ok {
-			if ch, err := strconv.Atoi(strings.TrimSpace(rest)); err == nil {
-				current.Channel = ch
-			}
+		if current != nil {
+			readAPDetail(current, line)
 		}
 	}
 	flush()
 
 	return aps
+}
+
+// beginAP reads the header line that opens each network in the scan, and
+// returns nil for one whose address does not survive parsing — a truncated line
+// is better dropped than recorded as a network with a nonsense address.
+//
+//	BSS aa:bb:cc:dd:ee:ff(on wlan0) -- associated
+func beginAP(rest string) *AccessPoint {
+	mac := rest
+	if idx := strings.IndexAny(mac, "( \t"); idx >= 0 {
+		mac = mac[:idx]
+	}
+	mac = normalizeBSSID(strings.TrimSpace(mac))
+	if !looksLikeBSSID(mac) {
+		return nil
+	}
+	return &AccessPoint{BSSID: mac}
+}
+
+// readAPDetail fills in whichever of the indented lines under a network this
+// one is. Anything else in the block is of no use to a geolocation lookup and
+// is passed over.
+func readAPDetail(ap *AccessPoint, line string) {
+	if rest, ok := strings.CutPrefix(line, "signal:"); ok {
+		// "signal: -65.00 dBm"
+		value := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rest), "dBm"))
+		if dbm, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
+			ap.SignalDBM = int(dbm)
+		}
+		return
+	}
+
+	if rest, ok := strings.CutPrefix(line, "DS Parameter set: channel"); ok {
+		if ch, err := strconv.Atoi(strings.TrimSpace(rest)); err == nil {
+			ap.Channel = ch
+		}
+	}
 }
 
 // looksLikeBSSID reports whether s is a colon-separated six-octet MAC address.

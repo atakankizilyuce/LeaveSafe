@@ -256,18 +256,43 @@ func backupCorruptConfig(path string) (string, error) {
 // locks the owner out for a year. Fixing the value and saying so beats both
 // refusing to start and silently obeying.
 func (c *Config) Validate() []string {
-	var notes []string
+	v := &adjustments{}
 
-	clampInt := func(name string, value *int, minimum, maximum, fallback int) {
-		switch {
-		case *value < minimum:
-			notes = append(notes, fmt.Sprintf("%s was %d, below the minimum of %d — using %d", name, *value, minimum, fallback))
-			*value = fallback
-		case maximum > 0 && *value > maximum:
-			notes = append(notes, fmt.Sprintf("%s was %d, above the maximum of %d — using %d", name, *value, maximum, maximum))
-			*value = maximum
-		}
+	c.clampNumbers(v)
+	c.dropInsecureURLs(v)
+	c.correctUnknownChoices(v)
+	c.clampAlarmLevels(v)
+
+	return v.notes
+}
+
+// adjustments collects what a validation pass changed, so each rule below can
+// say what it did without threading a slice through every one of them.
+type adjustments struct {
+	notes []string
+}
+
+func (a *adjustments) notef(format string, args ...any) {
+	a.notes = append(a.notes, fmt.Sprintf(format, args...))
+}
+
+// clampInt keeps a value inside its range, replacing anything below the minimum
+// with a sensible default and anything above the maximum with the maximum
+// itself. A maximum of zero means there is no ceiling.
+func (a *adjustments) clampInt(name string, value *int, minimum, maximum, fallback int) {
+	switch {
+	case *value < minimum:
+		a.notef("%s was %d, below the minimum of %d — using %d", name, *value, minimum, fallback)
+		*value = fallback
+	case maximum > 0 && *value > maximum:
+		a.notef("%s was %d, above the maximum of %d — using %d", name, *value, maximum, maximum)
+		*value = maximum
 	}
+}
+
+// clampNumbers holds every plain numeric limit.
+func (c *Config) clampNumbers(v *adjustments) {
+	clampInt := v.clampInt
 
 	clampInt("port", &c.Port, 0, 65535, 0)
 	clampInt("remote_port", &c.RemotePort, 0, 65535, 9443)
@@ -286,6 +311,16 @@ func (c *Config) Validate() []string {
 		clampInt("location.poll_seconds", &c.Location.PollSeconds, 15, 86400, 60)
 	}
 
+	if c.UpdateCheckHours != 0 {
+		// A six-hour floor keeps a hand-edited config from hammering GitHub's
+		// rate limit; a week's ceiling keeps the check meaningful.
+		clampInt("update_check_hours", &c.UpdateCheckHours, 6, 24*7, DefaultUpdateCheckHours)
+	}
+}
+
+// dropInsecureURLs refuses the endpoints that would put something on the wire
+// in the clear.
+func (c *Config) dropInsecureURLs(v *adjustments) {
 	// The geolocation API key travels in this URL's query string, so a plain
 	// HTTP endpoint puts it on the wire in cleartext — on whatever café Wi-Fi
 	// the machine is sitting on. The phone is already refused a non-HTTPS
@@ -295,24 +330,27 @@ func (c *Config) Validate() []string {
 	// The endpoint is dropped rather than corrected, so the default HTTPS one
 	// takes over instead of the key going somewhere unintended.
 	if c.Location.GeolocateURL != "" && !isHTTPS(c.Location.GeolocateURL) {
-		notes = append(notes, fmt.Sprintf(
+		v.notef(
 			"location.geolocate_url was %q, which is not https — ignoring it, because the API key travels in that URL",
-			c.Location.GeolocateURL))
+			c.Location.GeolocateURL)
 		c.Location.GeolocateURL = ""
 	}
 	// The IP lookup carries no key, but it decides where the machine is reported
 	// to be, and over plain HTTP anyone on the path can choose that answer.
 	if c.Location.IPLookupURL != "" && !isHTTPS(c.Location.IPLookupURL) {
-		notes = append(notes, fmt.Sprintf(
-			"location.ip_lookup_url was %q, which is not https — ignoring it", c.Location.IPLookupURL))
+		v.notef("location.ip_lookup_url was %q, which is not https — ignoring it", c.Location.IPLookupURL)
 		c.Location.IPLookupURL = ""
 	}
+}
 
+// correctUnknownChoices replaces a value that is not one of the ones the program
+// knows. A typo must not stop a security monitor from starting.
+func (c *Config) correctUnknownChoices(v *adjustments) {
 	if c.ConnectionMode != "" {
 		switch c.ConnectionMode {
 		case "wifi", "bluetooth", "both":
 		default:
-			notes = append(notes, fmt.Sprintf("connection_mode was %q, which is not one of wifi, bluetooth or both — using wifi", c.ConnectionMode))
+			v.notef("connection_mode was %q, which is not one of wifi, bluetooth or both — using wifi", c.ConnectionMode)
 			c.ConnectionMode = "wifi"
 		}
 	}
@@ -324,8 +362,7 @@ func (c *Config) Validate() []string {
 		switch c.Language {
 		case "tr", "en":
 		default:
-			notes = append(notes, fmt.Sprintf(
-				"language was %q, which is not one of tr or en — asking again", c.Language))
+			v.notef("language was %q, which is not one of tr or en — asking again", c.Language)
 			c.Language = ""
 		}
 	}
@@ -334,28 +371,22 @@ func (c *Config) Validate() []string {
 		switch c.UpdateChannel {
 		case "stable", "beta":
 		default:
-			// A typo here must not stop a security monitor from starting, and it
-			// must not silently opt someone into prereleases either.
-			notes = append(notes, fmt.Sprintf("update_channel was %q, which is not one of stable or beta — using stable", c.UpdateChannel))
+			// It must not silently opt someone into prereleases either.
+			v.notef("update_channel was %q, which is not one of stable or beta — using stable", c.UpdateChannel)
 			c.UpdateChannel = "stable"
 		}
 	}
+}
 
-	if c.UpdateCheckHours != 0 {
-		// A six-hour floor keeps a hand-edited config from hammering GitHub's
-		// rate limit; a week's ceiling keeps the check meaningful.
-		clampInt("update_check_hours", &c.UpdateCheckHours, 6, 24*7, DefaultUpdateCheckHours)
-	}
-
+// clampAlarmLevels keeps each escalation step inside a range it can act on.
+func (c *Config) clampAlarmLevels(v *adjustments) {
 	for i := range c.Alarm.Levels {
 		level := &c.Alarm.Levels[i]
-		clampInt(fmt.Sprintf("alarm.levels[%d].delay_seconds", i), &level.DelaySeconds, 0, 86400, 0)
+		v.clampInt(fmt.Sprintf("alarm.levels[%d].delay_seconds", i), &level.DelaySeconds, 0, 86400, 0)
 		if level.VolumePercent != 0 {
-			clampInt(fmt.Sprintf("alarm.levels[%d].volume_percent", i), &level.VolumePercent, 1, 100, 100)
+			v.clampInt(fmt.Sprintf("alarm.levels[%d].volume_percent", i), &level.VolumePercent, 1, 100, 100)
 		}
 	}
-
-	return notes
 }
 
 // isHTTPS reports whether raw is a well-formed https:// URL. Anything else —

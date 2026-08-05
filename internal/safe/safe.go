@@ -138,30 +138,43 @@ func SuperviseRetry(ctx context.Context, name string, fn func(context.Context) e
 	backoff := restartBackoff
 
 	go func() {
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-			err, panicked := runOnce(ctx, name, fn)
-			if !panicked && err == nil {
-				return
-			}
-			// A cancellation that arrived mid-run is not a failure to retry.
-			if ctx.Err() != nil {
-				return
-			}
-			if panicked {
-				log.Warnf("Restarting %s in %v after a panic", name, backoff)
-			} else {
-				log.Warnf("Restarting %s in %v after an error: %v", name, backoff, err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(backoff):
-			}
+		for retryAfter(ctx, name, fn, backoff) {
 		}
 	}()
+}
+
+// retryAfter runs fn once and reports whether it is worth running again, having
+// already waited out the backoff if it is.
+//
+// Three ways to stop: the context ended before the run, fn finished its work
+// without failing, or the context ended while it was running or while the
+// backoff was being waited out.
+func retryAfter(ctx context.Context, name string, fn func(context.Context) error, backoff time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
+	err, panicked := runOnce(ctx, name, fn)
+	if !panicked && err == nil {
+		return false
+	}
+	// A cancellation that arrived mid-run is not a failure to retry.
+	if ctx.Err() != nil {
+		return false
+	}
+
+	if panicked {
+		log.Warnf("Restarting %s in %v after a panic", name, backoff)
+	} else {
+		log.Warnf("Restarting %s in %v after an error: %v", name, backoff, err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(backoff):
+		return true
+	}
 }
 
 // runOnce invokes fn, returning whatever error it produced and whether it

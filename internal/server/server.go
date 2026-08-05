@@ -528,31 +528,47 @@ func socketOrigins(r *http.Request, tls bool) string {
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual
 // interfaces commonly created by Docker, WSL, and similar tools.
 func getLocalIPs() []net.IP {
-	var ips []net.IP
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return []net.IP{net.ParseIP("127.0.0.1")}
 	}
+
+	var ips []net.IP
 	for _, iface := range ifaces {
-		// Skip down, loopback, and virtual/container interfaces.
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		if isVirtualInterface(iface.Name) {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			if ipNet, ok := addr.(*net.IPNet); ok && ipNet.IP.To4() != nil {
-				ips = append(ips, ipNet.IP)
-			}
-		}
+		ips = append(ips, reachableIPv4(iface)...)
 	}
 	if len(ips) == 0 {
-		ips = append(ips, net.ParseIP("127.0.0.1"))
+		// Nothing to print but the loopback. The QR code will only work on this
+		// machine, which is still better than a code with no address in it.
+		return []net.IP{net.ParseIP("127.0.0.1")}
+	}
+	return ips
+}
+
+// reachableIPv4 returns the addresses a phone could actually dial this
+// interface on.
+//
+// Nothing from an interface that is down or loopback, and nothing from the
+// bridges Docker, WSL and the VM tools leave behind: those addresses are
+// printed in the QR code, and a phone that scans one of them reaches a virtual
+// network it is not on.
+func reachableIPv4(iface net.Interface) []net.IP {
+	if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+		return nil
+	}
+	if isVirtualInterface(iface.Name) {
+		return nil
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil
+	}
+
+	var ips []net.IP
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && ipNet.IP.To4() != nil {
+			ips = append(ips, ipNet.IP)
+		}
 	}
 	return ips
 }
