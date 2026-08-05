@@ -1,6 +1,7 @@
 name: Bug report
 description: Something LeaveSafe does that it should not, or does not do that it should.
 labels: ["bug"]
+assignees: ["atakankizilyuce"]
 body:
   - type: markdown
     attributes:

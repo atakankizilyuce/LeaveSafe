@@ -1,6 +1,7 @@
 name: Feature request
 description: Something LeaveSafe should be able to do.
 labels: ["enhancement"]
+assignees: ["atakankizilyuce"]
 body:
   - type: markdown
     attributes:
