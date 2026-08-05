@@ -10,7 +10,7 @@ import { SettingsSheet } from './components/SettingsSheet';
 import { StateHeader } from './components/StateHeader';
 import { checkFingerprint, normalizeFingerprint } from './lib/fingerprint';
 import { captureAnchor } from './lib/geo';
-import { type ServerMessage, SYSTEM_NOTICE } from './lib/protocol';
+import { type SensorState, type ServerMessage, SYSTEM_NOTICE } from './lib/protocol';
 import { clearSession, loadSession, saveSession } from './lib/session';
 import { startSiren, stopSiren, warnDisconnected } from './lib/siren';
 import {
@@ -163,6 +163,236 @@ function sendPendingKey() {
     send({ type: 'auth', key });
 }
 
+/**
+ * Whether this message may be acted on at all.
+ *
+ * Nothing but the handshake is acted on until this connection has proved
+ * itself. The three that get through are the handshake: the greeting that
+ * carries the certificate, the refusal that answers a key we sent, and the
+ * acceptance — and that last one only if there was a key to accept.
+ *
+ * Everything past this point assumes a laptop on the other end. Before this
+ * guard existed, anything that could answer the phone's socket could open the
+ * panel, sound a spoofed alarm on the lock screen, and raise the PIN dialog to
+ * collect the code that guards disarming — all without knowing the pairing key,
+ * and without ever sending the greeting the fingerprint check reads.
+ *
+ * A refusal is only a refusal of something asked. Acted on unbidden, it was a
+ * way for anything that could answer this socket to make the phone throw its
+ * pairing away: on the resume path there is no token yet, so onAuthFail reaches
+ * clearSession and the stored key is gone. The owner is then unpaired from a
+ * laptop they are not standing next to, and the only way back is the QR code on
+ * its screen.
+ */
+function trusted(msg: ServerMessage): boolean {
+    if ((msg.type === 'auth_ok' || msg.type === 'auth_fail') && !authSent) return false;
+    return msg.type === 'hello' || msg.type === 'auth_fail' || msg.type === 'auth_ok' || sessionLive;
+}
+
+function onHello(msg: ServerMessage) {
+    clearHelloTimer();
+    serverFingerprint.value = msg.cert_fp ?? null;
+
+    const verdict = checkFingerprint(expectedFingerprint, msg.cert_fp);
+    fingerprintVerdict.value = verdict;
+
+    if (verdict === 'mismatch') {
+        // The code was printed for a different certificate. Whatever is on the
+        // other end of this socket, it is not the laptop the user scanned — so
+        // it does not get the key.
+        pendingKey = null;
+        pairing.value = false;
+        pairError.value =
+            'This is not the laptop your code came from: it presented a different ' +
+            'certificate. The pairing key was not sent. Scan the code again from the ' +
+            'laptop itself.';
+        closeTransport();
+        return;
+    }
+
+    sendPendingKey();
+}
+
+/**
+ * Takes the armed state the laptop reports on acceptance, along with when it
+ * started.
+ *
+ * The laptop's own clock is used so a page that was discarded and reopened
+ * resumes the counter instead of restarting it. An older laptop sends no time,
+ * and now is the only honest answer left.
+ */
+function applyArmedState(msg: ServerMessage) {
+    if (typeof msg.armed !== 'boolean') return;
+
+    armed.value = msg.armed;
+    if (!msg.armed) {
+        armedSince.value = null;
+    } else if (msg.armed_since) {
+        armedSince.value = msg.armed_since * 1000;
+    } else {
+        armedSince.value = Date.now();
+    }
+}
+
+function onAuthOk(msg: ServerMessage) {
+    sessionLive = true;
+    markVerified();
+    setToken(msg.token ?? null);
+    serverVersion.value = msg.version ?? null;
+    sensors.value = msg.sensors ?? [];
+    applyArmedState(msg);
+
+    if (activeKey) saveSession(activeKey, expectedFingerprint);
+    pairing.value = false;
+    pairError.value = null;
+    screen.value = 'panel';
+    link.value = 'live';
+    afterPairing();
+}
+
+function onAuthFail(msg: ServerMessage) {
+    pairing.value = false;
+    if (hasToken()) {
+        showToast(msg.reason ?? 'Refused');
+        return;
+    }
+
+    // The stored key no longer opens this laptop — rotated, or from a different
+    // one. Keeping it would retry forever.
+    clearSession();
+    const reason = msg.reason ?? 'That key was refused.';
+    const left = msg.remaining_attempts;
+    pairError.value = left ? `${reason} ${attemptsLeft(left)}` : reason;
+}
+
+/** Folds a status update's sensor states onto the list the panel is showing. */
+function applySensorStates(states: Record<string, SensorState>) {
+    sensors.value = sensors.value.map((s) => {
+        const next = states[s.name];
+        return next ? { ...s, enabled: next.enabled, status: next.status, failure: next.failure } : s;
+    });
+}
+
+function onStatus(msg: ServerMessage) {
+    if (typeof msg.armed === 'boolean') {
+        if (msg.armed && !armed.value) armedSince.value = Date.now();
+        if (!msg.armed) armedSince.value = null;
+        armed.value = msg.armed;
+    }
+    if (msg.sensor_states) applySensorStates(msg.sensor_states);
+    link.value = 'live';
+}
+
+function onAlert(msg: ServerMessage) {
+    if (!msg.alert) return;
+
+    appendLog({
+        message: msg.alert.message,
+        level: msg.alert.level,
+        sensor: msg.alert.sensor,
+        at: msg.ts ? msg.ts * 1000 : Date.now(),
+    });
+
+    // The laptop says things about itself on the same channel it reports
+    // intrusions on, under the reserved sensor name "system": a setting that
+    // needs a restart, a geolocation endpoint it refused, a sensor change it
+    // would not make while armed. Those are notices, and they were raising the
+    // full-screen alert instead — siren, vibration, lock-screen notification —
+    // so saving the settings sheet made the phone scream in the user's pocket
+    // while they were sitting next to the laptop. Worse, the overlay's other two
+    // answers are "pause this sensor" and "stop using this sensor", and there is
+    // no sensor called system to do either to.
+    if (msg.alert.sensor === SYSTEM_NOTICE) {
+        showToast(msg.alert.message);
+        return;
+    }
+
+    tripSensor(msg.alert.sensor);
+    alarm.value = { message: msg.alert.message, sensor: msg.alert.sensor };
+    startSiren(msg.alert.message);
+}
+
+function onAlarmActive(msg: ServerMessage) {
+    if (!msg.alert) return;
+
+    tripSensor(msg.alert.sensor);
+    alarm.value = {
+        message: msg.alert.message || 'Something touched your laptop.',
+        sensor: msg.alert.sensor,
+    };
+    startSiren(alarm.value.message);
+}
+
+/**
+ * The one place a message from the laptop turns into something the phone does.
+ *
+ * It lives outside the component on purpose: it reads nothing the component
+ * holds, and every branch below writes to a signal rather than to component
+ * state. Putting it inside would have tied the socket's lifetime to a render.
+ */
+function handle(msg: ServerMessage) {
+    if (!trusted(msg)) return;
+
+    switch (msg.type) {
+        case 'hello':
+            onHello(msg);
+            break;
+
+        case 'auth_ok':
+            onAuthOk(msg);
+            break;
+
+        case 'auth_fail':
+            onAuthFail(msg);
+            break;
+
+        case 'status':
+            onStatus(msg);
+            break;
+
+        case 'alert':
+            onAlert(msg);
+            break;
+
+        case 'alarm_active':
+            onAlarmActive(msg);
+            break;
+
+        case 'alarm_cleared':
+            // Someone else called it off — the laptop's terminal, or another
+            // paired phone. This one has no other way to find out.
+            alarm.value = null;
+            stopSiren();
+            break;
+
+        case 'config_data':
+            if (msg.config) config.value = msg.config;
+            break;
+
+        case 'location':
+            if (msg.location) position.value = msg.location;
+            break;
+
+        case 'update_available':
+            // Deliberately quiet: it marks the footer and nothing else. A laptop
+            // that needs upgrading is not an emergency, and the panel belongs to
+            // the sensors.
+            if (msg.update) updateAvailable.value = msg.update;
+            break;
+
+        case 'pin_required':
+            pinPrompt.value = true;
+            break;
+
+        case 'pong':
+            link.value = 'live';
+            break;
+
+        default:
+            break;
+    }
+}
+
 export function App() {
     const [counting, setCounting] = useState<number | null>(null);
     const [autoKey, setAutoKey] = useState('');
@@ -223,196 +453,6 @@ export function App() {
             window.setTimeout(() => pair(stored.key, 'websocket'), 100);
         }
     }, []);
-
-    function handle(msg: ServerMessage) {
-        // Nothing but the handshake is acted on until this connection has
-        // proved itself. The three that get through are the handshake: the
-        // greeting that carries the certificate, the refusal that answers a key
-        // we sent, and the acceptance — and that last one only if there was a
-        // key to accept.
-        //
-        // Everything after the switch assumes a laptop on the other end. Before
-        // this guard existed, anything that could answer the phone's socket
-        // could open the panel, sound a spoofed alarm on the lock screen, and
-        // raise the PIN dialog to collect the code that guards disarming — all
-        // without knowing the pairing key, and without ever sending the
-        // greeting the fingerprint check reads.
-        // A refusal is only a refusal of something asked. Acted on unbidden, it
-        // was a way for anything that could answer this socket to make the
-        // phone throw its pairing away: on the resume path there is no token
-        // yet, so the branch below reaches clearSession and the stored key is
-        // gone. The owner is then unpaired from a laptop they are not standing
-        // next to, and the only way back is the QR code on its screen.
-        if ((msg.type === 'auth_ok' || msg.type === 'auth_fail') && !authSent) return;
-        if (msg.type !== 'hello' && msg.type !== 'auth_fail' && msg.type !== 'auth_ok' && !sessionLive) {
-            return;
-        }
-
-        switch (msg.type) {
-            case 'hello': {
-                clearHelloTimer();
-                serverFingerprint.value = msg.cert_fp ?? null;
-
-                const verdict = checkFingerprint(expectedFingerprint, msg.cert_fp);
-                fingerprintVerdict.value = verdict;
-
-                if (verdict === 'mismatch') {
-                    // The code was printed for a different certificate. Whatever
-                    // is on the other end of this socket, it is not the laptop
-                    // the user scanned — so it does not get the key.
-                    pendingKey = null;
-                    pairing.value = false;
-                    pairError.value =
-                        'This is not the laptop your code came from: it presented a different ' +
-                        'certificate. The pairing key was not sent. Scan the code again from the ' +
-                        'laptop itself.';
-                    closeTransport();
-                    return;
-                }
-
-                sendPendingKey();
-                break;
-            }
-
-            case 'auth_ok':
-                sessionLive = true;
-                markVerified();
-                setToken(msg.token ?? null);
-                serverVersion.value = msg.version ?? null;
-                sensors.value = msg.sensors ?? [];
-                if (typeof msg.armed === 'boolean') {
-                    armed.value = msg.armed;
-                    // The laptop's own clock, so a page that was discarded and
-                    // reopened resumes the counter instead of restarting it. An
-                    // older laptop sends no time, and now is the only honest
-                    // answer left.
-                    if (!msg.armed) {
-                        armedSince.value = null;
-                    } else if (msg.armed_since) {
-                        armedSince.value = msg.armed_since * 1000;
-                    } else {
-                        armedSince.value = Date.now();
-                    }
-                }
-                if (activeKey) saveSession(activeKey, expectedFingerprint);
-                pairing.value = false;
-                pairError.value = null;
-                screen.value = 'panel';
-                link.value = 'live';
-                afterPairing();
-                break;
-
-            case 'auth_fail':
-                pairing.value = false;
-                if (!hasToken()) {
-                    // The stored key no longer opens this laptop — rotated, or
-                    // from a different one. Keeping it would retry forever.
-                    clearSession();
-                    const reason = msg.reason ?? 'That key was refused.';
-                    const left = msg.remaining_attempts;
-                    pairError.value = left ? `${reason} ${attemptsLeft(left)}` : reason;
-                } else {
-                    showToast(msg.reason ?? 'Refused');
-                }
-                break;
-
-            case 'status':
-                if (typeof msg.armed === 'boolean') {
-                    if (msg.armed && !armed.value) armedSince.value = Date.now();
-                    if (!msg.armed) armedSince.value = null;
-                    armed.value = msg.armed;
-                }
-                if (msg.sensor_states) {
-                    const states = msg.sensor_states;
-                    sensors.value = sensors.value.map((s) => {
-                        const next = states[s.name];
-                        return next
-                            ? {
-                                  ...s,
-                                  enabled: next.enabled,
-                                  status: next.status,
-                                  failure: next.failure,
-                              }
-                            : s;
-                    });
-                }
-                link.value = 'live';
-                break;
-
-            case 'alert':
-                if (msg.alert) {
-                    appendLog({
-                        message: msg.alert.message,
-                        level: msg.alert.level,
-                        sensor: msg.alert.sensor,
-                        at: msg.ts ? msg.ts * 1000 : Date.now(),
-                    });
-                    // The laptop says things about itself on the same channel it
-                    // reports intrusions on, under the reserved sensor name
-                    // "system": a setting that needs a restart, a geolocation
-                    // endpoint it refused, a sensor change it would not make
-                    // while armed. Those are notices, and they were raising the
-                    // full-screen alert instead — siren, vibration, lock-screen
-                    // notification — so saving the settings sheet made the phone
-                    // scream in the user's pocket while they were sitting next to
-                    // the laptop. Worse, the overlay's other two answers are
-                    // "pause this sensor" and "stop using this sensor", and there
-                    // is no sensor called system to do either to.
-                    if (msg.alert.sensor === SYSTEM_NOTICE) {
-                        showToast(msg.alert.message);
-                        break;
-                    }
-                    tripSensor(msg.alert.sensor);
-                    alarm.value = { message: msg.alert.message, sensor: msg.alert.sensor };
-                    startSiren(msg.alert.message);
-                }
-                break;
-
-            case 'alarm_active':
-                if (msg.alert) {
-                    tripSensor(msg.alert.sensor);
-                    alarm.value = {
-                        message: msg.alert.message || 'Something touched your laptop.',
-                        sensor: msg.alert.sensor,
-                    };
-                    startSiren(alarm.value.message);
-                }
-                break;
-
-            case 'alarm_cleared':
-                // Someone else called it off — the laptop's terminal, or another
-                // paired phone. This one has no other way to find out.
-                alarm.value = null;
-                stopSiren();
-                break;
-
-            case 'config_data':
-                if (msg.config) config.value = msg.config;
-                break;
-
-            case 'location':
-                if (msg.location) position.value = msg.location;
-                break;
-
-            case 'update_available':
-                // Deliberately quiet: it marks the footer and nothing else. A
-                // laptop that needs upgrading is not an emergency, and the panel
-                // belongs to the sensors.
-                if (msg.update) updateAvailable.value = msg.update;
-                break;
-
-            case 'pin_required':
-                pinPrompt.value = true;
-                break;
-
-            case 'pong':
-                link.value = 'live';
-                break;
-
-            default:
-                break;
-        }
-    }
 
     function pair(key: string, over: 'websocket' | 'bluetooth') {
         pairing.value = true;
