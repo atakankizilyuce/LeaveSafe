@@ -434,3 +434,7 @@ specs/
 # Snapshots and console dumps a browser-driving agent leaves behind while it
 # checks the phone UI. They describe one run, not the project.
 .playwright-mcp/
+
+# vitest writes the phone interface's coverage here; the report is uploaded
+# as a CI artifact rather than kept in the tree.
+web/coverage/
