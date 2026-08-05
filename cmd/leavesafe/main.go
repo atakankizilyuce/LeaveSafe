@@ -56,6 +56,13 @@ const eventLogFileName = "events.jsonl"
 // on screen.
 const clockFormat = "15:04:05"
 
+// clockTime writes a moment as the time of day alone. Everything the console
+// shows happened during the session in front of you, so the date would be the
+// same on every line.
+func clockTime(t time.Time) string {
+	return t.Format(clockFormat)
+}
+
 const (
 	cReset  = "\033[0m"
 	cBold   = "\033[1m"
@@ -405,6 +412,15 @@ func (w *logWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+// consoleLogFormatter is how log lines are stamped in the dashboard. It is its
+// own function so the choice can be asserted on without starting the program.
+func consoleLogFormatter() *log.TextFormatter {
+	return &log.TextFormatter{
+		TimestampFormat: clockFormat,
+		FullTimestamp:   true,
+	}
+}
+
 func main() {
 	devMode := flag.Bool("dev", false, "serve web assets from filesystem for live reload")
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -423,10 +439,7 @@ func main() {
 		os.Exit(runSubcommand(args))
 	}
 
-	log.SetFormatter(&log.TextFormatter{
-		TimestampFormat: clockFormat,
-		FullTimestamp:   true,
-	})
+	log.SetFormatter(consoleLogFormatter())
 
 	if !*headless {
 		maximizeConsole()
@@ -674,8 +687,9 @@ func main() {
 		safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, sb) })
 		// No terminal means no stdin to read commands from.
 		safe.Supervise(ctx, "console", func(c context.Context) {
-			runConsole(c, hub, sb, localAlarm, authMgr, installMethod, updateLedger,
-				srv, remoteCtl, cfg)
+			runConsole(c, os.Stdin, consoleDeps{hub: hub, sb: sb, localAlarm: localAlarm,
+				authMgr: authMgr, installMethod: installMethod, updateLedger: updateLedger,
+				srv: srv, remoteCtl: remoteCtl, cfg: cfg})
 		})
 	}
 
@@ -1217,11 +1231,31 @@ func parseModeChoice(typed string) (want, ok bool) {
 	}
 }
 
-func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *alarm.Alarm,
-	authMgr *auth.Manager, installMethod update.Method, updateLedger *update.Ledger,
-	srv *server.Server, remoteCtl *remote.Controller, cfg *config.Config,
-) {
-	scanner := bufio.NewScanner(os.Stdin)
+// consoleDeps is everything the interactive command loop acts on. It is a
+// struct rather than nine parameters so that a test can build only the two or
+// three a given command actually touches, and leave the rest zero.
+type consoleDeps struct {
+	hub           *ws.Hub
+	sb            *statusBar
+	localAlarm    *alarm.Alarm
+	authMgr       *auth.Manager
+	installMethod update.Method
+	updateLedger  *update.Ledger
+	srv           *server.Server
+	remoteCtl     *remote.Controller
+	cfg           *config.Config
+}
+
+// runConsole reads typed commands until the reader is exhausted. The reader is
+// a parameter rather than os.Stdin directly so the loop can be driven from a
+// test; the running program always passes os.Stdin.
+func runConsole(ctx context.Context, in io.Reader, d consoleDeps) {
+	hub, sb, localAlarm := d.hub, d.sb, d.localAlarm
+	authMgr, updateLedger := d.authMgr, d.updateLedger
+	srv, remoteCtl, cfg := d.srv, d.remoteCtl, d.cfg
+	installMethod := d.installMethod
+
+	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		switch {
@@ -1247,7 +1281,7 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 
 		case line == "arm":
 			if hub.IsArmed() {
-				sb.writeLine("  Already armed since %s", hub.ArmedAt().Format(clockFormat))
+				sb.writeLine("  Already armed since %s", clockTime(hub.ArmedAt()))
 				break
 			}
 			hub.Arm()
@@ -1275,7 +1309,7 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 		case line == "status":
 			if hub.IsArmed() {
 				sb.writeLine("  %sARMED%s since %s (%s ago)", cGreen, cReset,
-					hub.ArmedAt().Format(clockFormat),
+					clockTime(hub.ArmedAt()),
 					time.Since(hub.ArmedAt()).Round(time.Second))
 			} else {
 				sb.writeLine("  %sDISARMED%s", cDim, cReset)
@@ -1303,7 +1337,7 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 				sb.writeLine("  No events recorded yet")
 			} else {
 				for _, ev := range evts {
-					ts := ev.Timestamp.Format(clockFormat)
+					ts := clockTime(ev.Timestamp)
 					if ev.Sensor != "" {
 						sb.writeLine("  %s [%s] %s — %s", ts, ev.Type, ev.Sensor, ev.Message)
 					} else {
