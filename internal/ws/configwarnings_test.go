@@ -172,7 +172,7 @@ func TestAPlainHTTPGeolocationEndpointIsRejectedWithAWarning(t *testing.T) {
 	if !rec.sawWarning("https://") {
 		t.Errorf("a plain-HTTP endpoint was not reported as rejected; alerts were %q", rec.warnings())
 	}
-	if got := geolocateURL(hub); got == plain {
+	if geolocateURL(hub) == plain {
 		t.Error("the plain-HTTP endpoint was stored despite being rejected")
 	}
 }
