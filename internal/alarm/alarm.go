@@ -16,6 +16,20 @@ const (
 	switchMs = 400 // frequency alternation interval in ms
 )
 
+// The audio backends reach the operating system: COM vtables on Windows, a raw
+// C pointer on Linux, a helper process on macOS. Calling them from a test would
+// mean a machine that genuinely shrieks at full volume every time the suite
+// runs, so every call goes through these and a test swaps them.
+//
+// Nothing in the running program reassigns them. They are variables only so the
+// tests can see what Start and Stop asked the system to do.
+var (
+	maxVolumeFn     = maxVolume
+	setVolumeFn     = setVolume
+	restoreVolumeFn = restoreVolume
+	beepToneFn      = beepTone
+)
+
 // clampLevel keeps a volume scalar inside the 0..1 range every platform's audio
 // API expects. Out-of-range values are rejected by some backends and silently
 // wrapped by others, so they are clamped once here rather than trusted.
@@ -90,7 +104,7 @@ func (a *Alarm) startFullSiren(stop chan struct{}) {
 	safe.Go("alarm-siren", func() { a.sirenLoop(stop) })
 
 	log.Info("Forcing system volume to maximum")
-	saved, err := maxVolume()
+	saved, err := maxVolumeFn()
 	if err != nil {
 		log.Warnf("Volume control error: %v", err)
 		return
@@ -130,7 +144,7 @@ func (a *Alarm) escalationLoop(stop chan struct{}) {
 				vol = 50
 			}
 			log.Infof("Alarm escalation: medium volume (%d%%)", vol)
-			saved, err := setVolume(float64(vol) / 100.0)
+			saved, err := setVolumeFn(float64(vol) / 100.0)
 			if err != nil {
 				log.Warnf("Volume control error: %v", err)
 			} else {
@@ -145,7 +159,7 @@ func (a *Alarm) escalationLoop(stop chan struct{}) {
 
 		case "full_volume":
 			log.Info("Alarm escalation: full volume")
-			saved, err := maxVolume()
+			saved, err := maxVolumeFn()
 			if err != nil {
 				log.Warnf("Volume control error: %v", err)
 			} else {
@@ -178,7 +192,7 @@ func (a *Alarm) Stop() {
 	a.mu.Unlock()
 
 	if shouldRestore {
-		if err := restoreVolume(saved); err != nil {
+		if err := restoreVolumeFn(saved); err != nil {
 			log.Warnf("Volume restore error: %v", err)
 		}
 	}
@@ -204,7 +218,7 @@ func (a *Alarm) sirenLoop(stop chan struct{}) {
 				freq = freqHigh
 			}
 			high = !high
-			beepTone(freq, switchMs, stop)
+			beepToneFn(freq, switchMs, stop)
 		}
 	}
 }
