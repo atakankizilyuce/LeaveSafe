@@ -49,14 +49,7 @@ func armedPhone(t *testing.T, opts harness.Options) (*harness.App, *harness.Phon
 // waitForArmedState reads status broadcasts until the armed flag matches want.
 func waitForArmedState(t *testing.T, phone *harness.Phone, want bool) {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		status := phone.Expect(ws.MsgTypeStatus, 10*time.Second)
-		if status.Armed != nil && *status.Armed == want {
-			return
-		}
-	}
-	t.Fatalf("system never reported armed=%v", want)
+	phone.WaitUntilArmed(want)
 }
 
 // TestAlarm_TriggerRaisesAlarmWhenArmed proves an armed system escalates a

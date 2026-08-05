@@ -80,20 +80,43 @@ func (p *Phone) Send(msg ws.ClientMessage) {
 // Expect waits for the next message of the given type, discarding others.
 func (p *Phone) Expect(msgType string, within time.Duration) ws.ServerMessage {
 	p.t.Helper()
+	msg, err := p.await(msgType, within)
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	return msg
+}
+
+// Await waits for a message of this type and reports whether it arrived.
+//
+// It is Expect without the verdict. Expect ends the test the moment its own
+// window closes, so a caller looping around it never got a second attempt: a
+// loop with a longer deadline outside an Expect with a shorter one is really
+// just the shorter one, and every wait built that way was quietly a single
+// attempt. A caller that has something else to try needs the answer instead.
+func (p *Phone) Await(msgType string, within time.Duration) (ws.ServerMessage, bool) {
+	p.t.Helper()
+	msg, err := p.await(msgType, within)
+	return msg, err == nil
+}
+
+func (p *Phone) await(msgType string, within time.Duration) (ws.ServerMessage, error) {
 	deadline := time.After(within)
 	var seen []string
 	for {
 		select {
 		case msg, ok := <-p.inbox:
 			if !ok {
-				p.t.Fatalf("connection closed while waiting for %q (saw %v)", msgType, seen)
+				return ws.ServerMessage{}, fmt.Errorf(
+					"connection closed while waiting for %q (saw %v)", msgType, seen)
 			}
 			if msg.Type == msgType {
-				return msg
+				return msg, nil
 			}
 			seen = append(seen, msg.Type)
 		case <-deadline:
-			p.t.Fatalf("timed out after %s waiting for %q (saw %v)", within, msgType, seen)
+			return ws.ServerMessage{}, fmt.Errorf(
+				"timed out after %s waiting for %q (saw %v)", within, msgType, seen)
 		}
 	}
 }
@@ -142,4 +165,37 @@ func (p *Phone) Authenticate(key string) ws.ServerMessage {
 func (p *Phone) Close() {
 	p.cancel()
 	_ = p.conn.Close(websocket.StatusNormalClosure, "")
+}
+
+// armTimeout is how long the whole wait for an armed status may take. Generous
+// on purpose: a hosted runner starting the real binary on a cold machine is
+// slow in a way that says nothing about the code.
+const armTimeout = 30 * time.Second
+
+// WaitUntilArmed reads status broadcasts until the armed flag matches want, and
+// fails the test if it never does.
+//
+// Configure broadcasts its own status before arm does, so the first status to
+// arrive is not the one worth reading — which is why this is a loop rather than
+// a single Expect. It is also why the loop has to be able to outlive one
+// attempt: written around Expect, the outer deadline never applied, and a
+// runner slow enough to take longer than the inner window produced a failed
+// build rather than a slower one.
+func (p *Phone) WaitUntilArmed(want bool) {
+	p.t.Helper()
+	deadline := time.Now().Add(armTimeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		status, ok := p.Await(ws.MsgTypeStatus, remaining)
+		if !ok {
+			break
+		}
+		if status.Armed != nil && *status.Armed == want {
+			return
+		}
+	}
+	p.t.Fatalf("the system never reported armed=%v within %s", want, armTimeout)
 }

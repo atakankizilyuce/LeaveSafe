@@ -50,15 +50,8 @@ func armWith(t *testing.T, sensor string) *harness.Phone {
 	})
 	phone.Send(ws.ClientMessage{Type: ws.MsgTypeArm})
 
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		status := phone.Expect(ws.MsgTypeStatus, 10*time.Second)
-		if status.Armed != nil && *status.Armed {
-			return phone
-		}
-	}
-	t.Fatal("system never reported itself armed")
-	return nil
+	phone.WaitUntilArmed(true)
+	return phone
 }
 
 // expectSensorAlert waits for an alert naming the given sensor and returns it.
