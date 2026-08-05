@@ -243,10 +243,36 @@ jobs:
             exit 1
           fi
 
+      # A runner whose apt-daily timer is midway through its own upgrade pass
+      # holds the dpkg lock, and apt waits for that lock with no deadline. One
+      # run sat here for 23 minutes while three concurrent jobs installed the
+      # same packages in 20 seconds each, and only cleared with 5 minutes left
+      # of the job timeout — so this was minutes away from failing the whole
+      # run with a log that explained nothing. Stopping the timers removes the
+      # contention, -q rather than -qq keeps apt's lock-wait lines in the log
+      # if it happens again, and the deadlines turn a poisoned runner into a
+      # quick retry instead of a silent hang that eats the entire job budget.
       - name: Install QEMU and cloud-image tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils
+          sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer || true
+          sudo systemctl stop apt-daily.service apt-daily-upgrade.service || true
+
+          for attempt in 1 2; do
+            if sudo -E timeout 120 apt-get update -q \
+              && sudo -E timeout 300 apt-get install -y -q \
+                qemu-system-x86 qemu-utils cloud-image-utils; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt stalled or failed; the runner's"
+            echo "::warning::package state is being repaired before the next try."
+            sudo dpkg --configure -a || true
+          done
+
+          echo "::error::apt could not install the QEMU tooling in two attempts."
+          echo "::error::This is a runner or mirror problem, not a test failure."
+          exit 1
 
       - name: Cache the Ubuntu cloud image
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
