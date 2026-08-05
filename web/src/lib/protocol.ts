@@ -37,6 +37,14 @@ export interface AlertData {
     message: string;
 }
 
+/**
+ * The sensor name the laptop uses when an alert is about itself rather than
+ * about something touching it — a setting that needs a restart, a change it
+ * refused. No such sensor exists, which is the point: it marks the message as a
+ * notice, not an intrusion.
+ */
+export const SYSTEM_NOTICE = 'system';
+
 export interface LocationFix {
     lat: number;
     lon: number;

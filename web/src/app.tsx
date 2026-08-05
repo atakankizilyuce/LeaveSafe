@@ -10,7 +10,7 @@ import { SettingsSheet } from './components/SettingsSheet';
 import { StateHeader } from './components/StateHeader';
 import { checkFingerprint, normalizeFingerprint } from './lib/fingerprint';
 import { captureAnchor } from './lib/geo';
-import type { ServerMessage } from './lib/protocol';
+import { type ServerMessage, SYSTEM_NOTICE } from './lib/protocol';
 import { clearSession, loadSession, saveSession } from './lib/session';
 import { startSiren, stopSiren, warnDisconnected } from './lib/siren';
 import {
@@ -310,13 +310,28 @@ export function App() {
 
             case 'alert':
                 if (msg.alert) {
-                    tripSensor(msg.alert.sensor);
                     appendLog({
                         message: msg.alert.message,
                         level: msg.alert.level,
                         sensor: msg.alert.sensor,
                         at: msg.ts ? msg.ts * 1000 : Date.now(),
                     });
+                    // The laptop says things about itself on the same channel it
+                    // reports intrusions on, under the reserved sensor name
+                    // "system": a setting that needs a restart, a geolocation
+                    // endpoint it refused, a sensor change it would not make
+                    // while armed. Those are notices, and they were raising the
+                    // full-screen alert instead — siren, vibration, lock-screen
+                    // notification — so saving the settings sheet made the phone
+                    // scream in the user's pocket while they were sitting next to
+                    // the laptop. Worse, the overlay's other two answers are
+                    // "pause this sensor" and "stop using this sensor", and there
+                    // is no sensor called system to do either to.
+                    if (msg.alert.sensor === SYSTEM_NOTICE) {
+                        showToast(msg.alert.message);
+                        break;
+                    }
+                    tripSensor(msg.alert.sensor);
                     alarm.value = { message: msg.alert.message, sensor: msg.alert.sensor };
                     startSiren(msg.alert.message);
                 }
