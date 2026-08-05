@@ -50,6 +50,12 @@ const (
 // eventLogFileName is the security event history kept in the config directory.
 const eventLogFileName = "events.jsonl"
 
+// clockFormat is how a time of day is written wherever one is shown to the
+// person watching: the log timestamps, the armed-since line, the event list.
+// The date is deliberately absent — everything here happened during the session
+// on screen.
+const clockFormat = "15:04:05"
+
 const (
 	cReset  = "\033[0m"
 	cBold   = "\033[1m"
@@ -418,7 +424,7 @@ func main() {
 	}
 
 	log.SetFormatter(&log.TextFormatter{
-		TimestampFormat: "15:04:05",
+		TimestampFormat: clockFormat,
 		FullTimestamp:   true,
 	})
 
@@ -1241,7 +1247,7 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 
 		case line == "arm":
 			if hub.IsArmed() {
-				sb.writeLine("  Already armed since %s", hub.ArmedAt().Format("15:04:05"))
+				sb.writeLine("  Already armed since %s", hub.ArmedAt().Format(clockFormat))
 				break
 			}
 			hub.Arm()
@@ -1269,7 +1275,7 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 		case line == "status":
 			if hub.IsArmed() {
 				sb.writeLine("  %sARMED%s since %s (%s ago)", cGreen, cReset,
-					hub.ArmedAt().Format("15:04:05"),
+					hub.ArmedAt().Format(clockFormat),
 					time.Since(hub.ArmedAt()).Round(time.Second))
 			} else {
 				sb.writeLine("  %sDISARMED%s", cDim, cReset)
@@ -1297,7 +1303,7 @@ func runConsole(ctx context.Context, hub *ws.Hub, sb *statusBar, localAlarm *ala
 				sb.writeLine("  No events recorded yet")
 			} else {
 				for _, ev := range evts {
-					ts := ev.Timestamp.Format("15:04:05")
+					ts := ev.Timestamp.Format(clockFormat)
 					if ev.Sensor != "" {
 						sb.writeLine("  %s [%s] %s — %s", ts, ev.Type, ev.Sensor, ev.Message)
 					} else {
