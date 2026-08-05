@@ -150,62 +150,97 @@ func (a *Alarm) startFullSiren(stop chan struct{}) {
 
 func (a *Alarm) escalationLoop(stop chan struct{}) {
 	for _, level := range a.alarmCfg.Levels {
-		if level.DelaySeconds > 0 {
-			select {
-			case <-stop:
-				return
-			case <-time.After(time.Duration(level.DelaySeconds) * time.Second):
-			}
-		}
-
-		// Check if alarm was stopped during the delay
-		a.mu.Lock()
-		if !a.playing {
-			a.mu.Unlock()
+		if !a.waitForLevel(level, stop) {
 			return
 		}
-		a.mu.Unlock()
+		a.applyLevel(level, stop)
+	}
+}
 
-		switch level.Action {
-		case "notify_phone_only":
-			log.Info("Alarm escalation: phone notification only")
-			// No local sound - the hub already sent a WebSocket alert
-
-		case "medium_volume":
-			vol := level.VolumePercent
-			if vol <= 0 {
-				vol = 50
-			}
-			log.Infof("Alarm escalation: medium volume (%d%%)", vol)
-			saved, err := setVolumeFn(float64(vol) / 100.0)
-			if err != nil {
-				log.Warnf("Volume control error: %v", err)
-			} else {
-				a.mu.Lock()
-				if !a.volumeSaved {
-					a.savedVolume = saved
-					a.volumeSaved = true
-				}
-				a.mu.Unlock()
-			}
-			a.spawn("alarm-siren", func() { a.sirenLoop(stop) })
-
-		case "full_volume":
-			log.Info("Alarm escalation: full volume")
-			saved, err := maxVolumeFn()
-			if err != nil {
-				log.Warnf("Volume control error: %v", err)
-			} else {
-				a.mu.Lock()
-				if !a.volumeSaved {
-					a.savedVolume = saved
-					a.volumeSaved = true
-				}
-				a.mu.Unlock()
-			}
-			// sirenLoop may already be running from medium_volume; that's OK,
-			// the volume is now at max so the existing siren sounds louder.
+// waitForLevel holds off until this step of the chain is due, and reports
+// whether the alarm is still sounding when it is.
+//
+// Both halves are needed. The wait watches the stop channel so a dismissal
+// during a thirty-second delay does not have to be waited out; the check that
+// follows catches a dismissal that landed while the timer was already firing.
+func (a *Alarm) waitForLevel(level config.AlarmLevel, stop chan struct{}) bool {
+	if level.DelaySeconds > 0 {
+		select {
+		case <-stop:
+			return false
+		case <-time.After(time.Duration(level.DelaySeconds) * time.Second):
 		}
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.playing
+}
+
+// applyLevel does what one step of the escalation chain asks for. An action this
+// build does not know is ignored rather than treated as an error: config.Validate
+// has already had its say, and an alarm mid-escalation is the wrong place to
+// start refusing things.
+func (a *Alarm) applyLevel(level config.AlarmLevel, stop chan struct{}) {
+	switch level.Action {
+	case "notify_phone_only":
+		log.Info("Alarm escalation: phone notification only")
+		// No local sound - the hub already sent a WebSocket alert
+
+	case "medium_volume":
+		a.escalateToMediumVolume(level, stop)
+
+	case "full_volume":
+		a.escalateToFullVolume()
+	}
+}
+
+func (a *Alarm) escalateToMediumVolume(level config.AlarmLevel, stop chan struct{}) {
+	vol := level.VolumePercent
+	if vol <= 0 {
+		vol = 50
+	}
+	log.Infof("Alarm escalation: medium volume (%d%%)", vol)
+
+	saved, err := setVolumeFn(float64(vol) / 100.0)
+	a.rememberVolume(saved, err)
+
+	a.spawn("alarm-siren", func() { a.sirenLoop(stop) })
+}
+
+func (a *Alarm) escalateToFullVolume() {
+	log.Info("Alarm escalation: full volume")
+
+	saved, err := maxVolumeFn()
+	a.rememberVolume(saved, err)
+
+	// sirenLoop may already be running from medium_volume; that's OK,
+	// the volume is now at max so the existing siren sounds louder.
+}
+
+// rememberVolume records what the volume was before this step raised it, so Stop
+// can put it back.
+//
+// Only the first step through gets to record it. The chain raises the volume
+// more than once — medium and then full — and each backend hands back what the
+// volume was immediately before that call, so a later step would overwrite the
+// only reading taken before the alarm touched anything. Restoring would then
+// leave the machine at the alarm's own medium volume rather than the owner's.
+//
+// A backend that fails costs the restore, not the escalation: the siren is the
+// point, and refusing to get louder because the volume could not be read would
+// trade the whole alarm for a tidier exit.
+func (a *Alarm) rememberVolume(saved float64, err error) {
+	if err != nil {
+		log.Warnf("Volume control error: %v", err)
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.volumeSaved {
+		a.savedVolume = saved
+		a.volumeSaved = true
 	}
 }
 
