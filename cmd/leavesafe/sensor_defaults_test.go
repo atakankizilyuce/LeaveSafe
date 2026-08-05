@@ -49,7 +49,7 @@ func TestASensorTurnedOffStaysOff(t *testing.T) {
 	}
 }
 
-// A config that names only the sensors it wants on is still honoured for those
+// A config that names only the sensors it wants on is still honored for those
 // it names true, and says nothing about the rest.
 func TestAnExplicitlyEnabledSensorStaysOn(t *testing.T) {
 	cfg := config.Default()
