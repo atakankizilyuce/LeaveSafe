@@ -333,7 +333,7 @@ func TestOnlyReachableInterfacesGoIntoTheCode(t *testing.T) {
 		{"a VirtualBox host adapter", net.Interface{Name: "vboxnet0", Flags: net.FlagUp}},
 		// An interface the operating system will not describe is not one a
 		// phone can be sent to either.
-		{"an interface with no addresses to read", net.Interface{Index: 1 << 20, Name: "ghost0", Flags: net.FlagUp}},
+		{"an interface the system will not describe", net.Interface{Index: 1 << 20, Name: "ghost0", Flags: net.FlagUp}},
 	}
 
 	for _, tt := range tests {

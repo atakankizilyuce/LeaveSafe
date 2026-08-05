@@ -95,6 +95,29 @@ func TestParseIWScan_AssociatedSuffix(t *testing.T) {
 	}
 }
 
+// A scan line whose address does not survive parsing is dropped rather than
+// recorded. These addresses are sent to a geolocation service to be turned into
+// a position, so a truncated line kept as an access point is a made-up network
+// weighing in on where the laptop is.
+func TestParseIWScan_DropsANetworkWithoutAUsableAddress(t *testing.T) {
+	raw := "BSS not-an-address(on wlan0)\n\tsignal: -45.00 dBm\n" +
+		"BSS 3c:7a:8a:ff:0e:01(on wlan0)\n\tsignal: -50.00 dBm\n"
+
+	aps := parseIWScan(raw)
+
+	if len(aps) != 1 {
+		t.Fatalf("parsed %d access points, want only the one with a real address: %+v", len(aps), aps)
+	}
+	if aps[0].BSSID != "3c:7a:8a:ff:0e:01" {
+		t.Errorf("BSSID = %q, want the network that did parse", aps[0].BSSID)
+	}
+	// The signal lines under the dropped network must not be attached to
+	// anything either — least of all to the network that follows it.
+	if aps[0].SignalDBM != -50 {
+		t.Errorf("signal = %d dBm, want -50 from its own block", aps[0].SignalDBM)
+	}
+}
+
 func TestLooksLikeBSSID(t *testing.T) {
 	tests := []struct {
 		in   string
