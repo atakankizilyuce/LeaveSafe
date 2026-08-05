@@ -3,11 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -24,12 +22,10 @@ import (
 
 	"github.com/leavesafe/leavesafe/internal/alarm"
 	"github.com/leavesafe/leavesafe/internal/auth"
-	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
-	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/qr"
 	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
@@ -481,358 +477,75 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	cfg, err := config.Load()
+	cfg := loadConfig()
+	chooseConnectionMode(cfg, *headless)
+
+	a, err := startApp(appOptions{
+		cfg:      cfg,
+		headless: *headless,
+		devMode:  *devMode,
+		out:      os.Stdout,
+		in:       os.Stdin,
+	})
 	if err != nil {
-		log.Warnf("Failed to load config, using defaults: %v", err)
+		log.Fatalf("%v", err)
 	}
-
-	// A hand-edited config is the normal way to change most of these settings,
-	// and a typo should not produce a monitor that never heartbeats.
-	for _, note := range cfg.Validate() {
-		log.Warnf("Config: %s", note)
-	}
-
-	// The connection mode is asked on every interactive start, with the saved
-	// value as the default, so a user who changed it from their phone sees what
-	// is in force and can change it back without hunting for the setting.
-	//
-	// A headless start has nobody to answer and blocking on stdin there would
-	// hang the service forever, so it takes what is stored. Every autostart
-	// entry this program writes passes -headless, so no unattended start can
-	// reach the prompt.
-	if *headless {
-		if cfg.RemoteAccess == nil {
-			local := false
-			cfg.RemoteAccess = &local
-			if err := config.Save(cfg); err != nil {
-				log.Warnf("Failed to save config: %v", err)
-			}
-		}
-		log.Infof("Connection mode: %s (from config, no terminal to ask)",
-			connectionModeName(*cfg.RemoteAccess))
-	} else {
-		// Language first, and only once. It decides how the next question is
-		// worded, so there is no order in which it could come second.
-		promptRemoteAccess(cfg, ensureLanguage(cfg))
-	}
-
-	// Migrate a cleartext PIN left by an older version: hash it and rewrite the
-	// config so the digits themselves no longer live on disk.
-	if cfg.PinProtection.Pin != "" {
-		if hash, err := auth.HashPin(cfg.PinProtection.Pin); err != nil {
-			log.Warnf("Failed to hash stored PIN: %v", err)
-		} else {
-			cfg.PinProtection.PinHash = hash
-			cfg.PinProtection.Pin = ""
-			if err := config.Save(cfg); err != nil {
-				log.Warnf("Failed to save config after PIN migration: %v", err)
-			}
-		}
-	}
-
-	remoteEnabled := cfg.RemoteAccess != nil && *cfg.RemoteAccess
-
-	authOpts := auth.Options{
-		MaxSessions:   cfg.MaxSessions,
-		MaxAttempts:   cfg.MaxAuthAttempts,
-		LockoutPeriod: time.Duration(cfg.LockoutSeconds) * time.Second,
-		SessionTTL:    time.Duration(cfg.SessionTTLMinutes) * time.Minute,
-		SessionIdle:   time.Duration(cfg.SessionIdleMinutes) * time.Minute,
-	}
-
-	// A headless start has no screen to show a QR code on, so a freshly
-	// generated key would be a secret nobody could read — and a phone paired
-	// before the reboot would be locked out by a key it never saw. The
-	// persisted key is what makes the pairing survive the restart.
-	keyPath := ""
-	if *headless {
-		keyPath = filepath.Join(config.ConfigDir(), auth.KeyFileName)
-		persisted, err := auth.LoadOrCreateKeyFile(keyPath)
-		if err != nil {
-			log.Fatalf("Failed to prepare the stored pairing key: %v", err)
-		}
-		authOpts.PairingKey = persisted
-	}
-
-	authMgr, err := auth.NewManagerWithOptions(authOpts)
-	if err != nil {
-		log.Fatalf("Failed to initialize auth: %v", err)
-	}
-
-	sensorMgr := monitor.NewManager()
-	registerSensors(sensorMgr, cfg)
-
-	hub := ws.NewHub(authMgr, sensorMgr, version)
-	hub.SetConfig(cfg)
-	hub.SetTimings(
-		time.Duration(cfg.HeartbeatSeconds)*time.Second,
-		time.Duration(cfg.DisconnectGraceSeconds)*time.Second,
-	)
-
-	evLogPath := filepath.Join(config.ConfigDir(), eventLogFileName)
-	if err := os.MkdirAll(config.ConfigDir(), 0o700); err != nil {
-		log.Warnf("Failed to create config dir: %v", err)
-	}
-	if evLog, err := eventlog.New(evLogPath); err != nil {
-		log.Warnf("Failed to open event log: %v", err)
-	} else {
-		hub.SetEventLogger(evLog)
-		defer evLog.Close()
-	}
-
-	// Read what the previous run left behind before anything can overwrite it.
-	// If that run ended while armed, the machine has been unwatched ever since
-	// and the user is about to be told so.
-	stateStore := state.NewStore(config.ConfigDir(), version)
-	prevState, prevStateErr := stateStore.Load()
-	hub.SetStateStore(stateStore)
-
-	// The terminal log scrolls away and the window eventually closes. The file
-	// is what is left to answer "why did nothing happen last Tuesday".
-	logHook, err := newFileHook(config.ConfigDir())
-	if err != nil {
-		log.Warnf("Failed to open the log file, logging to the terminal only: %v", err)
-	} else {
-		log.AddHook(logHook)
-		defer logHook.Close()
-	}
-
-	port := cfg.Port
-	if v := os.Getenv("PORT"); v != "" {
-		parsed, err := strconv.Atoi(v)
-		switch {
-		case err != nil:
-			// Silently falling back used to mean the server came up on a port
-			// the user did not ask for, with a QR code they would scan and
-			// wonder about. Say what happened instead.
-			log.Warnf("Ignoring PORT=%q: not a number. Using port %d from the config.", v, port)
-		case parsed < 0 || parsed > 65535:
-			log.Warnf("Ignoring PORT=%d: outside the valid range 0-65535. Using port %d from the config.", parsed, port)
-		default:
-			port = parsed
-		}
-	}
-
-	// The local listener is plain HTTP and stays that way whether remote access
-	// is on or off. It opens once here and is never closed again, which is what
-	// lets the phone that turns remote access on stay connected while it
-	// happens — remote access is a second listener rather than a different mode
-	// for this one.
-	srv := server.New(server.Config{Hub: hub, Port: port, DevMode: *devMode})
-	if err := srv.Listen(); err != nil {
-		log.Fatalf("Failed to bind port: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	remoteCtl := remote.NewController(srv, config.ConfigDir(), cfg.RemotePort, remote.Deps{
-		Cert: server.GenerateOrLoadCert,
-		OpenPort: func(p int) (remote.PortMapping, error) {
-			return network.OpenPort(p)
-		},
-		PublicIP: network.GetPublicIP,
-	})
-	if remoteEnabled {
-		if st := remoteCtl.Enable(ctx); st.Reason != "" {
-			log.Warn(st.Reason)
-		}
-	}
-	remoteState := remoteCtl.State()
-	certFP := remoteState.CertFP
-	// Announced to every connecting client, so a phone that arrived by QR code
-	// can check it reached the server the code was printed for before it offers
-	// the pairing key.
-	hub.SetCertFingerprint(certFP)
-	hub.SetRemoteState(remoteState)
-
-	var sb *statusBar
-	if *headless {
-		sb = newHeadlessStatusBar(hub, sensorMgr, authMgr.PairingKey(), authMgr.RawPairingKey(),
-			reachableURLs(srv, remoteState), certFP, keyPath)
-		logHeadlessStartup(sb, srv, certFP)
-	} else {
-		sb = buildDashboard(os.Stdout, srv, authMgr, hub, sensorMgr, remoteState)
-		// The dashboard owns the terminal, so log lines have to be routed
-		// through it to land inside its scrolling region rather than on top of
-		// the QR code. Headless has no such constraint.
-		log.SetOutput(&logWriter{sb: sb})
-	}
-
-	// A recovered panic is still a bug, and one that happened while the machine
-	// was supposed to be watching itself. safe already logged the stack; this
-	// puts it in the event history next to arm and disarm, and on the dashboard
-	// where the user will actually see it.
-	safe.SetPanicHandler(func(name string, value any, _ []byte) {
-		if el := hub.EventLogger(); el != nil {
-			el.Log(eventlog.Event{
-				Type:    eventlog.EventPanic,
-				Sensor:  name,
-				Message: fmt.Sprintf("Recovered from a panic in %s: %v", name, value),
-			})
-		}
-		sb.writeLine("  %s[BUG]%s Recovered from a panic in %s: %v — please report this at %s",
-			cRed, cReset, name, value, issuesURL)
-	})
-
-	localAlarm := alarm.New(cfg.Alarm)
-
-	hub.SetPinProtection(cfg.PinProtection.Enabled, cfg.PinProtection.PinHash)
-	hub.SetAutoArmOnLock(cfg.AutoArmOnLock)
-	if cfg.AutoArmOnLock {
-		sensorMgr.Enable("screen")
-		sensorMgr.StartEnabled()
-		log.Info("Auto-arm on screen lock enabled — screen sensor started")
-	}
-
-	reportInterruptedMonitoring(sb, hub, stateStore, prevState, prevStateErr, cfg.RestoreArmedState)
-
-	// How this copy was installed decides what the user is told to run. Resolved
-	// once: the binary does not move while it is running.
-	installMethod := update.DetectSelf()
-	updateLedger := update.NewLedger(config.ConfigDir())
-
-	hub.SetAlarmTriggerCallback(func() {
-		localAlarm.Start()
-	})
-	hub.SetAlarmDismissCallback(func() {
-		localAlarm.Stop()
-	})
-	hub.SetAllDisconnectedCallback(func() {
-		log.Warn("Every phone disconnected while armed — monitoring continues")
-		sb.writeLine("  %s[LINK]%s No phone is connected. Monitoring continues; "+
-			"an alert may not reach you until one reconnects.", cYellow, cReset)
-	})
-	hub.SetClientChangeCallback(func(_ int, _ bool) {
-		sb.refresh()
-	})
-
-	hub.SetLocationTracker(ctx, buildLocationTracker(cfg))
-
-	// Which sensors can work here is reported once, in the background, because
-	// finding out can be slow and nothing about serving should wait on it.
-	safe.Go("sensor-availability", func() { logSensorAvailability(sensorMgr) })
-
-	// Every long-lived loop is supervised. A panic in any one of them used to
-	// take the whole process down, which for an armed machine means the user
-	// walks back to a laptop that stopped watching itself and never said so.
-	safe.Supervise(ctx, "alert-dispatcher", hub.RunAlertDispatcher)
-	safe.Supervise(ctx, "heartbeat", hub.RunHeartbeat)
-	if !*headless {
-		safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, sb) })
-		// No terminal means no stdin to read commands from.
-		safe.Supervise(ctx, "console", func(c context.Context) {
-			runConsole(c, os.Stdin, consoleDeps{hub: hub, sb: sb, localAlarm: localAlarm,
-				authMgr: authMgr, installMethod: installMethod, updateLedger: updateLedger,
-				srv: srv, remoteCtl: remoteCtl, cfg: cfg})
-		})
-	}
-
-	// The connection mode can be changed from the phone or from the console
-	// while the program runs. Both end here, and both end by pushing the result
-	// onto the dashboard and every paired phone.
-	//
-	// Disabling first rather than branching makes it idempotent for the enable
-	// case too: a change of remote_port arrives as the same signal and has to
-	// rebind rather than return the port already in use.
-	hub.SetRemoteToggle(func(enable bool) {
-		st := remoteCtl.Disable()
-		if enable {
-			st = remoteCtl.Enable(ctx)
-		}
-		applyRemoteState(sb, hub, srv, st)
-	})
-
-	// Reachability arrives on its own, up to a minute after Enable returned, and
-	// it has to land on the dashboard and every paired phone the same way a
-	// change made from the console does.
-	remoteCtl.SetOnUpdate(func(st remote.State) {
-		applyRemoteState(sb, hub, srv, st)
-	})
-
-	// The startup state has to reach the dashboard the same way a later change
-	// does, or the first draw and every draw after it would come from different
-	// code.
-	applyRemoteState(sb, hub, srv, remoteCtl.State())
-
-	// Checking repeatedly, rather than once at startup, is the whole point: a copy
-	// installed as a service runs for weeks, and asking only at startup means the
-	// installations most in need of a fix are the least likely to hear about one.
-	// Nothing here can delay arming — it runs on its own supervised loop, behind
-	// its own timeout, and a failure goes no further than the debug log.
-	safe.Supervise(ctx, "update-check", func(c context.Context) {
-		update.Watcher{
-			Interval: cfg.UpdateCheckInterval(),
-			Settings: hub.UpdateSettings,
-			Ledger:   updateLedger,
-			Check: func(checkCtx context.Context, channel string) (update.Result, error) {
-				return update.Checker{Channel: channel}.Check(checkCtx, version)
-			},
-			Report: func(r update.Result) {
-				announceUpdate(sb, hub, r, installMethod)
-			},
-			OnError: func(err error) { log.Debugf("Update check failed: %v", err) },
-		}.Run(c)
-	})
-
-	connMode := cfg.ConnectionMode
-	if connMode == "bluetooth" || connMode == "both" {
-		bleServer := ble.NewServer(hub)
-		safe.Supervise(ctx, "ble-server", func(c context.Context) {
-			err := bleServer.Start(c)
-			switch {
-			case err == nil:
-			case errors.Is(err, ble.ErrNoCentralIdentity):
-				// Not a fault to be retried, and not something to bury in a
-				// log line the user will read as noise: they asked for
-				// Bluetooth and are not getting it. Say why, and say what
-				// still works.
-				sb.writeLine("  %s[BLE]%s Bluetooth pairing is off on this platform: %v.",
-					cYellow, cReset, err)
-				sb.writeLine("  %s      Pair over Wi-Fi instead — scan the QR code above.%s", cDim, cReset)
-			default:
-				log.Errorf("BLE server error: %v", err)
-			}
-		})
-	}
-
-	cleanup := func() {
-		fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
-		fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
-		cancel()
-		localAlarm.Stop()
-		sensorMgr.StopAll()
-		// Closes the remote listener and takes the router's port mapping back
-		// down with it. Leaving a mapping behind would leave a hole in the
-		// router pointing at a machine that is no longer listening.
-		remoteCtl.Disable()
-		if el := hub.EventLogger(); el != nil {
-			_ = el.Close()
-		}
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Warnf("Server shutdown: %v", err)
-		}
-	}
+	defer a.close()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	safe.Go("shutdown", func() {
 		<-sigCh
-		cleanup()
+		a.shutdown()
 		os.Exit(0)
 	})
 
-	// A shutdown this program asked for is not a server error. cleanup calls
-	// Shutdown, which makes Serve return ErrServerClosed here — and treating that
-	// as fatal meant every clean Ctrl+C ended on a red FATAL line and an exit
-	// status of 1, racing the orderly exit(0) the signal handler was already
-	// running. Anything else really is the listener dying under a machine the
-	// user believes is being watched, and still stops the program.
-	if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := a.serve(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+// loadConfig reads the config and reports what it had to correct.
+//
+// A hand-edited config is the normal way to change most of these settings, and a
+// typo should not produce a monitor that never heartbeats.
+func loadConfig() *config.Config {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Warnf("Failed to load config, using defaults: %v", err)
+	}
+	for _, note := range cfg.Validate() {
+		log.Warnf("Config: %s", note)
+	}
+	return cfg
+}
+
+// chooseConnectionMode settles whether this run offers remote access.
+//
+// It is asked on every interactive start, with the saved value as the default,
+// so a user who changed it from their phone sees what is in force and can change
+// it back without hunting for the setting.
+//
+// A headless start has nobody to answer and blocking on stdin there would hang
+// the service forever, so it takes what is stored. Every autostart entry this
+// program writes passes -headless, so no unattended start can reach the prompt.
+func chooseConnectionMode(cfg *config.Config, headless bool) {
+	if !headless {
+		// Language first, and only once. It decides how the next question is
+		// worded, so there is no order in which it could come second.
+		promptRemoteAccess(cfg, ensureLanguage(cfg))
+		return
+	}
+
+	if cfg.RemoteAccess == nil {
+		local := false
+		cfg.RemoteAccess = &local
+		if err := config.Save(cfg); err != nil {
+			log.Warnf("Failed to save config: %v", err)
+		}
+	}
+	log.Infof("Connection mode: %s (from config, no terminal to ask)",
+		connectionModeName(*cfg.RemoteAccess))
 }
 
 // pairingURL builds the address a QR code encodes: the server, the pairing key,
