@@ -82,17 +82,7 @@ export function Annunciator() {
                                     {SENSOR_CAPTIONS[sensor.name] ?? sensor.display_name}
                                 </span>
                                 <span class="cap-foot">
-                                    <span class="cap-state readout">
-                                        {off
-                                            ? 'n/a'
-                                            : lit
-                                              ? 'tripped'
-                                              : failed
-                                                ? 'FAULT'
-                                                : sensor.enabled
-                                                  ? 'ready'
-                                                  : 'off'}
-                                    </span>
+                                    <span class="cap-state readout">{capState(sensor, lit)}</span>
                                     <span class="cap-switch" aria-hidden="true">
                                         <span class="cap-knob" />
                                     </span>
@@ -115,6 +105,22 @@ export function Annunciator() {
             {open !== null && <Detail name={open} onClose={() => setOpen(null)} />}
         </section>
     );
+}
+
+/**
+ * The one word under the caption.
+ *
+ * The order is what the panel owes the user, most urgent first, and each answer
+ * is only meaningful once the ones above it have been ruled out. A machine with
+ * no such sensor says so before anything else, because "ready" and "off" would
+ * both be claims about a sensor that is not there. A tile that has tripped says
+ * that ahead of a fault, since the trip is the thing the user came to read.
+ */
+function capState(sensor: SensorInfo, lit: boolean): string {
+    if (!sensor.available) return 'n/a';
+    if (lit) return 'tripped';
+    if (sensor.failure) return 'FAULT';
+    return sensor.enabled ? 'ready' : 'off';
 }
 
 function Detail({ name, onClose }: { name: string; onClose(): void }) {

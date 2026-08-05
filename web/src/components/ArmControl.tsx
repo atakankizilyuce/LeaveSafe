@@ -5,6 +5,17 @@ import { armed, send, showToast } from '../lib/store';
 
 const HOLD_MS = 1500;
 
+/**
+ * What the button says it will do next, which is also what a screen reader
+ * announces it as. During the countdown that is Cancel and nothing else: the
+ * armed state underneath has not changed yet, and offering to disarm something
+ * that is not yet armed would be the wrong promise.
+ */
+function buttonLabel(counting: number | null, isArmed: boolean): string {
+    if (counting !== null) return 'Cancel';
+    return isArmed ? 'Hold to disarm' : 'Arm';
+}
+
 interface Props {
     counting: number | null;
     onCountdown(value: number | null): void;
@@ -108,7 +119,7 @@ export function ArmControl({ counting, onCountdown }: Props) {
         if (!armed.value) startArming();
     }
 
-    const label = counting !== null ? 'Cancel' : armed.value ? 'Hold to disarm' : 'Arm';
+    const label = buttonLabel(counting, armed.value);
 
     return (
         <div class="dock">
