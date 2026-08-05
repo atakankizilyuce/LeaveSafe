@@ -10,9 +10,14 @@ import (
 	"github.com/leavesafe/leavesafe/test/harness"
 )
 
-// armedPhone pairs, enables the network sensor and arms the system. Sensors
-// have to be enabled before arming, because the hub refuses configure changes
-// while armed.
+// armedPhone pairs, leaves the network sensor as the only one watching, and
+// arms the system. Sensors have to be set before arming, because the hub
+// refuses configure changes while armed.
+//
+// Every sensor is named rather than only the one wanted. They are all on by
+// default now, and a hosted runner's own charger, lid or screen state changing
+// mid-test would raise an alarm these tests would then read as the one they
+// fired themselves.
 func armedPhone(t *testing.T, opts harness.Options) (*harness.App, *harness.Phone) {
 	t.Helper()
 	app := harness.Start(t, opts)
@@ -23,8 +28,15 @@ func armedPhone(t *testing.T, opts harness.Options) (*harness.App, *harness.Phon
 	}
 
 	phone.Send(ws.ClientMessage{
-		Type:    ws.MsgTypeConfigure,
-		Sensors: map[string]bool{"network": true},
+		Type: ws.MsgTypeConfigure,
+		Sensors: map[string]bool{
+			"network": true,
+			"power":   false,
+			"lid":     false,
+			"usb":     false,
+			"screen":  false,
+			"input":   false,
+		},
 	})
 	phone.Send(ws.ClientMessage{Type: ws.MsgTypeArm})
 

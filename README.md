@@ -555,7 +555,7 @@ You can change everything from the phone UI, or edit the file directly. A file t
 | `location.poll_seconds` | `60` | How often to refresh the position while armed |
 | `pin_protection.enabled` | `false` | Require a PIN to disarm |
 | `alarm.escalation_enabled` | `false` | Enable volume escalation levels |
-| `enabled_sensors.*` | varies | Toggle individual sensors on/off |
+| `enabled_sensors.*` | `true` | Toggle individual sensors on/off. Every sensor watches unless this says otherwise |
 
 </details>
 
