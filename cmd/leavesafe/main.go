@@ -1287,223 +1287,314 @@ type consoleDeps struct {
 	cfg           *config.Config
 }
 
+// console is the state one typed command acts on: the dependencies, plus the
+// input the three commands that ask a follow-up question read their answer from.
+//
+// The context is not in here. It belongs to the run of a single command rather
+// than to the loop, and a context parked in a struct outlives the call it was
+// meant to bound.
+type console struct {
+	consoleDeps
+	in *bufio.Scanner
+	// arg is whatever followed the command word, trimmed. Empty for every
+	// command that takes none.
+	arg string
+}
+
+// consoleCommand is one thing the user can type at the dashboard.
+type consoleCommand struct {
+	// takesArg marks the commands typed as a word, a space and something else.
+	// Matching on that space is how they have always been recognized, and it is
+	// worth keeping: "qr" on its own is not this command with its number left
+	// off, it is a word the console does not know, and answering it with "No URL
+	// 0" would be a worse reply than saying so.
+	takesArg bool
+	run      func(ctx context.Context, c *console)
+}
+
+// consoleCommands is every command the loop below will answer to. The help text
+// is written out rather than generated from these, because the order a person
+// wants to read them in is not the order a map hands them back.
+var consoleCommands = map[string]consoleCommand{
+	"test":       {run: consoleTest},
+	"trigger":    {takesArg: true, run: consoleTrigger},
+	"stop":       {run: consoleStop},
+	"silence":    {run: consoleStop},
+	"arm":        {run: consoleArm},
+	"disarm":     {run: consoleDisarm},
+	"status":     {run: consoleStatus},
+	"history":    {run: consoleHistory},
+	"rotate-key": {run: consoleRotateKey},
+	"urls":       {run: consoleURLs},
+	"qr":         {takesArg: true, run: consoleQR},
+	"cert":       {run: consoleCert},
+	"update":     {run: consoleUpdate},
+	"mode":       {run: consoleMode},
+	"lang":       {run: consoleLang},
+	"help":       {run: consoleHelp},
+}
+
 // runConsole reads typed commands until the reader is exhausted. The reader is
 // a parameter rather than os.Stdin directly so the loop can be driven from a
 // test; the running program always passes os.Stdin.
 func runConsole(ctx context.Context, in io.Reader, d consoleDeps) {
-	hub, sb, localAlarm := d.hub, d.sb, d.localAlarm
-	authMgr, updateLedger := d.authMgr, d.updateLedger
-	srv, remoteCtl, cfg := d.srv, d.remoteCtl, d.cfg
-	installMethod := d.installMethod
+	c := &console{consoleDeps: d, in: bufio.NewScanner(in)}
 
-	scanner := bufio.NewScanner(in)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		switch {
-		case line == "test":
-			hub.PushAlert(ws.NewAlert("test", "warning", "Test alert from console"))
-			sb.writeLine("  %s[TEST]%s Alert sent to %d client(s)", cYellow, cReset, hub.ClientCount())
-		case strings.HasPrefix(line, "trigger "):
-			name := strings.TrimSpace(line[8:])
-			if !hub.TriggerSensorTest(name) {
-				sb.writeLine("  Unknown sensor: %q  (type 'help')", name)
+	for c.in.Scan() {
+		line := strings.TrimSpace(c.in.Text())
+		if line == "" {
+			continue
+		}
+
+		name, arg, hasArg := strings.Cut(line, " ")
+		cmd, known := consoleCommands[name]
+		// A command given an argument it does not take is as unknown as a word
+		// that names nothing: "arm now" is not an instruction to arm.
+		if !known || cmd.takesArg != hasArg {
+			c.sb.writeLine("  Unknown command: %q  (type 'help')", line)
+			continue
+		}
+
+		c.arg = strings.TrimSpace(arg)
+		cmd.run(ctx, c)
+	}
+}
+
+func consoleTest(_ context.Context, c *console) {
+	c.hub.PushAlert(ws.NewAlert("test", "warning", "Test alert from console"))
+	c.sb.writeLine("  %s[TEST]%s Alert sent to %d client(s)", cYellow, cReset, c.hub.ClientCount())
+}
+
+func consoleTrigger(_ context.Context, c *console) {
+	if !c.hub.TriggerSensorTest(c.arg) {
+		c.sb.writeLine("  Unknown sensor: %q  (type 'help')", c.arg)
+		return
+	}
+	c.sb.writeLine("  %s[TEST]%s Sensor %q triggered", cYellow, cReset, c.arg)
+}
+
+func consoleStop(_ context.Context, c *console) {
+	if !c.localAlarm.IsPlaying() && c.hub.ClientCount() == 0 {
+		c.sb.writeLine("  No alarm is currently active")
+		return
+	}
+	// Through the hub rather than the alarm directly, so every paired phone
+	// stops sounding too.
+	c.hub.DismissAlarm()
+	c.sb.writeLine("  %s[ALARM]%s Alarm dismissed from console", cYellow, cReset)
+}
+
+func consoleArm(_ context.Context, c *console) {
+	if c.hub.IsArmed() {
+		c.sb.writeLine("  Already armed since %s", clockTime(c.hub.ArmedAt()))
+		return
+	}
+	c.hub.Arm()
+	c.sb.writeLine("  %s[ARM]%s Armed from console", cGreen, cReset)
+}
+
+func consoleDisarm(_ context.Context, c *console) {
+	if !c.hub.IsArmed() {
+		c.sb.writeLine("  Already disarmed")
+		return
+	}
+
+	pin := ""
+	if c.hub.PinRequired() {
+		c.sb.writeLine("  PIN required to disarm. Type it and press enter:")
+		if !c.in.Scan() {
+			return
+		}
+		pin = strings.TrimSpace(c.in.Text())
+	}
+
+	if err := c.hub.DisarmWithPin("console", pin); err != nil {
+		c.sb.writeLine("  %s[PIN]%s Refused: %v", cRed, cReset, err)
+		return
+	}
+	c.sb.writeLine("  %s[DISARM]%s Disarmed from console", cGreen, cReset)
+}
+
+func consoleStatus(_ context.Context, c *console) {
+	if c.hub.IsArmed() {
+		c.sb.writeLine("  %sARMED%s since %s (%s ago)", cGreen, cReset,
+			clockTime(c.hub.ArmedAt()),
+			time.Since(c.hub.ArmedAt()).Round(time.Second))
+	} else {
+		c.sb.writeLine("  %sDISARMED%s", cDim, cReset)
+	}
+	c.sb.writeLine("  Phones connected: %d", c.hub.ClientCount())
+	for _, s := range c.hub.GetSensorInfos() {
+		c.sb.writeLine("    %-10s %s", s.Name, sensorMark(s))
+	}
+}
+
+// sensorMark is the word the status listing puts next to a sensor's name.
+func sensorMark(s ws.SensorInfo) string {
+	switch {
+	case !s.Available:
+		return "unavailable"
+	case s.Failure != "":
+		// Named rather than folded into "on": this is the state the user most
+		// needs to see and least expects to be in.
+		return "FAILED — " + s.Failure
+	case s.Enabled:
+		return "on"
+	default:
+		return "off"
+	}
+}
+
+func consoleHistory(_ context.Context, c *console) {
+	evts, err := eventlog.ReadLast(filepath.Join(config.ConfigDir(), eventLogFileName), 20)
+	switch {
+	case err != nil:
+		c.sb.writeLine("  No event history available")
+	case len(evts) == 0:
+		c.sb.writeLine("  No events recorded yet")
+	default:
+		for _, ev := range evts {
+			ts := clockTime(ev.Timestamp)
+			if ev.Sensor != "" {
+				c.sb.writeLine("  %s [%s] %s — %s", ts, ev.Type, ev.Sensor, ev.Message)
 			} else {
-				sb.writeLine("  %s[TEST]%s Sensor %q triggered", cYellow, cReset, name)
+				c.sb.writeLine("  %s [%s] %s", ts, ev.Type, ev.Message)
 			}
-		case line == "stop" || line == "silence":
-			if localAlarm.IsPlaying() || hub.ClientCount() > 0 {
-				// Through the hub rather than the alarm directly, so every
-				// paired phone stops sounding too.
-				hub.DismissAlarm()
-				sb.writeLine("  %s[ALARM]%s Alarm dismissed from console", cYellow, cReset)
-			} else {
-				sb.writeLine("  No alarm is currently active")
-			}
-
-		case line == "arm":
-			if hub.IsArmed() {
-				sb.writeLine("  Already armed since %s", clockTime(hub.ArmedAt()))
-				break
-			}
-			hub.Arm()
-			sb.writeLine("  %s[ARM]%s Armed from console", cGreen, cReset)
-
-		case line == "disarm":
-			if !hub.IsArmed() {
-				sb.writeLine("  Already disarmed")
-				break
-			}
-			pin := ""
-			if hub.PinRequired() {
-				sb.writeLine("  PIN required to disarm. Type it and press enter:")
-				if !scanner.Scan() {
-					break
-				}
-				pin = strings.TrimSpace(scanner.Text())
-			}
-			if err := hub.DisarmWithPin("console", pin); err != nil {
-				sb.writeLine("  %s[PIN]%s Refused: %v", cRed, cReset, err)
-				break
-			}
-			sb.writeLine("  %s[DISARM]%s Disarmed from console", cGreen, cReset)
-
-		case line == "status":
-			if hub.IsArmed() {
-				sb.writeLine("  %sARMED%s since %s (%s ago)", cGreen, cReset,
-					clockTime(hub.ArmedAt()),
-					time.Since(hub.ArmedAt()).Round(time.Second))
-			} else {
-				sb.writeLine("  %sDISARMED%s", cDim, cReset)
-			}
-			sb.writeLine("  Phones connected: %d", hub.ClientCount())
-			for _, s := range hub.GetSensorInfos() {
-				mark := "off"
-				switch {
-				case !s.Available:
-					mark = "unavailable"
-				case s.Failure != "":
-					// Named rather than folded into "on": this is the state the
-					// user most needs to see and least expects to be in.
-					mark = "FAILED — " + s.Failure
-				case s.Enabled:
-					mark = "on"
-				}
-				sb.writeLine("    %-10s %s", s.Name, mark)
-			}
-		case line == "history":
-			evts, err := eventlog.ReadLast(filepath.Join(config.ConfigDir(), eventLogFileName), 20)
-			if err != nil {
-				sb.writeLine("  No event history available")
-			} else if len(evts) == 0 {
-				sb.writeLine("  No events recorded yet")
-			} else {
-				for _, ev := range evts {
-					ts := clockTime(ev.Timestamp)
-					if ev.Sensor != "" {
-						sb.writeLine("  %s [%s] %s — %s", ts, ev.Type, ev.Sensor, ev.Message)
-					} else {
-						sb.writeLine("  %s [%s] %s", ts, ev.Type, ev.Message)
-					}
-				}
-			}
-		case line == "rotate-key":
-			newKey, err := authMgr.Regenerate()
-			if err != nil {
-				sb.writeLine("  %s[ERROR]%s Failed to rotate key: %v", cRed, cReset, err)
-			} else {
-				sb.setKey(newKey)
-				sb.rekeyQR(authMgr.RawPairingKey())
-				// Without this the stored key still holds the one just
-				// invalidated, and the next start would come back with it.
-				if sb.keyPath != "" {
-					if err := auth.SaveKeyFile(sb.keyPath, authMgr.RawPairingKey()); err != nil {
-						sb.writeLine("  %s[KEY]%s Rotated, but the stored key could not be updated: %v", cRed, cReset, err)
-					}
-				}
-				sb.writeLine("  %s[KEY]%s Pairing key rotated. New key: %s%s%s", cGreen, cReset, cBold, newKey, cReset)
-				sb.writeLine("  %s[KEY]%s All existing sessions invalidated. The QR code now encodes the new key.", cYellow, cReset)
-			}
-		case line == "urls":
-			urls, selected := sb.urlListWithSelection()
-			for i, u := range urls {
-				marker := " "
-				if i == selected {
-					marker = "*"
-				}
-				sb.writeLine("  %s[%d]%s %s%s", cBold, i+1, marker, u, cReset)
-			}
-			sb.writeLine("  %sUse 'qr <n>' to show the QR code for one of these.%s", cDim, cReset)
-
-		case strings.HasPrefix(line, "qr "):
-			n, err := strconv.Atoi(strings.TrimSpace(line[3:]))
-			if err != nil {
-				sb.writeLine("  Usage: qr <n>   (type 'urls' to list them)")
-				break
-			}
-			if shown := sb.showQR(n); shown == "" {
-				sb.writeLine("  No URL %d. Type 'urls' to list them.", n)
-			} else {
-				sb.writeLine("  %s[QR]%s Now showing %s", cGreen, cReset, shown)
-			}
-
-		case line == "cert":
-			if fp := sb.certFingerprint(); fp == "" {
-				sb.writeLine("  No TLS certificate — this server is running over plain HTTP on the local network.")
-			} else {
-				sb.writeLine("  %sTLS certificate SHA-256 fingerprint:%s", cBold, cReset)
-				sb.writeLine("  %s", fp)
-				sb.writeLine("  %sYour phone will warn that this certificate is untrusted; it is self-signed.%s", cDim, cReset)
-				sb.writeLine("  %sCompare the fingerprint above with the one the warning shows before accepting.%s", cDim, cReset)
-			}
-
-		case line == "update":
-			checkForUpdateNow(sb, hub, installMethod, updateLedger)
-
-		case line == "mode":
-			st := remoteCtl.State()
-			cur := 1
-			if st.Enabled {
-				cur = 2
-			}
-			sb.writeLine("  [1] Wi-Fi only   [2] Remote access   (currently %d)", cur)
-			sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
-			if !scanner.Scan() {
-				break
-			}
-			want, ok := parseModeChoice(scanner.Text())
-			if !ok {
-				sb.writeLine("  Left unchanged")
-				break
-			}
-			if want == st.Enabled {
-				sb.writeLine("  Already in that mode")
-				break
-			}
-			// Written to disk before the listener moves, so a crash in between
-			// leaves the config saying what the user asked for rather than what
-			// the process happened to be doing.
-			cfg.RemoteAccess = &want
-			if err := config.Save(cfg); err != nil {
-				sb.writeLine("  %s[NET]%s Could not save the setting: %v", cRed, cReset, err)
-				break
-			}
-			next := remoteCtl.Disable()
-			if want {
-				next = remoteCtl.Enable(ctx)
-			}
-			applyRemoteState(sb, hub, srv, next)
-			sb.writeLine("  %s[NET]%s Connection mode: %s", cGreen, cReset, connectionModeName(want))
-
-		case line == "lang":
-			sb.writeLine("  [1] Türkçe   [2] English   (currently %s)", languageByCode(cfg.Language).code)
-			sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
-			if !scanner.Scan() {
-				break
-			}
-			code, ok := parseLanguageChoice(scanner.Text())
-			if !ok {
-				sb.writeLine("  Left unchanged")
-				break
-			}
-			cfg.Language = code
-			if err := config.Save(cfg); err != nil {
-				sb.writeLine("  %s[LANG]%s Could not save the setting: %v", cRed, cReset, err)
-				break
-			}
-			// Said plainly rather than implied. The language reaches the two
-			// questions asked before this dashboard exists and nothing on it, so
-			// a user who changes it here and watches for the screen to turn
-			// would be waiting for something that is never going to happen.
-			sb.writeLine("  %s[LANG]%s Startup questions will be in %s from the next start.",
-				cGreen, cReset, code)
-
-		case line == "help":
-			sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, update, rotate-key, help")
-		case line == "":
-		default:
-			sb.writeLine("  Unknown command: %q  (type 'help')", line)
 		}
 	}
+}
+
+func consoleRotateKey(_ context.Context, c *console) {
+	newKey, err := c.authMgr.Regenerate()
+	if err != nil {
+		c.sb.writeLine("  %s[ERROR]%s Failed to rotate key: %v", cRed, cReset, err)
+		return
+	}
+
+	c.sb.setKey(newKey)
+	c.sb.rekeyQR(c.authMgr.RawPairingKey())
+	// Without this the stored key still holds the one just invalidated, and the
+	// next start would come back with it.
+	if c.sb.keyPath != "" {
+		if err := auth.SaveKeyFile(c.sb.keyPath, c.authMgr.RawPairingKey()); err != nil {
+			c.sb.writeLine("  %s[KEY]%s Rotated, but the stored key could not be updated: %v", cRed, cReset, err)
+		}
+	}
+	c.sb.writeLine("  %s[KEY]%s Pairing key rotated. New key: %s%s%s", cGreen, cReset, cBold, newKey, cReset)
+	c.sb.writeLine("  %s[KEY]%s All existing sessions invalidated. The QR code now encodes the new key.", cYellow, cReset)
+}
+
+func consoleURLs(_ context.Context, c *console) {
+	urls, selected := c.sb.urlListWithSelection()
+	for i, u := range urls {
+		marker := " "
+		if i == selected {
+			marker = "*"
+		}
+		c.sb.writeLine("  %s[%d]%s %s%s", cBold, i+1, marker, u, cReset)
+	}
+	c.sb.writeLine("  %sUse 'qr <n>' to show the QR code for one of these.%s", cDim, cReset)
+}
+
+func consoleQR(_ context.Context, c *console) {
+	n, err := strconv.Atoi(c.arg)
+	if err != nil {
+		c.sb.writeLine("  Usage: qr <n>   (type 'urls' to list them)")
+		return
+	}
+	// Called once and held: showQR changes which code the dashboard is drawing,
+	// so asking it twice would move the display on to answer its own question.
+	shown := c.sb.showQR(n)
+	if shown == "" {
+		c.sb.writeLine("  No URL %d. Type 'urls' to list them.", n)
+		return
+	}
+	c.sb.writeLine("  %s[QR]%s Now showing %s", cGreen, cReset, shown)
+}
+
+func consoleCert(_ context.Context, c *console) {
+	fp := c.sb.certFingerprint()
+	if fp == "" {
+		c.sb.writeLine("  No TLS certificate — this server is running over plain HTTP on the local network.")
+		return
+	}
+	c.sb.writeLine("  %sTLS certificate SHA-256 fingerprint:%s", cBold, cReset)
+	c.sb.writeLine("  %s", fp)
+	c.sb.writeLine("  %sYour phone will warn that this certificate is untrusted; it is self-signed.%s", cDim, cReset)
+	c.sb.writeLine("  %sCompare the fingerprint above with the one the warning shows before accepting.%s", cDim, cReset)
+}
+
+func consoleUpdate(_ context.Context, c *console) {
+	checkForUpdateNow(c.sb, c.hub, c.installMethod, c.updateLedger)
+}
+
+func consoleMode(ctx context.Context, c *console) {
+	st := c.remoteCtl.State()
+	cur := 1
+	if st.Enabled {
+		cur = 2
+	}
+	c.sb.writeLine("  [1] Wi-Fi only   [2] Remote access   (currently %d)", cur)
+	c.sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
+	if !c.in.Scan() {
+		return
+	}
+
+	want, ok := parseModeChoice(c.in.Text())
+	if !ok {
+		c.sb.writeLine("  Left unchanged")
+		return
+	}
+	if want == st.Enabled {
+		c.sb.writeLine("  Already in that mode")
+		return
+	}
+
+	// Written to disk before the listener moves, so a crash in between leaves
+	// the config saying what the user asked for rather than what the process
+	// happened to be doing.
+	c.cfg.RemoteAccess = &want
+	if err := config.Save(c.cfg); err != nil {
+		c.sb.writeLine("  %s[NET]%s Could not save the setting: %v", cRed, cReset, err)
+		return
+	}
+
+	next := c.remoteCtl.Disable()
+	if want {
+		next = c.remoteCtl.Enable(ctx)
+	}
+	applyRemoteState(c.sb, c.hub, c.srv, next)
+	c.sb.writeLine("  %s[NET]%s Connection mode: %s", cGreen, cReset, connectionModeName(want))
+}
+
+func consoleLang(_ context.Context, c *console) {
+	c.sb.writeLine("  [1] Türkçe   [2] English   (currently %s)", languageByCode(c.cfg.Language).code)
+	c.sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
+	if !c.in.Scan() {
+		return
+	}
+
+	code, ok := parseLanguageChoice(c.in.Text())
+	if !ok {
+		c.sb.writeLine("  Left unchanged")
+		return
+	}
+
+	c.cfg.Language = code
+	if err := config.Save(c.cfg); err != nil {
+		c.sb.writeLine("  %s[LANG]%s Could not save the setting: %v", cRed, cReset, err)
+		return
+	}
+	// Said plainly rather than implied. The language reaches the two questions
+	// asked before this dashboard exists and nothing on it, so a user who
+	// changes it here and watches for the screen to turn would be waiting for
+	// something that is never going to happen.
+	c.sb.writeLine("  %s[LANG]%s Startup questions will be in %s from the next start.",
+		cGreen, cReset, code)
+}
+
+func consoleHelp(_ context.Context, c *console) {
+	c.sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, update, rotate-key, help")
 }
 
 func runStatusTicker(ctx context.Context, sb *statusBar) {
