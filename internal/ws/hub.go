@@ -680,59 +680,95 @@ func (h *Hub) RunAlertDispatcher(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case alert := <-alertCh:
-			// Handle auto-arm on screen lock/unlock
-			h.mu.RLock()
-			autoArm := h.autoArmOnLock
-			h.mu.RUnlock()
-
-			if autoArm && alert.Sensor == "screen" {
-				if strings.Contains(alert.Message, "off") && !h.IsArmed() && h.ClientCount() > 0 {
-					log.Info("Auto-arming: screen locked")
-					h.Arm()
-					continue
-				}
-				if strings.Contains(alert.Message, "on") && h.IsArmed() && h.ClientCount() > 0 {
-					log.Info("Auto-disarming: screen unlocked")
-					h.Disarm()
-					continue
-				}
-			}
-
-			if !h.IsArmed() {
-				continue
-			}
-
-			// Skip alerts from suppressed sensors (grace period after dismiss)
-			h.mu.Lock()
-			if until, ok := h.suppressedSensors[alert.Sensor]; ok {
-				if time.Now().Before(until) {
-					h.mu.Unlock()
-					continue
-				}
-				delete(h.suppressedSensors, alert.Sensor)
-			}
-			// Skip if alarm is already active (prevent re-trigger loop)
-			if h.alarmActive {
-				h.mu.Unlock()
-				continue
-			}
-			h.alarmActive = true
-			h.alarmSensor = alert.Sensor
-			h.alarmMessage = alert.Message
-			h.mu.Unlock()
-
-			log.WithFields(log.Fields{"sensor": strings.ToUpper(alert.Sensor)}).Warn(alert.Message)
-			h.PushAlert(NewAlert(alert.Sensor, string(alert.Level), alert.Message))
-			h.fireAlarmTrigger()
-			h.PushAlert(NewAlarmActive(alert.Sensor, alert.Message))
-			h.logEvent(eventlog.Event{Type: eventlog.EventAlert, Sensor: alert.Sensor, Message: alert.Message})
-
-			// An alarm is exactly when the position matters, so it goes out
-			// with the alert rather than waiting for the next poll.
-			if payload := h.LocationPayload(); payload.Enabled {
-				h.PushAlert(NewLocation(payload))
-			}
+			h.dispatchAlert(alert)
 		}
+	}
+}
+
+// dispatchAlert decides what one alert from a sensor means.
+//
+// Three questions in order, and each one can end it: was this the screen
+// locking, which arms the machine rather than alarming it; is the machine
+// watching at all; and is this alert the alarm, or something arriving behind an
+// alarm that is already sounding.
+func (h *Hub) dispatchAlert(alert monitor.Alert) {
+	if h.autoArmed(alert) {
+		return
+	}
+	if !h.IsArmed() {
+		return
+	}
+	if !h.claimAlarm(alert) {
+		return
+	}
+	h.raiseAlarm(alert)
+}
+
+// autoArmed arms or disarms on the screen locking, and says whether it did.
+//
+// Only with a phone still paired. Arming a laptop that nothing can disarm it
+// from would leave the owner with a machine that screams at them and no way to
+// answer it.
+func (h *Hub) autoArmed(alert monitor.Alert) bool {
+	h.mu.RLock()
+	autoArm := h.autoArmOnLock
+	h.mu.RUnlock()
+
+	if !autoArm || alert.Sensor != "screen" || h.ClientCount() == 0 {
+		return false
+	}
+	if strings.Contains(alert.Message, "off") && !h.IsArmed() {
+		log.Info("Auto-arming: screen locked")
+		h.Arm()
+		return true
+	}
+	if strings.Contains(alert.Message, "on") && h.IsArmed() {
+		log.Info("Auto-disarming: screen unlocked")
+		h.Disarm()
+		return true
+	}
+	return false
+}
+
+// claimAlarm records this alert as the alarm now sounding, and says whether it
+// got there first.
+//
+// Two ways to lose: the sensor is inside the grace period the user bought by
+// dismissing its last alarm, or an alarm is already sounding. The second is not
+// a nicety — every alert re-fires the siren and the trigger callback, so
+// without it one sensor that keeps reporting drives the alarm in a loop.
+func (h *Hub) claimAlarm(alert monitor.Alert) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if until, ok := h.suppressedSensors[alert.Sensor]; ok {
+		if time.Now().Before(until) {
+			return false
+		}
+		delete(h.suppressedSensors, alert.Sensor)
+	}
+	if h.alarmActive {
+		return false
+	}
+	h.alarmActive = true
+	h.alarmSensor = alert.Sensor
+	h.alarmMessage = alert.Message
+	return true
+}
+
+// raiseAlarm tells everything that needs to know: the log, every paired phone,
+// the siren, and the event log the owner reads afterwards.
+func (h *Hub) raiseAlarm(alert monitor.Alert) {
+	log.WithFields(log.Fields{"sensor": strings.ToUpper(alert.Sensor)}).Warn(alert.Message)
+	h.PushAlert(NewAlert(alert.Sensor, string(alert.Level), alert.Message))
+	h.fireAlarmTrigger()
+	h.PushAlert(NewAlarmActive(alert.Sensor, alert.Message))
+	h.logEvent(eventlog.Event{Type: eventlog.EventAlert, Sensor: alert.Sensor, Message: alert.Message})
+
+	// An alarm is exactly when the position matters, so it goes out with the
+	// alert rather than waiting for the next poll.
+	if payload := h.LocationPayload(); payload.Enabled {
+		h.PushAlert(NewLocation(payload))
 	}
 }
 
@@ -868,43 +904,10 @@ func (h *Hub) fireAlarmDismiss() {
 }
 
 func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
-	// Anything an authenticated client sends is activity, and activity is what
-	// the idle timeout measures. Pairing itself is excluded: there is no
-	// session to touch yet.
-	if client.authenticated && msg.Type != MsgTypeAuth {
-		if !h.authManager.TouchSession(client.token) {
-			log.Info("Session expired mid-connection, refusing the message")
-			client.send(NewAuthFail("session expired, pair again", h.authManager.MaxAttempts()))
-			h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Session expired"})
-			client.close()
-			h.removeClient(client)
-			return
-		}
+	if !h.sessionStillLive(client, msg) {
+		return
 	}
-
-	// Past this point a message costs something — a disk write, a broadcast to
-	// every paired phone, the siren — so how fast they can arrive is bounded.
-	//
-	// Pairing is metered separately rather than not at all. It cannot share this
-	// bucket: a flood from a paired client would eat into the allowance a
-	// stranger's guesses are counted against. But it needs a bucket of its own,
-	// because every refused attempt writes a line to the security event log, and
-	// that log is size-rotated — so an unpaired peer sending attempts at network
-	// speed could push every genuine record out of it and erase the history of
-	// whatever it had just done. The per-address lockout does not stop this: a
-	// locked-out address is still refused once per message, and the refusal is
-	// what gets written.
-	//
-	// Over the limit the message is dropped rather than the client: a phone
-	// whose script has run away is still the owner's phone, and the alarm is
-	// the last thing that should be disconnected for it.
-	if msg.Type == MsgTypeAuth {
-		if !client.allowAuth() {
-			log.Debug("Dropping a pairing attempt from a client that is sending too fast")
-			return
-		}
-	} else if !client.allowMessage() {
-		log.WithField("type", msg.Type).Debug("Dropping a message from a client that is sending too fast")
+	if !withinRateLimit(client, msg) {
 		return
 	}
 
@@ -918,89 +921,175 @@ func (h *Hub) handleMessage(client *Client, msg ClientMessage) {
 			client.send(NewAuthFail("not authenticated", 0))
 			return
 		}
-		switch msg.Type {
-		case MsgTypeArm:
-			h.Arm()
-		case MsgTypeDisarm:
-			h.mu.RLock()
-			pinRequired := h.pinEnabled && h.pinHash != ""
-			h.mu.RUnlock()
-			if pinRequired {
-				client.send(ServerMessage{Type: MsgTypePinRequired})
-				return
-			}
-			h.Disarm()
-		case MsgTypeDisarmPin:
-			if err := h.DisarmWithPin(client.remoteAddr, msg.Pin); err != nil {
-				client.send(ServerMessage{Type: MsgTypeAuthFail, Reason: err.Error()})
-				return
-			}
-		case MsgTypeConfigure:
-			h.handleConfigure(msg)
-		case MsgTypeTestAlert:
-			h.PushAlert(NewAlert("test", "warning", "Test alert triggered"))
-			log.Info("Test alert triggered from client")
-		case MsgTypeTriggerSensor:
-			if msg.Sensor != "" {
-				h.TriggerSensorTest(msg.Sensor)
-			}
-		case MsgTypeGetConfig:
-			h.handleGetConfig(client)
-		case MsgTypeLocationAnchor:
-			h.handleLocationAnchor(msg)
-		case MsgTypeGetLocation:
-			client.send(NewLocation(h.LocationPayload()))
-		case MsgTypeUpdateConfig:
-			h.handleUpdateConfig(msg, client)
-		case MsgTypeResetConfig:
-			h.handleResetConfig(msg, client)
-		case MsgTypeDismissAlarm:
-			triggered := h.clearAlarm()
-			if triggered == "input" {
-				h.mu.Lock()
-				h.suppressedSensors["input"] = time.Now().Add(5 * time.Second)
-				h.mu.Unlock()
-			}
-			log.Info("Alarm dismissed from client")
-
-		// Pausing and disabling a sensor are answers to an alarm that just
-		// fired, and the phone only offers them from the alert overlay. Which
-		// sensor they act on is the one the hub recorded as having triggered,
-		// never the name the message carried: taking the client's word for it
-		// let a paired phone switch the sensors off one at a time while the
-		// machine was armed and no alarm was sounding — the effect of
-		// disarming, without the PIN that disarming asks for.
-		case MsgTypeDismissAlarmPause:
-			sensor := h.clearAlarm()
-			if sensor == "" {
-				log.Info("Ignoring a sensor pause that answers no alarm")
-				break
-			}
-			duration := clampPauseSeconds(msg.Duration)
-			h.sensorMgr.Disable(sensor)
-			name, d := sensor, duration
-			safe.Go("sensor-unpause:"+name, func() {
-				time.Sleep(time.Duration(d) * time.Second)
-				h.sensorMgr.Enable(name)
-				if h.IsArmed() {
-					h.sensorMgr.StartEnabled()
-				}
-				h.broadcastStatus()
-			})
-			h.broadcastStatus()
-			log.WithField("sensor", sensor).Infof("Alarm dismissed, sensor paused for %ds", duration)
-
-		case MsgTypeDismissAlarmDisable:
-			sensor := h.clearAlarm()
-			if sensor == "" {
-				log.Info("Ignoring a sensor disable that answers no alarm")
-				break
-			}
-			h.sensorMgr.Disable(sensor)
-			h.broadcastStatus()
-			log.WithField("sensor", sensor).Info("Alarm dismissed, sensor permanently disabled")
-		}
+		h.handlePairedMessage(client, msg)
 	}
+}
+
+// sessionStillLive touches the session this message arrived on and says whether
+// it is still good.
+//
+// Anything an authenticated client sends is activity, and activity is what the
+// idle timeout measures. Pairing itself is excluded: there is no session to
+// touch yet.
+func (h *Hub) sessionStillLive(client *Client, msg ClientMessage) bool {
+	if !client.authenticated || msg.Type == MsgTypeAuth {
+		return true
+	}
+	if h.authManager.TouchSession(client.token) {
+		return true
+	}
+
+	log.Info("Session expired mid-connection, refusing the message")
+	client.send(NewAuthFail("session expired, pair again", h.authManager.MaxAttempts()))
+	h.logEvent(eventlog.Event{Type: eventlog.EventDisconnect, Message: "Session expired"})
+	client.close()
+	h.removeClient(client)
+	return false
+}
+
+// withinRateLimit meters how fast one client may send.
+//
+// Past this point a message costs something — a disk write, a broadcast to
+// every paired phone, the siren — so how fast they can arrive is bounded.
+//
+// Pairing is metered separately rather than not at all. It cannot share the
+// other bucket: a flood from a paired client would eat into the allowance a
+// stranger's guesses are counted against. But it needs a bucket of its own,
+// because every refused attempt writes a line to the security event log, and
+// that log is size-rotated — so an unpaired peer sending attempts at network
+// speed could push every genuine record out of it and erase the history of
+// whatever it had just done. The per-address lockout does not stop this: a
+// locked-out address is still refused once per message, and the refusal is what
+// gets written.
+//
+// Over the limit the message is dropped rather than the client: a phone whose
+// script has run away is still the owner's phone, and the alarm is the last
+// thing that should be disconnected for it.
+func withinRateLimit(client *Client, msg ClientMessage) bool {
+	if msg.Type == MsgTypeAuth {
+		if client.allowAuth() {
+			return true
+		}
+		log.Debug("Dropping a pairing attempt from a client that is sending too fast")
+		return false
+	}
+	if client.allowMessage() {
+		return true
+	}
+	log.WithField("type", msg.Type).Debug("Dropping a message from a client that is sending too fast")
+	return false
+}
+
+// handlePairedMessage acts on a message from a client that has proved itself.
+func (h *Hub) handlePairedMessage(client *Client, msg ClientMessage) {
+	switch msg.Type {
+	case MsgTypeArm:
+		h.Arm()
+	case MsgTypeDisarm:
+		h.handleDisarm(client)
+	case MsgTypeDisarmPin:
+		if err := h.DisarmWithPin(client.remoteAddr, msg.Pin); err != nil {
+			client.send(ServerMessage{Type: MsgTypeAuthFail, Reason: err.Error()})
+		}
+	case MsgTypeConfigure:
+		h.handleConfigure(msg)
+	case MsgTypeTestAlert:
+		h.PushAlert(NewAlert("test", "warning", "Test alert triggered"))
+		log.Info("Test alert triggered from client")
+	case MsgTypeTriggerSensor:
+		if msg.Sensor != "" {
+			h.TriggerSensorTest(msg.Sensor)
+		}
+	case MsgTypeGetConfig:
+		h.handleGetConfig(client)
+	case MsgTypeLocationAnchor:
+		h.handleLocationAnchor(msg)
+	case MsgTypeGetLocation:
+		client.send(NewLocation(h.LocationPayload()))
+	case MsgTypeUpdateConfig:
+		h.handleUpdateConfig(msg, client)
+	case MsgTypeResetConfig:
+		h.handleResetConfig(msg, client)
+	case MsgTypeDismissAlarm:
+		h.dismissAlarm()
+	case MsgTypeDismissAlarmPause:
+		h.pauseAlarmSensor(msg)
+	case MsgTypeDismissAlarmDisable:
+		h.disableAlarmSensor()
+	}
+}
+
+// handleDisarm switches the watch off, unless a PIN stands in the way.
+func (h *Hub) handleDisarm(client *Client) {
+	h.mu.RLock()
+	pinRequired := h.pinEnabled && h.pinHash != ""
+	h.mu.RUnlock()
+
+	if pinRequired {
+		client.send(ServerMessage{Type: MsgTypePinRequired})
+		return
+	}
+	h.Disarm()
+}
+
+// dismissAlarm answers a sounding alarm.
+//
+// Dismissing it from the phone means picking the laptop up, and on the input
+// sensor that is itself input — so the sensor that raised this alarm is held
+// quiet for a moment rather than re-raising it on the movement that cleared it.
+func (h *Hub) dismissAlarm() {
+	if h.clearAlarm() == "input" {
+		h.mu.Lock()
+		h.suppressedSensors["input"] = time.Now().Add(5 * time.Second)
+		h.mu.Unlock()
+	}
+	log.Info("Alarm dismissed from client")
+}
+
+// Pausing and disabling a sensor are answers to an alarm that just fired, and
+// the phone only offers them from the alert overlay. Which sensor they act on
+// is the one the hub recorded as having triggered, never the name the message
+// carried: taking the client's word for it let a paired phone switch the
+// sensors off one at a time while the machine was armed and no alarm was
+// sounding — the effect of disarming, without the PIN that disarming asks for.
+func (h *Hub) pauseAlarmSensor(msg ClientMessage) {
+	sensor := h.clearAlarm()
+	if sensor == "" {
+		log.Info("Ignoring a sensor pause that answers no alarm")
+		return
+	}
+
+	duration := clampPauseSeconds(msg.Duration)
+	h.sensorMgr.Disable(sensor)
+	safe.Go("sensor-unpause:"+sensor, func() { h.unpauseSensor(sensor, duration) })
+	h.broadcastStatus()
+	log.WithField("sensor", sensor).Infof("Alarm dismissed, sensor paused for %ds", duration)
+}
+
+// unpauseSensor puts a paused sensor back to work once its time is up, and
+// starts it again if the machine is still being watched.
+func (h *Hub) unpauseSensor(sensor string, seconds int) {
+	time.Sleep(time.Duration(seconds) * time.Second)
+	h.sensorMgr.Enable(sensor)
+	if h.IsArmed() {
+		h.sensorMgr.StartEnabled()
+	}
+	h.broadcastStatus()
+}
+
+// disableAlarmSensor stops using the sensor that raised the alarm, for good.
+// See pauseAlarmSensor for why the sensor is the hub's rather than the
+// client's.
+func (h *Hub) disableAlarmSensor() {
+	sensor := h.clearAlarm()
+	if sensor == "" {
+		log.Info("Ignoring a sensor disable that answers no alarm")
+		return
+	}
+
+	h.sensorMgr.Disable(sensor)
+	h.broadcastStatus()
+	log.WithField("sensor", sensor).Info("Alarm dismissed, sensor permanently disabled")
 }
 
 // How long "pause this sensor" may switch a sensor off for. The phone offers
@@ -1268,36 +1357,123 @@ func (h *Hub) handleGetConfig(client *Client) {
 	})
 }
 
+// configOutcome is what a settings update did.
+//
+// It exists because almost nothing the update decides can be acted on where it
+// is decided: writing the file, telling the sensor manager, broadcasting to
+// every phone and bringing an internet-facing listener up all have to happen
+// with the hub's lock released. So the decisions are gathered under the lock
+// and carried out of it.
+type configOutcome struct {
+	snapshot    config.Config
+	adjustments []string
+
+	pinEnabled bool
+	pinHash    string
+	autoArm    bool
+
+	// sensors is what to tell the sensor manager, and is nil when the update
+	// asked for no sensor change or when the change was refused.
+	sensors        map[string]bool
+	sensorsRefused bool
+
+	needsRestart    bool
+	locationChanged bool
+	geoURLRejected  bool
+	remoteChanged   bool
+	remoteWanted    bool
+}
+
 func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	if msg.Config == nil {
 		return
 	}
-	p := msg.Config
 
-	h.mu.Lock()
-	cfg := h.cfg
-	if cfg == nil {
-		h.mu.Unlock()
+	out, err := h.applyConfigUpdate(msg, client)
+	if err != nil {
+		h.logAuthFailure(eventlog.EventPinFail, "PIN settings change refused: ", err)
+		client.send(ServerMessage{Type: MsgTypePinRequired})
+		return
+	}
+	if out == nil {
 		return
 	}
 
-	// If PIN protection is currently enabled, require the current PIN
-	// to modify PIN settings (disable, change PIN).
+	for _, note := range out.adjustments {
+		log.Warnf("Config from client adjusted: %s", note)
+	}
+	if err := config.Save(&out.snapshot); err != nil {
+		log.Errorf("Failed to save config: %v", err)
+	}
+
+	h.SetPinProtection(out.pinEnabled, out.pinHash)
+	h.SetAutoArmOnLock(out.autoArm)
+	for name, enabled := range out.sensors {
+		if enabled {
+			h.sensorMgr.Enable(name)
+		} else {
+			h.sensorMgr.Disable(name)
+		}
+	}
+	h.broadcastStatus()
+	h.announceConfigChanges(out)
+
+	log.Info("Configuration updated from client")
+}
+
+// applyConfigUpdate writes the client's settings into the live config and
+// reports what changed.
+//
+// Everything here happens under the lock, and so nothing here may touch the
+// disk, the network, the sensors or the event log — logEvent takes the same
+// lock, and it is not reentrant. A refused PIN is returned rather than
+// answered, so the refusal is written and sent from outside.
+//
+// A nil outcome with no error means there was no config to update.
+func (h *Hub) applyConfigUpdate(msg ClientMessage, client *Client) (*configOutcome, error) {
+	p := msg.Config
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	cfg := h.cfg
+	if cfg == nil {
+		return nil, nil
+	}
+
+	// If PIN protection is currently enabled, require the current PIN to modify
+	// PIN settings (disable, change PIN).
 	pinActive := cfg.PinProtection.Enabled && cfg.PinProtection.PinHash != ""
 	changingPin := !p.PinProtection.Enabled != !cfg.PinProtection.Enabled || p.PinProtection.Pin != ""
 	if pinActive && changingPin {
 		if err := h.authManager.CheckPin(client.remoteAddr, msg.Pin, cfg.PinProtection.PinHash); err != nil {
-			h.mu.Unlock()
-			h.logAuthFailure(eventlog.EventPinFail, "PIN settings change refused: ", err)
-			client.send(ServerMessage{Type: MsgTypePinRequired})
-			return
+			return nil, err
 		}
 	}
 
-	oldRemote := false
-	if cfg.RemoteAccess != nil {
-		oldRemote = *cfg.RemoteAccess
-	}
+	out := &configOutcome{}
+	out.needsRestart = applyServerSettings(cfg, p)
+	out.remoteChanged, out.remoteWanted = applyRemoteSettings(cfg, p)
+	applyPinSettings(cfg, p)
+	out.sensors, out.sensorsRefused = h.applySensorSettings(cfg, p)
+	out.locationChanged, out.geoURLRejected = applyLocationSettings(cfg, p)
+
+	// The phone is a client like any other and its numbers are not trusted any
+	// further than a hand-edited file's would be. A zero heartbeat here would
+	// be a ticker panic on the next restart; a million-second lockout would be
+	// the owner locked out of their own alarm.
+	out.adjustments = cfg.Validate()
+
+	out.snapshot = *cfg
+	out.pinEnabled = cfg.PinProtection.Enabled
+	out.pinHash = cfg.PinProtection.PinHash
+	out.autoArm = cfg.AutoArmOnLock
+	return out, nil
+}
+
+// applyServerSettings copies the plain settings across and says whether any of
+// them will only take effect on the next start.
+func applyServerSettings(cfg *config.Config, p *ConfigPayload) bool {
 	// Remote access and its port are not on this list any more: they are applied
 	// while the program runs, on a listener of their own, so asking the user to
 	// restart for them would be asking for something that achieves nothing.
@@ -1328,6 +1504,29 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		cfg.UpdateChannel = p.UpdateChannel
 	}
 
+	return needsRestart
+}
+
+// applyRemoteSettings records what the client asked of the internet-facing
+// listener, and says whether that is a change and what was wanted.
+//
+// It reads the old values before it writes the new ones, so it has to run
+// before anything else touches them.
+func applyRemoteSettings(cfg *config.Config, p *ConfigPayload) (changed, wanted bool) {
+	old := cfg.RemoteAccess != nil && *cfg.RemoteAccess
+	wanted = p.RemoteAccess
+	changed = wanted != old || (p.RemotePort > 0 && p.RemotePort != cfg.RemotePort)
+
+	ra := wanted
+	cfg.RemoteAccess = &ra
+	if p.RemotePort > 0 {
+		cfg.RemotePort = p.RemotePort
+	}
+	return changed, wanted
+}
+
+// applyPinSettings stores a new PIN as a hash, and never as itself.
+func applyPinSettings(cfg *config.Config, p *ConfigPayload) {
 	if p.PinProtection.Pin != "" {
 		// Only the hash is kept. The PIN itself exists in memory for the
 		// duration of this call and never touches the disk.
@@ -1339,45 +1538,39 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 		}
 	}
 	cfg.PinProtection.Enabled = p.PinProtection.Enabled
-	pinEnabled := cfg.PinProtection.Enabled
-	pinHash := cfg.PinProtection.PinHash
-	autoArm := cfg.AutoArmOnLock
+}
 
-	// Captured before the config is overwritten, and acted on further down once
-	// the lock is released: bringing the listener up asks the router for a port
-	// mapping and the internet for an address, and neither is quick enough to
-	// hold every phone's status update behind.
-	remoteWanted := p.RemoteAccess
-	remoteChanged := remoteWanted != oldRemote || (p.RemotePort > 0 && p.RemotePort != cfg.RemotePort)
-
-	ra := remoteWanted
-	cfg.RemoteAccess = &ra
-	if p.RemotePort > 0 {
-		cfg.RemotePort = p.RemotePort
+// applySensorSettings stores which sensors the client wants watching, and
+// returns what to tell the sensor manager once the lock is released.
+//
+// Sensors are left alone while the machine is armed, exactly as the dedicated
+// `configure` message already refuses them. Without this, the settings screen
+// was a way around the rule: a client could switch every sensor off mid-watch
+// and reach the silence that disarming gives, without presenting the PIN that
+// disarming asks for.
+func (h *Hub) applySensorSettings(cfg *config.Config, p *ConfigPayload) (apply map[string]bool, refused bool) {
+	if p.EnabledSensors == nil {
+		return nil, false
 	}
-
-	// Sensors are left alone while the machine is armed, exactly as the
-	// dedicated `configure` message already refuses them. Without this, the
-	// settings screen was a way around the rule: a client could switch every
-	// sensor off mid-watch and reach the silence that disarming gives, without
-	// presenting the PIN that disarming asks for.
-	sensorsRefused := false
-	if p.EnabledSensors != nil {
-		if h.armed && h.sensorsWouldChange(p.EnabledSensors) {
-			sensorsRefused = true
-		} else {
-			cfg.EnabledSensors = p.EnabledSensors
-		}
+	if h.armed && h.sensorsWouldChange(p.EnabledSensors) {
+		return nil, true
 	}
-	applySensors := p.EnabledSensors != nil && !sensorsRefused
+	cfg.EnabledSensors = p.EnabledSensors
+	return p.EnabledSensors, false
+}
 
-	// Location changes take effect on the next arm, except for the API key,
-	// which the client never receives: an empty key here means "leave it
-	// alone", not "clear it". Clearing is done by turning Wi-Fi off.
-	locationChanged := p.Location.Enabled != cfg.Location.Enabled ||
+// applyLocationSettings stores where the laptop may look itself up, and says
+// whether that needs a restart and whether an endpoint was refused.
+//
+// Location changes take effect on the next arm, except for the API key, which
+// the client never receives: an empty key here means "leave it alone", not
+// "clear it". Clearing is done by turning Wi-Fi off.
+func applyLocationSettings(cfg *config.Config, p *ConfigPayload) (changed, urlRejected bool) {
+	changed = p.Location.Enabled != cfg.Location.Enabled ||
 		p.Location.WiFiEnabled != cfg.Location.WiFiEnabled ||
 		p.Location.IPFallback != cfg.Location.IPFallback ||
 		p.Location.PollSeconds != cfg.Location.PollSeconds
+
 	cfg.Location.Enabled = p.Location.Enabled
 	cfg.Location.PhoneAnchor = p.Location.PhoneAnchor
 	cfg.Location.IPFallback = p.Location.IPFallback
@@ -1385,87 +1578,72 @@ func (h *Hub) handleUpdateConfig(msg ClientMessage, client *Client) {
 	if p.Location.PollSeconds > 0 {
 		cfg.Location.PollSeconds = p.Location.PollSeconds
 	}
-	geoURLRejected := false
-	if p.Location.GeolocateURL != "" && p.Location.GeolocateURL != cfg.Location.GeolocateURL {
-		if strings.HasPrefix(p.Location.GeolocateURL, "https://") {
-			// A new endpoint must not inherit the stored API key: a client
-			// could otherwise point the laptop at a server it controls and
-			// collect the key on the next Wi-Fi resolve. Changing the endpoint
-			// means supplying the key that goes with it.
-			if p.Location.GeolocateKey == "" {
-				cfg.Location.GeolocateKey = ""
-			}
-			cfg.Location.GeolocateURL = p.Location.GeolocateURL
-		} else {
-			// The API key travels in this URL's query string, so plain HTTP
-			// would put it on the wire in cleartext.
-			geoURLRejected = true
-		}
-	}
+
+	urlRejected = !applyGeolocateURL(cfg, p)
 	if p.Location.GeolocateKey != "" {
 		cfg.Location.GeolocateKey = p.Location.GeolocateKey
 	}
+	return changed, urlRejected
+}
 
-	// The phone is a client like any other and its numbers are not trusted any
-	// further than a hand-edited file's would be. A zero heartbeat here would
-	// be a ticker panic on the next restart; a million-second lockout would be
-	// the owner locked out of their own alarm.
-	adjustments := cfg.Validate()
-
-	snapshot := *cfg
-	h.mu.Unlock()
-
-	for _, note := range adjustments {
-		log.Warnf("Config from client adjusted: %s", note)
+// applyGeolocateURL takes a new lookup endpoint, and says whether it was
+// acceptable. An unchanged or absent endpoint is acceptable by definition.
+func applyGeolocateURL(cfg *config.Config, p *ConfigPayload) bool {
+	if p.Location.GeolocateURL == "" || p.Location.GeolocateURL == cfg.Location.GeolocateURL {
+		return true
 	}
-
-	if err := config.Save(&snapshot); err != nil {
-		log.Errorf("Failed to save config: %v", err)
+	if !strings.HasPrefix(p.Location.GeolocateURL, "https://") {
+		// The API key travels in this URL's query string, so plain HTTP would
+		// put it on the wire in cleartext.
+		return false
 	}
-
-	h.SetPinProtection(pinEnabled, pinHash)
-	h.SetAutoArmOnLock(autoArm)
-
-	if applySensors {
-		for name, enabled := range p.EnabledSensors {
-			if enabled {
-				h.sensorMgr.Enable(name)
-			} else {
-				h.sensorMgr.Disable(name)
-			}
-		}
+	// A new endpoint must not inherit the stored API key: a client could
+	// otherwise point the laptop at a server it controls and collect the key on
+	// the next Wi-Fi resolve. Changing the endpoint means supplying the key that
+	// goes with it.
+	if p.Location.GeolocateKey == "" {
+		cfg.Location.GeolocateKey = ""
 	}
+	cfg.Location.GeolocateURL = p.Location.GeolocateURL
+	return true
+}
 
-	h.broadcastStatus()
-
-	if sensorsRefused {
+// announceConfigChanges tells the phones what saving the settings did not: what
+// was refused, and what will not take effect until the laptop is restarted.
+func (h *Hub) announceConfigChanges(out *configOutcome) {
+	if out.sensorsRefused {
 		h.PushAlert(NewAlert(SensorSystem, "warning", "Cannot change sensors while armed — disarm first"))
 	}
-	if needsRestart {
+	if out.needsRestart {
 		h.PushAlert(NewAlert(SensorSystem, "warning",
 			"The port or the Bluetooth mode changed — restart required to take effect"))
 	}
-	if remoteChanged {
-		h.mu.RLock()
-		fn := h.onRemoteToggle
-		h.mu.RUnlock()
-		if fn != nil {
-			// On its own goroutine: enabling asks the router for a port mapping
-			// and the internet for an address, which can take seconds, and the
-			// phone that sent this is waiting for its settings to be saved.
-			safe.Go("remote-toggle", func() { fn(remoteWanted) })
-		}
+	if out.remoteChanged {
+		h.toggleRemoteAccess(out.remoteWanted)
 	}
-	if geoURLRejected {
+	if out.geoURLRejected {
 		h.PushAlert(NewAlert(SensorSystem, "warning", "Geolocation endpoint must use https:// — change ignored"))
 	}
-	if locationChanged {
+	if out.locationChanged {
 		// The tracker's providers are built once at startup from this config,
 		// so a source being switched on or off does not take effect until then.
 		h.PushAlert(NewAlert(SensorSystem, "warning", "Location settings changed — restart required to take effect"))
 	}
+}
 
-	log.Info("Configuration updated from client")
+// toggleRemoteAccess hands the change to whoever owns the internet-facing
+// listener, on its own goroutine: enabling asks the router for a port mapping
+// and the internet for an address, which can take seconds, and the phone that
+// sent this is waiting for its settings to be saved.
+func (h *Hub) toggleRemoteAccess(wanted bool) {
+	h.mu.RLock()
+	fn := h.onRemoteToggle
+	h.mu.RUnlock()
+
+	if fn == nil {
+		return
+	}
+	safe.Go("remote-toggle", func() { fn(wanted) })
 }
 
 func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
