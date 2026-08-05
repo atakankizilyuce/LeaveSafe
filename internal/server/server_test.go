@@ -353,3 +353,21 @@ func TestThereIsAlwaysAnAddressToPrint(t *testing.T) {
 		t.Error("no address at all was offered for the pairing code")
 	}
 }
+
+// A machine with nothing dialable — every interface down, or a laptop whose
+// only "networks" are the bridges a container runtime left behind — still has
+// to produce a code. It just says loopback, and works where the laptop is.
+func TestAMachineWithNoUsableInterfaceStillGetsACode(t *testing.T) {
+	nothingReachable := [][]net.Interface{
+		nil,
+		{{Name: "eth0"}},
+		{{Name: "docker0", Flags: net.FlagUp}, {Name: "lo", Flags: net.FlagUp | net.FlagLoopback}},
+	}
+
+	for _, ifaces := range nothingReachable {
+		got := localIPsFrom(ifaces)
+		if len(got) != 1 || !got[0].IsLoopback() {
+			t.Errorf("localIPsFrom(%v) = %v, want just the loopback", ifaces, got)
+		}
+	}
+}

@@ -530,20 +530,27 @@ func socketOrigins(r *http.Request, tls bool) string {
 func getLocalIPs() []net.IP {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return []net.IP{net.ParseIP("127.0.0.1")}
+		return []net.IP{loopbackIP()}
 	}
+	return localIPsFrom(ifaces)
+}
 
+// localIPsFrom picks the dialable addresses out of the interfaces a machine
+// has, and never returns none: a pairing code with no address in it is of no
+// use to anybody, so the loopback stands in. That code then only works on this
+// machine, which is still an answer.
+func localIPsFrom(ifaces []net.Interface) []net.IP {
 	var ips []net.IP
 	for _, iface := range ifaces {
 		ips = append(ips, reachableIPv4(iface)...)
 	}
 	if len(ips) == 0 {
-		// Nothing to print but the loopback. The QR code will only work on this
-		// machine, which is still better than a code with no address in it.
-		return []net.IP{net.ParseIP("127.0.0.1")}
+		return []net.IP{loopbackIP()}
 	}
 	return ips
 }
+
+func loopbackIP() net.IP { return net.ParseIP("127.0.0.1") }
 
 // reachableIPv4 returns the addresses a phone could actually dial this
 // interface on.
