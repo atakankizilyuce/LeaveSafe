@@ -10,8 +10,10 @@ import {
     armedSince,
     config,
     link,
+    log,
     pinPrompt,
     location as position,
+    screen,
     sensors,
     toast,
     updateAvailable,
@@ -96,6 +98,11 @@ beforeEach(() => {
     updateAvailable.value = null;
     pinPrompt.value = false;
     link.value = 'live';
+    // The alert history is persisted and read back on mount, so clearing the
+    // signal alone would leave an earlier test's alerts to reappear.
+    window.localStorage.clear();
+    log.value = [];
+    screen.value = 'pair';
 
     host = document.createElement('div');
     document.body.appendChild(host);
@@ -230,6 +237,63 @@ it('carries a sensor failure through to the panel', async () => {
 
     expect(sensors.value[0].failure).toBe('device gone');
     expect(sensors.value[0].status).toBe('failed');
+});
+
+// An older laptop sends an acceptance with nothing attached to it. The panel
+// still has to open: refusing would strand a phone whose laptop has simply not
+// been upgraded, on the say-so of two optional fields.
+it('opens the panel for a bare acceptance from an older laptop', async () => {
+    await act(async () => {
+        render(h(App, {}), host);
+    });
+    await vi.advanceTimersByTimeAsync(200);
+
+    const handlers = stub.handlers;
+    if (!handlers) throw new Error('the app never opened a transport');
+    handlers.onOpen();
+    handlers.onMessage({ type: 'auth_ok' });
+
+    expect(screen.value).toBe('panel');
+    expect(sensors.value).toEqual([]);
+});
+
+// The laptop stamps an alert with its own clock, and that is the time the log
+// has to carry. The phone may have been asleep when it happened, so the moment
+// the message arrived says when the phone woke up, not when the machine was
+// touched — and the second is the only one worth reading afterwards.
+it('logs an alert at the time the laptop stamped it', async () => {
+    const handlers = await pairedApp();
+
+    handlers.onMessage({
+        type: 'alert',
+        ts: 1_700_000_000,
+        alert: { sensor: 'power', level: 'critical', message: 'Charger disconnected' },
+    });
+
+    expect(log.value[0].at).toBe(1_700_000_000_000);
+});
+
+// An older laptop sends no stamp, and the moment it arrived is the only honest
+// answer left.
+it('logs an unstamped alert at the time it arrived', async () => {
+    const handlers = await pairedApp();
+
+    handlers.onMessage({
+        type: 'alert',
+        alert: { sensor: 'power', level: 'critical', message: 'Charger disconnected' },
+    });
+
+    expect(log.value[0].at).toBe(Date.now());
+});
+
+it('ignores an alert message carrying no alert', async () => {
+    const handlers = await pairedApp();
+
+    handlers.onMessage({ type: 'alert' });
+
+    expect(log.value).toEqual([]);
+    expect(alarm.value).toBeNull();
+    expect(stub.startSiren).not.toHaveBeenCalled();
 });
 
 // The phone reconnects to an alarm already sounding — it was locked, or it
