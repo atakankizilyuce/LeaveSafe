@@ -642,7 +642,22 @@ func (h *Hub) TriggerSensorTest(sensorName string) bool {
 	message := displayName + " triggered (manual test)"
 	h.PushAlert(NewAlert(sensorName, "critical", message))
 
-	if h.IsArmed() {
+	// An alarm raised by hand is an alarm. Recording which sensor raised it is
+	// what makes the answers to it work: the phone's overlay offers "pause this
+	// sensor" and "stop using this sensor", and both act on the sensor the hub
+	// recorded rather than on the name the message carried. Without the record
+	// they answered no alarm at all — the buttons did nothing, and the only sign
+	// was a debug line on the laptop nobody was standing next to.
+	armed := false
+	h.mu.Lock()
+	if h.armed && !h.alarmActive {
+		h.alarmActive = true
+		h.alarmSensor = sensorName
+		armed = true
+	}
+	h.mu.Unlock()
+
+	if armed {
 		h.fireAlarmTrigger()
 		h.PushAlert(NewAlarmActive(sensorName, message))
 	}
