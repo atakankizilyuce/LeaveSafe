@@ -58,7 +58,7 @@ func TestDoReportsPanicAndKeepsCallerAlive(t *testing.T) {
 
 func TestDoReportsSuccess(t *testing.T) {
 	ran := false
-	if ok := Do("unit", func() { ran = true }); !ok {
+	if !Do("unit", func() { ran = true }) {
 		t.Error("Do reported failure for a function that returned normally")
 	}
 	if !ran {
@@ -166,7 +166,7 @@ func TestPanicInHandlerDoesNotEscape(t *testing.T) {
 	t.Cleanup(func() { SetPanicHandler(nil) })
 
 	// A panic escaping report would crash the test binary rather than fail it.
-	if ok := Do("unit", func() { panic("boom") }); ok {
+	if Do("unit", func() { panic("boom") }) {
 		t.Error("Do reported success for a function that panicked")
 	}
 }

@@ -176,7 +176,7 @@ func TestBothListenersServeTheSameApplication(t *testing.T) {
 	// HSTS is only sent by the TLS listener, so its presence here is what says
 	// the handler chain was built for this listener rather than borrowed from
 	// the plain-HTTP one.
-	if got := resp.Header.Get("Strict-Transport-Security"); got == "" {
+	if resp.Header.Get("Strict-Transport-Security") == "" {
 		t.Error("remote listener served no HSTS header, but it is the TLS one")
 	}
 }
