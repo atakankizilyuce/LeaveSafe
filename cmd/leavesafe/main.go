@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -803,7 +804,13 @@ func main() {
 		os.Exit(0)
 	})
 
-	if err := srv.Start(); err != nil {
+	// A shutdown this program asked for is not a server error. cleanup calls
+	// Shutdown, which makes Serve return ErrServerClosed here — and treating that
+	// as fatal meant every clean Ctrl+C ended on a red FATAL line and an exit
+	// status of 1, racing the orderly exit(0) the signal handler was already
+	// running. Anything else really is the listener dying under a machine the
+	// user believes is being watched, and still stops the program.
+	if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("Server error: %v", err)
 	}
 }
