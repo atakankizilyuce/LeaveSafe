@@ -1484,12 +1484,31 @@ func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
 	mgr.Register(monitor.NewNetworkSensor())
 	mgr.Register(monitor.NewInputSensorWithThreshold(cfg.InputThreshold))
 
-	// Apply saved sensor preferences from config
-	if cfg.EnabledSensors != nil {
-		for name, enabled := range cfg.EnabledSensors {
-			if enabled {
-				mgr.Enable(name)
-			}
+	applySensorPreferences(mgr, cfg.EnabledSensors)
+}
+
+// applySensorPreferences decides which sensors watch, from what the config
+// recorded.
+//
+// Every sensor is on unless the config says otherwise. The manager registers
+// them switched off, and this used to enable only the names the config marked
+// true — so a fresh installation, whose config has no sensor map at all, armed
+// with nothing watching. The dashboard said "0 / 6 active", the phone said "0
+// sensors ready", and the user who read neither walked away from a laptop that
+// was guarding itself against nothing.
+//
+// A recorded false is now applied rather than merely not-enabled, because with
+// the default the other way round, skipping it would switch a sensor the user
+// turned off back on at the next start.
+func applySensorPreferences(mgr *monitor.Manager, prefs map[string]bool) {
+	for _, s := range mgr.Sensors() {
+		mgr.Enable(s.Name())
+	}
+	for name, enabled := range prefs {
+		if enabled {
+			mgr.Enable(name)
+		} else {
+			mgr.Disable(name)
 		}
 	}
 }
