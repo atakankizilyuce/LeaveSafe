@@ -1,0 +1,30 @@
+name: Assign issues
+
+# Both issue forms carry an `assignees:` field, and blank issues are turned off,
+# so anything opened through the web interface arrives already assigned. An issue
+# created through the API — `gh issue create`, a bot, a migration — never sees a
+# template at all. This is what catches those, and nothing else.
+
+on:
+  issues:
+    types: [opened]
+
+# The default token is read-only for this repository; this is the one thing here
+# that needs more, and only for issues.
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    name: Assign
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # In the common case the template already did it, and there is no reason to
+    # start a runner to confirm that.
+    if: ${{ !github.event.issue.assignees[0] }}
+    steps:
+      - name: Assign the maintainer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: gh issue edit "$ISSUE_URL" --add-assignee atakankizilyuce
