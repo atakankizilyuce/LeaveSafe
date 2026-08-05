@@ -21,9 +21,9 @@ it('drops anything that is not hex', () => {
     expect(normalizeFingerprint('a1:zz:b2')).toBe('a1b2');
     expect(normalizeFingerprint('')).toBe('');
     // Letters that happen to be hex survive; the rest do not. Worth pinning,
-    // because it is why a prose string cannot normalise to something empty and
-    // then read downstream as "there was no certificate".
-    expect(normalizeFingerprint('not a fingerprint')).toBe('afe');
+    // because it is why prose cannot normalise to something empty and then read
+    // downstream as "there was no certificate to check".
+    expect(normalizeFingerprint('no hex in here')).toBe('eee');
     expect(normalizeFingerprint('xxyyzz')).toBe('');
 });
 
