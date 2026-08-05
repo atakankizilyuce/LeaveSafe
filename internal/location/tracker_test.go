@@ -53,14 +53,7 @@ func TestSelectFix(t *testing.T) {
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 	const maxAge = 10 * time.Minute
 
-	tests := []struct {
-		name       string
-		anchor     *Fix
-		live       *Fix
-		wantSource Source
-		wantNil    bool
-		wantMoved  bool
-	}{
+	tests := []selectCase{
 		{
 			name:    "nothing known",
 			wantNil: true,
@@ -128,28 +121,46 @@ func TestSelectFix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, movedM, moved := selectFix(tt.anchor, tt.live, now, maxAge)
-
-			if tt.wantNil {
-				if got != nil {
-					t.Fatalf("got %+v, want no fix", got)
-				}
-				return
-			}
-			if got == nil {
-				// The return is redundant to the test — Fatal already ends it —
-				// but it is what makes the dereference below unreachable to a
-				// reader and to the analyzer, which does not always know that
-				// Fatal has no way back.
-				t.Fatal("got no fix, want one")
-				return
-			}
-			if got.Source != tt.wantSource {
-				t.Errorf("source = %q, want %q", got.Source, tt.wantSource)
-			}
-			if moved != tt.wantMoved {
-				t.Errorf("moved = %v (%.0f m), want %v", moved, movedM, tt.wantMoved)
-			}
+			tt.check(t, got, movedM, moved)
 		})
+	}
+}
+
+// selectCase is one pair of positions and what selectFix should make of them.
+type selectCase struct {
+	name       string
+	anchor     *Fix
+	live       *Fix
+	wantSource Source
+	wantNil    bool
+	wantMoved  bool
+}
+
+// check asserts what selectFix decided. It sits beside the case rather than
+// inside the loop because every case is checked the same way and only the
+// expectations differ.
+func (tt selectCase) check(t *testing.T, got *Fix, movedM float64, moved bool) {
+	t.Helper()
+
+	if tt.wantNil {
+		if got != nil {
+			t.Fatalf("got %+v, want no fix", got)
+		}
+		return
+	}
+	if got == nil {
+		// The return is redundant to the test — Fatal already ends it — but it
+		// is what makes the dereference below unreachable to a reader and to
+		// the analyzer, which does not always know that Fatal has no way back.
+		t.Fatal("got no fix, want one")
+		return
+	}
+
+	if got.Source != tt.wantSource {
+		t.Errorf("source = %q, want %q", got.Source, tt.wantSource)
+	}
+	if moved != tt.wantMoved {
+		t.Errorf("moved = %v (%.0f m), want %v", moved, movedM, tt.wantMoved)
 	}
 }
 

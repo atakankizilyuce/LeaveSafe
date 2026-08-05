@@ -110,39 +110,55 @@ func (w Watcher) Run(ctx context.Context) {
 			return
 		}
 
-		// Re-read rather than trusting the record from before the wait: an
-		// on-demand check may have run while this goroutine was asleep.
-		rec = w.Ledger.Load()
-
-		if !enabled {
-			// Keep the schedule ticking rather than spinning: checking may be
-			// switched back on from the phone at any point.
-			rec.LastCheck = w.now()
-			_ = w.Ledger.Save(rec)
-			continue
+		if !w.checkNow(ctx, enabled, channel) {
+			return
 		}
+	}
+}
 
-		result, err := w.Check(ctx, channel)
+// checkNow performs one due check and reports whether the schedule should carry
+// on. False means the context ended.
+func (w Watcher) checkNow(ctx context.Context, enabled bool, channel string) bool {
+	// Re-read rather than trusting the record from before the wait: an
+	// on-demand check may have run while this goroutine was asleep.
+	rec := w.Ledger.Load()
+
+	if !enabled {
+		// Keep the schedule ticking rather than spinning: checking may be
+		// switched back on from the phone at any point.
 		rec.LastCheck = w.now()
-		if err != nil {
-			_ = w.Ledger.Save(rec)
-			if w.OnError != nil {
-				w.OnError(err)
-			}
-			if !w.sleep(ctx, failureRetry) {
-				return
-			}
-			continue
-		}
-
-		rec.LastSuccess = rec.LastCheck
-		if result.Available && result.Latest != rec.LastSeenLatest {
-			rec.LastSeenLatest = result.Latest
-			if w.Report != nil {
-				w.Report(result)
-			}
-		}
 		_ = w.Ledger.Save(rec)
+		return true
+	}
+
+	result, err := w.Check(ctx, channel)
+	rec.LastCheck = w.now()
+	if err != nil {
+		_ = w.Ledger.Save(rec)
+		if w.OnError != nil {
+			w.OnError(err)
+		}
+		// A failed check waits a shorter time than the schedule asks for, so a
+		// laptop that was offline at its appointed moment is not left unchecked
+		// for another whole interval.
+		return w.sleep(ctx, failureRetry)
+	}
+
+	rec.LastSuccess = rec.LastCheck
+	w.reportIfNew(result, &rec)
+	_ = w.Ledger.Save(rec)
+	return true
+}
+
+// reportIfNew announces a release once and then remembers it, so a version that
+// stays newest does not raise the same notice on every check.
+func (w Watcher) reportIfNew(result Result, rec *Record) {
+	if !result.Available || result.Latest == rec.LastSeenLatest {
+		return
+	}
+	rec.LastSeenLatest = result.Latest
+	if w.Report != nil {
+		w.Report(result)
 	}
 }
 
