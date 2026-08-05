@@ -89,3 +89,31 @@ it('opens the audio context on a tap while armed', async () => {
 
     expect(primeSiren).toHaveBeenCalledTimes(1);
 });
+
+// The label is the whole affordance: it is the only thing on the button, and it
+// is what a screen reader announces. It has to name what the next press does,
+// not what the system currently is.
+it('offers to arm when nothing is being watched', async () => {
+    const button = await mountArmControl();
+
+    expect(button.textContent).toBe('Arm');
+    expect(button.getAttribute('aria-label')).toBe('Arm');
+});
+
+it('asks for a hold to disarm, so a stray tap cannot switch the guard off', async () => {
+    armed.value = true;
+    const button = await mountArmControl();
+
+    expect(button.textContent).toBe('Hold to disarm');
+});
+
+// During the countdown the armed state underneath has not changed yet, so
+// offering to disarm would be a promise about something that is not armed. The
+// only thing the press can do is call the arming off.
+it('offers only to cancel while the countdown runs', async () => {
+    armed.value = true;
+    const button = await mountArmControl(3);
+
+    expect(button.textContent).toBe('Cancel');
+    expect(button.getAttribute('data-counting')).toBe('true');
+});

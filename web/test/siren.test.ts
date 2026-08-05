@@ -180,7 +180,7 @@ it('leaves the context open when the siren stops, so a second alarm is still aud
 
     // Still one context, and it produced oscillators for both alarms.
     expect(FakeAudioContext.built).toHaveLength(1);
-    expect(ctx.oscillators.length).toBe(4);
+    expect(ctx.oscillators).toHaveLength(4);
     expect(ctx.oscillators.slice(2).every((node) => node.started === 1)).toBe(true);
 });
 
