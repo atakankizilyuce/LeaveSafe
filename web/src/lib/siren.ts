@@ -12,6 +12,53 @@ let titleStop: number | null = null;
 
 const BASE_TITLE = 'LeaveSafe';
 
+/**
+ * Open the audio context while the user is touching the screen.
+ *
+ * A phone will not let a page make noise it did not ask for, so a context
+ * created on its own starts suspended and every note played into it is silent.
+ * The only reliable moment to open one is inside a real tap — and the tap that
+ * matters is Arm, because it is the last one before the phone goes in a pocket
+ * and the alarm becomes the only thing that speaks.
+ *
+ * Safe to call as often as you like; it does nothing once a context is open.
+ */
+export function primeSiren() {
+    audioContext();
+}
+
+/**
+ * The page's one audio context, opened on demand and then kept.
+ *
+ * It used to be created for each alarm and closed on dismissal. That is what
+ * made the second alarm silent: a phone caps how many contexts a page may open
+ * and only lets one start off the back of a gesture, so the replacement made
+ * for the second alarm — minutes later, with the phone in a pocket and no
+ * gesture in sight — stayed suspended and played nothing. The siren was
+ * running; nobody could hear it.
+ */
+function audioContext(): AudioContext | null {
+    if (ctx) {
+        // Suspended is the normal state for a context the browser paused while
+        // the tab was in the background, and it is silent until resumed.
+        if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+        return ctx;
+    }
+    const AudioCtor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtor) return null;
+    try {
+        ctx = new AudioCtor();
+        void ctx.resume().catch(() => {});
+        return ctx;
+    } catch {
+        // No audio device, or the browser refused. Vibration and the overlay
+        // remain, and the laptop is sounding its own siren regardless.
+        return null;
+    }
+}
+
 export function startSiren(message: string) {
     stopSiren();
     startTone();
@@ -28,16 +75,14 @@ export function stopSiren() {
     for (const node of [osc, harmonic]) {
         try {
             node?.stop();
+            node?.disconnect();
         } catch {
             // Already stopped.
         }
     }
     osc = null;
     harmonic = null;
-    if (ctx) {
-        void ctx.close().catch(() => {});
-        ctx = null;
-    }
+    // The context itself is deliberately left open. See audioContext.
 
     if (buzz !== null) {
         window.clearInterval(buzz);
@@ -58,26 +103,22 @@ export function stopSiren() {
 
 function startTone() {
     try {
-        const AudioCtor =
-            window.AudioContext ??
-            (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!AudioCtor) return;
+        const audio = audioContext();
+        if (!audio) return;
 
-        ctx = new AudioCtor();
-
-        osc = ctx.createOscillator();
-        const mainGain = ctx.createGain();
+        osc = audio.createOscillator();
+        const mainGain = audio.createGain();
         osc.type = 'square';
         osc.frequency.value = 880;
         mainGain.gain.value = 1;
-        osc.connect(mainGain).connect(ctx.destination);
+        osc.connect(mainGain).connect(audio.destination);
 
-        harmonic = ctx.createOscillator();
-        const harmonicGain = ctx.createGain();
+        harmonic = audio.createOscillator();
+        const harmonicGain = audio.createGain();
         harmonic.type = 'square';
         harmonic.frequency.value = 1760;
         harmonicGain.gain.value = 0.5;
-        harmonic.connect(harmonicGain).connect(ctx.destination);
+        harmonic.connect(harmonicGain).connect(audio.destination);
 
         osc.start();
         harmonic.start();
