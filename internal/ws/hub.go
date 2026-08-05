@@ -1466,6 +1466,18 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	h.SetPinProtection(defaults.PinProtection.Enabled, defaults.PinProtection.PinHash)
 	h.SetAutoArmOnLock(defaults.AutoArmOnLock)
 
+	// An empty sensor map means every sensor watches, which is what the defaults
+	// this just wrote describe. The manager has to be told, or the reset would
+	// hold a sensor switched off while the config it produced says nothing of
+	// the sort — a disagreement that lasts until the next restart reads the file
+	// and quietly switches it back on.
+	for _, s := range h.sensorMgr.Sensors() {
+		h.sensorMgr.Enable(s.Name())
+	}
+	if h.IsArmed() {
+		h.sensorMgr.StartEnabled()
+	}
+
 	payload := h.configPayloadWithRemoteState(cfg)
 	client.send(ServerMessage{
 		Type:   MsgTypeConfigData,
