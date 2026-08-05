@@ -34,24 +34,6 @@ func skipUnavailable(t *testing.T, sensor string, err error) {
 	t.Fatalf("preparing the %s scenario failed: %v", sensor, err)
 }
 
-// allSensors is every sensor the binary registers, so a scenario can say which
-// one it is measuring and switch the rest off rather than leaving them to the
-// VM's own hardware.
-var allSensors = []string{"power", "lid", "usb", "screen", "network", "input"}
-
-// onlySensor is the sensor map that leaves one sensor watching.
-//
-// Naming all of them matters: they are all on by default, and the first alarm
-// on an armed machine suppresses every alert behind it. A second sensor moving
-// while the scenario sets up would swallow the alert it then waits for.
-func onlySensor(name string) map[string]bool {
-	want := make(map[string]bool, len(allSensors))
-	for _, s := range allSensors {
-		want[s] = s == name
-	}
-	return want
-}
-
 // armWith pairs, leaves one sensor watching and arms the system. Sensors must
 // be set before arming, because the hub refuses configure changes while armed.
 func armWith(t *testing.T, sensor string) *harness.Phone {
@@ -64,7 +46,7 @@ func armWith(t *testing.T, sensor string) *harness.Phone {
 
 	phone.Send(ws.ClientMessage{
 		Type:    ws.MsgTypeConfigure,
-		Sensors: onlySensor(sensor),
+		Sensors: harness.OnlySensor(sensor),
 	})
 	phone.Send(ws.ClientMessage{Type: ws.MsgTypeArm})
 
