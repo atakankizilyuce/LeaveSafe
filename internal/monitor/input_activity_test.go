@@ -1,5 +1,3 @@
-//go:build darwin
-
 package monitor
 
 import "testing"
@@ -34,8 +32,12 @@ func TestOnePassingTouchIsNotAnAlert(t *testing.T) {
 func TestSustainedActivityRaisesTheAlarmOnce(t *testing.T) {
 	w := activityWatch{threshold: 3}
 
-	if w.sample(busy) || w.sample(busy) {
-		t.Fatal("the alarm fired before the threshold was reached")
+	// Separately, and never behind a short-circuit: each call is a reading the
+	// watch has to see, so one that is skipped is a reading that never happened.
+	for i := 1; i < 3; i++ {
+		if w.sample(busy) {
+			t.Fatalf("the alarm fired on reading %d, before the threshold of 3", i)
+		}
 	}
 	if !w.sample(busy) {
 		t.Fatal("the alarm did not fire at the threshold")
@@ -58,8 +60,10 @@ func TestAnInterruptedRunStartsCountingAgain(t *testing.T) {
 	w.sample(busy)
 	w.sample(quiet)
 
-	if w.sample(busy) || w.sample(busy) {
-		t.Error("the readings from before the pause were counted towards the threshold")
+	for i := 1; i < 3; i++ {
+		if w.sample(busy) {
+			t.Errorf("reading %d after the pause alerted, so the earlier run was still counted", i)
+		}
 	}
 }
 
