@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { captureAnchor } from '../lib/geo';
+import { primeSiren } from '../lib/siren';
 import { armed, send, showToast } from '../lib/store';
 
 const HOLD_MS = 1500;
@@ -92,6 +93,10 @@ export function ArmControl({ counting, onCountdown }: Props) {
     }
 
     function onClick() {
+        // Inside the tap, because a phone only lets a page open audio from one.
+        // This is the last thing the user touches before walking away, so it is
+        // the last chance to make the siren able to sound at all.
+        primeSiren();
         if (justDisarmed.current) {
             justDisarmed.current = false;
             return;
