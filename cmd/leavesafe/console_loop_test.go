@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -79,15 +78,20 @@ func hubWithSensors(t *testing.T) *ws.Hub {
 	return ws.NewHub(authMgr, mgr, "test")
 }
 
-// quietAlarm reports itself sounding without making a sound. Its only escalation
-// step notifies the phone, so nothing here reaches an audio backend — a test
-// suite that shrieks at full volume is not one anybody runs twice.
+// quietAlarm reports itself sounding while making no sound and writing no log.
+//
+// Both halves are deliberate. Escalation rather than a plain siren keeps every
+// audio backend out of it — a test suite that shrieks at full volume is not one
+// anybody runs twice. The hour-long delay on its only step keeps the escalation
+// goroutine parked on the stop channel, so it never logs: these tests read the
+// log through a buffer, and a background goroutine writing to it while the test
+// reads is a data race, which is exactly what -race found the first time round.
 func quietAlarm(t *testing.T) *alarm.Alarm {
 	t.Helper()
 
 	a := alarm.New(config.AlarmConfig{
 		EscalationEnabled: true,
-		Levels:            []config.AlarmLevel{{Action: "notify_phone_only"}},
+		Levels:            []config.AlarmLevel{{DelaySeconds: 3600, Action: "notify_phone_only"}},
 	})
 	a.Start()
 	t.Cleanup(a.Stop)
@@ -375,12 +379,12 @@ func TestConsoleQRSaysWhenThereIsNoSuchAddress(t *testing.T) {
 // instead of a terminal. Everything about `qr <n>` lives on that side of the
 // headless switch — a run with no terminal has no QR code to switch — so this is
 // the only way to reach it at all.
-func terminalDashboard(t *testing.T, urls []string) (*statusBar, *bytes.Buffer) {
+func terminalDashboard(t *testing.T, urls []string) (*statusBar, *syncBuffer) {
 	t.Helper()
 
-	var screen bytes.Buffer
+	screen := &syncBuffer{}
 	sb := &statusBar{
-		out:       &screen,
+		out:       screen,
 		hub:       testHub(t),
 		sensorMgr: monitor.NewManager(),
 		key:       testKey,
@@ -391,7 +395,7 @@ func terminalDashboard(t *testing.T, urls []string) (*statusBar, *bytes.Buffer) 
 		qrRow: 1, qrCol: 1, qrBoxW: 40, qrBoxH: 40,
 	}
 	sb.setURLs(urls)
-	return sb, &screen
+	return sb, screen
 }
 
 func TestConsoleQRNamesTheAddressItIsNowShowing(t *testing.T) {

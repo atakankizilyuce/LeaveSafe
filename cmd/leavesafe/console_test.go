@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,15 +44,39 @@ func consoleOutput(t *testing.T, typed string, d consoleDeps) string {
 	})
 }
 
+// syncBuffer is a buffer that a background goroutine may write to while the test
+// reads it.
+//
+// The logger is a global, so redirecting it catches every line the program
+// writes — including the ones from loops the code under test left running. An
+// ordinary bytes.Buffer there is a data race between that goroutine and the
+// assertion, and -race is right to say so.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 // captureLog collects everything written through the logger while fn runs. The
 // headless paths report through the logger rather than drawing a terminal grid,
 // so this is where their output ends up.
 func captureLog(t *testing.T, fn func()) string {
 	t.Helper()
 
-	var out bytes.Buffer
+	out := &syncBuffer{}
 	previous := log.StandardLogger().Out
-	log.SetOutput(&out)
+	log.SetOutput(out)
 	t.Cleanup(func() { log.SetOutput(previous) })
 
 	fn()
