@@ -8,7 +8,7 @@ export default defineConfig({
         // The service worker is driven against a stand-in for the worker global
         // scope rather than a browser, so no DOM is needed.
         environment: 'node',
-        include: ['test/**/*.test.js'],
+        include: ['test/**/*.test.{js,ts}'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'lcov'],
