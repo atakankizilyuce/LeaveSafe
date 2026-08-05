@@ -91,20 +91,28 @@ func setTestPowerAC(online bool) error {
 	return nil
 }
 
+// powerSupplyDir is where the kernel publishes every supply it knows about, and
+// where test_power's simulated mains appears once the module is loaded.
+const powerSupplyDir = "/sys/class/power_supply"
+
+// evemuEvent comes from evemu-tools and is the only way here to write a real
+// event into /dev/input, which is what the input sensor is watching.
+const evemuEvent = "evemu-event"
+
 // mainsOnlinePath finds the "online" file of the mains supply, the same way the
 // production sensor picks which supply to watch.
 func mainsOnlinePath() (string, error) {
-	entries, err := os.ReadDir("/sys/class/power_supply")
+	entries, err := os.ReadDir(powerSupplyDir)
 	if err != nil {
-		return "", fmt.Errorf("%w: /sys/class/power_supply is absent: %v", errNoHardware, err)
+		return "", fmt.Errorf("%w: %s is absent: %v", errNoHardware, powerSupplyDir, err)
 	}
 	for _, entry := range entries {
-		typePath := filepath.Join("/sys/class/power_supply", entry.Name(), "type")
+		typePath := filepath.Join(powerSupplyDir, entry.Name(), "type")
 		data, err := os.ReadFile(typePath) // #nosec G304 -- path comes from a sysfs walk
 		if err != nil || strings.TrimSpace(string(data)) != "Mains" {
 			continue
 		}
-		online := filepath.Join("/sys/class/power_supply", entry.Name(), "online")
+		online := filepath.Join(powerSupplyDir, entry.Name(), "online")
 		if _, err := os.Stat(online); err == nil {
 			return online, nil
 		}
@@ -133,7 +141,7 @@ func createVirtualKeyboard() (*virtualKeyboard, error) {
 	if _, err := os.Stat("/dev/uinput"); err != nil {
 		return nil, fmt.Errorf("%w: /dev/uinput is absent: %v", errNoHardware, err)
 	}
-	if _, err := exec.LookPath("evemu-event"); err != nil {
+	if _, err := exec.LookPath(evemuEvent); err != nil {
 		return nil, fmt.Errorf("%w: evemu-tools is not installed: %v", errNoHardware, err)
 	}
 
@@ -177,10 +185,10 @@ func inputMtimeSnapshot() int64 {
 func (k *virtualKeyboard) Type(rounds int) {
 	for range rounds {
 		// #nosec G204 -- devicePath comes from a glob of /dev/input
-		_ = exec.Command("evemu-event", k.devicePath,
+		_ = exec.Command(evemuEvent, k.devicePath,
 			"--type", "EV_KEY", "--code", "KEY_A", "--value", "1", "--sync").Run()
 		// #nosec G204 -- devicePath comes from a glob of /dev/input
-		_ = exec.Command("evemu-event", k.devicePath,
+		_ = exec.Command(evemuEvent, k.devicePath,
 			"--type", "EV_KEY", "--code", "KEY_A", "--value", "0", "--sync").Run()
 		time.Sleep(400 * time.Millisecond)
 	}

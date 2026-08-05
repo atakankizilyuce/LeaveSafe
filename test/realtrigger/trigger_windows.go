@@ -19,6 +19,12 @@ var errUnsupported = errors.New("this environment cannot produce the change")
 
 const loopbackAdapter = "Loopback Pseudo-Interface 1"
 
+// probeAddress is added to the loopback adapter and taken off again. It is in
+// the private range and deliberately unlikely to collide with anything the host
+// already has, because the test asserts on the change it causes rather than on
+// the address itself.
+const probeAddress = "address=10.99.99.99"
+
 // triggerNetworkChange adds a real IP address to the loopback adapter, which
 // changes what net.InterfaceAddrs reports to the sensor.
 func triggerNetworkChange(t *testing.T) error {
@@ -26,10 +32,10 @@ func triggerNetworkChange(t *testing.T) error {
 
 	// Clear any address left behind by an earlier run so the add is a real
 	// change rather than a duplicate-address error.
-	_, _ = runNetsh("delete", "address", "name="+loopbackAdapter, "address=10.99.99.99")
+	_, _ = runNetsh("delete", "address", "name="+loopbackAdapter, probeAddress)
 
 	out, err := runNetsh("add", "address", "name="+loopbackAdapter,
-		"address=10.99.99.99", "mask=255.255.255.255")
+		probeAddress, "mask=255.255.255.255")
 	if err != nil {
 		if isElevationFailure(out) {
 			return fmt.Errorf("%w: netsh needs an elevated shell (%s)",
@@ -39,7 +45,7 @@ func triggerNetworkChange(t *testing.T) error {
 	}
 
 	t.Cleanup(func() {
-		_, _ = runNetsh("delete", "address", "name="+loopbackAdapter, "address=10.99.99.99")
+		_, _ = runNetsh("delete", "address", "name="+loopbackAdapter, probeAddress)
 	})
 	return nil
 }
