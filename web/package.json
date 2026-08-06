@@ -13,8 +13,8 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@preact/signals": "^2.0.1",
-    "preact": "^10.27.2"
+    "@preact/signals": "^2.10.1",
+    "preact": "^10.29.8"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
