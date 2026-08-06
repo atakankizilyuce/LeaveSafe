@@ -24,6 +24,9 @@ function traceColour(status: typeof link.value, isArmed: boolean): string {
     return isArmed ? ARMED : STANDBY;
 }
 
+/** The 32-bit word the generator below wraps its state into. */
+const WORD = 4294967296; // 2^32
+
 /**
  * The jitter the idle line wanders by, drawn from a fixed seed.
  *
@@ -36,16 +39,18 @@ function traceColour(status: typeof link.value, isArmed: boolean): string {
  * instead — and as a side effect the trace now draws the same line on every
  * run, which is the only reason its shape can be asserted on at all.
  *
- * The generator is mulberry32: one 32-bit word of state, good enough for a
- * decorative wander and deliberately not offered to anything else.
+ * The generator is a plain linear congruential one, written in ordinary
+ * arithmetic rather than the usual masks and shifts. Its largest intermediate is
+ * about 7.1e15, which is inside the 9.0e15 where a double still counts whole
+ * numbers one at a time, so nothing here is rounded and nothing needs to be
+ * truncated back into a machine word. Good enough for a decorative wander, and
+ * deliberately not offered to anything else.
  */
 function seededNoise(seed: number): () => number {
-    let state = seed;
+    let state = seed % WORD;
     return () => {
-        state = (state + 0x6d2b79f5) | 0;
-        let t = Math.imul(state ^ (state >>> 15), 1 | state);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        state = (state * 1664525 + 1013904223) % WORD;
+        return state / WORD;
     };
 }
 
