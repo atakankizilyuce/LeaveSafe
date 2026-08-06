@@ -126,6 +126,16 @@ function show() {
     });
 }
 
+/**
+ * Mounts the trace, drives `count` animation frames by hand, and hands back how
+ * far each drawn frame sat from the middle.
+ */
+function idleLine(count: number): number[] {
+    show();
+    for (let i = 0; i < count; i++) frames.pop()?.();
+    return ctx.strokes.map((stroke) => stroke.newest);
+}
+
 it('draws in the standby colour when nothing is armed', () => {
     expect(draw().colour).toBe(STANDBY);
 });
@@ -163,6 +173,33 @@ it('draws every point of the baseline', () => {
 // rather than "activity".
 it('keeps the idle line close to flat', () => {
     expect(draw().newest).toBeLessThan(1);
+});
+
+// The wander is seeded in the component rather than taken from Math.random(),
+// so two runs draw the same line. Nothing about a decorative jitter needed to be
+// unpredictable, and pinning it is what makes the shape assertable at all —
+// every check below this one would otherwise be measuring a different line each
+// time it ran.
+it('draws the same idle line on every run', () => {
+    wantsReducedMotion(false);
+    const first = idleLine(8);
+
+    render(null, host);
+    ctx = new FakeContext();
+    frames = [];
+    const second = idleLine(8);
+
+    expect(second).toEqual(first);
+    expect(second).toHaveLength(9);
+});
+
+// Seeded is not the same as still. A frozen line would be the one thing this
+// component cannot afford to draw, because "the page is alive" is the entire
+// claim it makes.
+it('keeps the idle line moving', () => {
+    wantsReducedMotion(false);
+
+    expect(new Set(idleLine(8)).size).toBeGreaterThan(1);
 });
 
 it('schedules the next frame when the user has not asked for less motion', () => {
