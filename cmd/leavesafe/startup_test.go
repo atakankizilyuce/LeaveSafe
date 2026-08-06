@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -624,22 +625,39 @@ func TestShuttingDownLeavesHooksThatWereAlreadyThere(t *testing.T) {
 	a := startedApp(t, nil)
 	a.close()
 
-	before := existing.fired
+	before := existing.count()
 	log.Info("a line written after the start was closed")
-	if existing.fired == before {
+	if existing.count() == before {
 		t.Error("closing the start took a hook it did not install")
 	}
 }
 
 // countingHook stands in for a log hook that was installed before the program
 // started, and counts what it was asked to write.
-type countingHook struct{ fired int }
+//
+// The count is behind a lock for the same reason syncBuffer is: logrus fires a
+// hook on whichever goroutine wrote the line, and a started program still has
+// supervised loops logging while the test reads the count. Without the lock that
+// is a data race between them, and -race is right to say so — it failed this
+// test on the macOS runner, where the timing happened to line up.
+type countingHook struct {
+	mu    sync.Mutex
+	fired int
+}
 
 func (h *countingHook) Levels() []log.Level { return log.AllLevels }
 
 func (h *countingHook) Fire(*log.Entry) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.fired++
 	return nil
+}
+
+func (h *countingHook) count() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.fired
 }
 
 // The alarm callbacks are what turn an alert into a noise on this machine, and
