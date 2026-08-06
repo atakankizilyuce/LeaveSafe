@@ -329,12 +329,20 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      # --ignore-scripts means a dependency cannot run code on this runner just
+      # by being installed. esbuild is the only package here that ships an
+      # install script, and it does not need one: the platform binary arrives as
+      # an optional dependency and its launcher finds it at run time.
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: npm ci --ignore-scripts
 
+      # Biome is a devDependency rather than an `npx` download, so its version
+      # comes from the lock file along with everything else. Run from the
+      # repository root, because that is where biome.json is and its paths are
+      # written relative to it.
       - name: Biome check
-        run: npx --yes @biomejs/biome@2.5.6 ci . --error-on-warnings
+        run: web/node_modules/.bin/biome ci . --error-on-warnings
 
       - name: Typecheck
         working-directory: web
