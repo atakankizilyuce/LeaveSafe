@@ -462,10 +462,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # govulncheck is a tool dependency in go.mod rather than a `go install` of
+      # a version tag. `go install pkg@version` ignores this module entirely and
+      # resolves the scanner's own dependencies fresh on every run, so the thing
+      # auditing our supply chain had an unaudited one of its own. As a tool
+      # dependency its whole graph is pinned in go.sum and Dependabot bumps it
+      # like any other.
       - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          govulncheck ./...
+        run: go tool govulncheck ./...
 
   # ---------------------------------------------------------------------------
   # Code quality. SonarQube Cloud reads the coverage profile the Linux test leg
