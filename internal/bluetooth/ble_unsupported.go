@@ -24,7 +24,8 @@ func NewServer(hub *ws.Hub) *Server {
 //
 // Neither the BlueZ nor the WinRT backend tells the GATT layer which central
 // performed a write — tinygo's bluetooth package says so outright for BlueZ and
-// carries an open TODO for Windows, and passes a connection ID of zero on both.
+// leaves a comment where Windows should report it, and passes a connection ID
+// of zero on both.
 // With no way to tell two phones apart, one authenticated session would cover
 // every device in radio range. See ErrNoCentralIdentity.
 //
