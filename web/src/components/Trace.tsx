@@ -25,6 +25,31 @@ function traceColour(status: typeof link.value, isArmed: boolean): string {
 }
 
 /**
+ * The jitter the idle line wanders by, drawn from a fixed seed.
+ *
+ * The wander is decoration. It exists so that a page which has quietly frozen
+ * looks different from a calm one, and nothing about it needs to be
+ * unpredictable. Taking it from `Math.random()` said otherwise: from the
+ * outside, a decorative jitter and a weak source of randomness behind something
+ * that matters are the same call, and a scanner reading this file is right not
+ * to guess which one it found. Seeding it here answers the question in the code
+ * instead — and as a side effect the trace now draws the same line on every
+ * run, which is the only reason its shape can be asserted on at all.
+ *
+ * The generator is mulberry32: one 32-bit word of state, good enough for a
+ * decorative wander and deliberately not offered to anything else.
+ */
+function seededNoise(seed: number): () => number {
+    let state = seed;
+    return () => {
+        state = (state + 0x6d2b79f5) | 0;
+        let t = Math.imul(state ^ (state >>> 15), 1 | state);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/**
  * A baseline that advances on its own: flat while nothing is happening, with a
  * spike each time a sensor trips.
  *
@@ -74,6 +99,7 @@ export function Trace() {
         resize();
 
         let phase = 0;
+        const jitter = seededNoise(0x5eed);
 
         const draw = () => {
             const width = el.clientWidth;
@@ -82,9 +108,9 @@ export function Trace() {
             // Advance one sample. Idle noise is deliberately tiny: the line
             // should read as flat, not as activity.
             const idle = isArmed ? 0.06 : 0.03;
-            let value = Math.sin(phase * 0.35) * idle + (Math.random() - 0.5) * idle;
+            let value = Math.sin(phase * 0.35) * idle + (jitter() - 0.5) * idle;
             if (pending.current > 0) {
-                value = pending.current * (Math.random() > 0.5 ? 1 : -1);
+                value = pending.current * (jitter() > 0.5 ? 1 : -1);
                 pending.current *= 0.62;
                 if (pending.current < 0.04) pending.current = 0;
             }
