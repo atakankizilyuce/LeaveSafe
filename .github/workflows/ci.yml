@@ -14,7 +14,9 @@ on:
   # Release tags run the exact same gate before anything is published.
   workflow_call:
 
-# Least privilege by default; no job here needs write access.
+# Least privilege by default; no job here needs write access. Every job below
+# then states its own permissions as well, which is what actually scopes the
+# token — this block only decides what a job that forgets to would inherit.
 permissions:
   contents: read
 
@@ -31,6 +33,8 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -60,6 +64,8 @@ jobs:
     name: Typos
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: crate-ci/typos@bee27e3a4fd1ea2111cf90ab89cd076c870fce14 # v1.48.0
@@ -74,6 +80,8 @@ jobs:
     name: Lint (${{ matrix.goos }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -105,6 +113,8 @@ jobs:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -161,6 +171,8 @@ jobs:
     name: E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -186,6 +198,8 @@ jobs:
     name: Real triggers (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -211,6 +225,8 @@ jobs:
     name: Sandbox VM (linux)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -301,6 +317,8 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -361,6 +379,8 @@ jobs:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -424,6 +444,8 @@ jobs:
     name: Vulncheck
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -450,6 +472,8 @@ jobs:
     name: Sonar
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     needs: [test, frontend]
     # Forks have no secrets. Dependabot's runs read from a separate secret store,
     # so drop the second clause once SONAR_TOKEN is added there too.
@@ -488,6 +512,8 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # This job reads the other jobs' results, never the repository.
+    permissions: {}
     needs: [format, typos, lint, test, e2e, realtrigger, sandbox-linux, frontend, build, vulncheck]
     if: always()
     steps:
