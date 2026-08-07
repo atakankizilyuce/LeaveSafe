@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Three steps: scan the QR code on the laptop, arm from the phone, and get an alert the moment a sensor changes.">
   <title>Scan · Arm · Get told</title>
 
+  <!-- Hand-written SMIL: no scripts, no external fetches, so GitHub renders it. -->
+
   <defs>
     <linearGradient id="fbg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0c1019"/>
-      <stop offset="1" stop-color="#070a11"/>
+      <stop offset="0" stop-color="#0a0c11"/>
+      <stop offset="1" stop-color="#050609"/>
     </linearGradient>
     <clipPath id="fframe"><rect width="1200" height="300" rx="20"/></clipPath>
     <filter id="fglow" x="-60%" y="-60%" width="220%" height="220%">
@@ -16,20 +18,20 @@
   <g clip-path="url(#fframe)" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">
     <rect width="1200" height="300" fill="url(#fbg)"/>
 
-    <!-- ── 1. scan ──────────────────────────────────────────────── -->
+    <!-- ── 1 · scan ─────────────────────────────────────────────── -->
     <g>
-      <rect x="40" y="54" width="300" height="176" rx="14" fill="#101623" stroke="#8ea0ff" stroke-opacity=".16"/>
-      <text x="60" y="86" font-size="12" letter-spacing="3" fill="#6c7cff">01 · SCAN</text>
+      <rect x="40" y="54" width="300" height="176" rx="14" fill="#0f1218" stroke="#3d8fc4" stroke-opacity=".18"/>
+      <text x="60" y="86" font-size="12" letter-spacing="3" fill="#3d8fc4">01 · SCAN</text>
 
       <!-- laptop -->
-      <rect x="96" y="104" width="132" height="84" rx="7" fill="#0a0e17" stroke="#8ea0ff" stroke-opacity=".3"/>
-      <rect x="80" y="192" width="164" height="8" rx="4" fill="#1b2436"/>
+      <rect x="96" y="104" width="132" height="84" rx="7" fill="#050609" stroke="#5c6572" stroke-opacity=".5"/>
+      <rect x="80" y="192" width="164" height="8" rx="4" fill="#1b2029"/>
 
       <!-- qr -->
-      <g fill="#c9d4f0" transform="translate(126 118)">
-        <rect width="18" height="18" fill="none" stroke="#c9d4f0" stroke-width="4"/>
-        <rect x="54" width="18" height="18" fill="none" stroke="#c9d4f0" stroke-width="4"/>
-        <rect y="54" width="18" height="18" fill="none" stroke="#c9d4f0" stroke-width="4"/>
+      <g fill="#c8ced8" transform="translate(126 118)">
+        <rect width="18" height="18" fill="none" stroke="#c8ced8" stroke-width="4"/>
+        <rect x="54" width="18" height="18" fill="none" stroke="#c8ced8" stroke-width="4"/>
+        <rect y="54" width="18" height="18" fill="none" stroke="#c8ced8" stroke-width="4"/>
         <rect x="28" y="6" width="6" height="6"/><rect x="34" y="20" width="6" height="6"/>
         <rect x="22" y="30" width="6" height="6"/><rect x="40" y="34" width="6" height="6"/>
         <rect x="28" y="46" width="6" height="6"/><rect x="52" y="30" width="6" height="6"/>
@@ -37,100 +39,131 @@
         <rect x="56" y="62" width="6" height="6"/><rect x="66" y="52" width="6" height="6"/>
         <rect x="6" y="28" width="6" height="6"/><rect x="14" y="42" width="6" height="6"/>
       </g>
-      <!-- scan line -->
-      <rect x="122" y="116" width="80" height="2" fill="#6c7cff" opacity=".9" filter="url(#fglow)">
+      <rect x="122" y="116" width="80" height="2" fill="#3d8fc4" opacity=".9" filter="url(#fglow)">
         <animate attributeName="y" values="116;178;116" dur="3.2s" repeatCount="indefinite"/>
       </rect>
 
-      <text x="60" y="222" font-size="13" letter-spacing="1.4" fill="#8b96a9">Run it. A QR code appears.</text>
+      <text x="60" y="222" font-size="13" letter-spacing="1.4" fill="#76808e">Run it. A QR code appears.</text>
     </g>
 
     <!-- connector 1 -->
     <g>
-      <path d="M356 142h84" stroke="#8ea0ff" stroke-opacity=".22" stroke-width="1.5" stroke-dasharray="5 6"/>
-      <circle r="3.5" fill="#6c7cff">
+      <path d="M356 142h84" stroke="#5c6572" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="5 6"/>
+      <circle r="3.5" fill="#3d8fc4">
         <animateMotion path="M356 142h84" dur="1.9s" repeatCount="indefinite"/>
         <animate attributeName="opacity" values="0;1;1;0" dur="1.9s" repeatCount="indefinite"/>
       </circle>
     </g>
 
-    <!-- ── 2. arm ───────────────────────────────────────────────── -->
+    <!-- ── 2 · arm ──────────────────────────────────────────────── -->
+    <!--
+      The phone's own arc, in miniature: a shut eye while nothing is watched,
+      a shield with an open eye once it is. Not a colour swap — the shape is
+      what changes, which is the thing you can read across a room.
+    -->
     <g>
-      <rect x="456" y="54" width="300" height="176" rx="14" fill="#101623" stroke="#8ea0ff" stroke-opacity=".16">
-        <animate attributeName="stroke" values="#8ea0ff;#8ea0ff;#ff4d3d;#ff4d3d;#8ea0ff"
-                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
+      <rect x="456" y="54" width="300" height="176" rx="14" fill="#0f1218" stroke="#3d8fc4" stroke-opacity=".18">
+        <animate attributeName="stroke-opacity" values=".18;.18;.5;.5;.18"
+                 keyTimes="0;0.32;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
       </rect>
-      <text x="476" y="86" font-size="12" letter-spacing="3" fill="#6c7cff">
-        <animate attributeName="fill" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>02 · ARM</text>
+      <text x="476" y="86" font-size="12" letter-spacing="3" fill="#3d8fc4">02 · ARM</text>
 
       <!-- phone -->
-      <rect x="558" y="100" width="96" height="100" rx="12" fill="#0a0e17" stroke="#8ea0ff" stroke-opacity=".32">
-        <animate attributeName="stroke" values="#8ea0ff;#8ea0ff;#ff4d3d;#ff4d3d;#8ea0ff"
-                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
-      </rect>
-      <text x="606" y="146" text-anchor="middle" font-size="15" font-weight="700" letter-spacing="1"
-            font-family="Helvetica Neue,Helvetica,Arial,sans-serif" fill="#dfe6f5" opacity="1">STANDBY
-        <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.30;0.38;0.94;1"
-                 dur="9s" repeatCount="indefinite"/></text>
-      <text x="606" y="146" text-anchor="middle" font-size="17" font-weight="700" letter-spacing="1"
-            font-family="Helvetica Neue,Helvetica,Arial,sans-serif" fill="#ff4d3d" opacity="0">ARMED
-        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.38;0.46;0.9;0.96;1"
-                 dur="9s" repeatCount="indefinite"/></text>
-      <rect x="572" y="166" width="68" height="18" rx="9" fill="#6c7cff" opacity=".9">
-        <animate attributeName="fill" values="#6c7cff;#6c7cff;#2a1a1c;#2a1a1c;#6c7cff"
-                 keyTimes="0;0.34;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
+      <rect x="558" y="98" width="96" height="104" rx="12" fill="#050609" stroke="#5c6572" stroke-opacity=".55">
+        <animate attributeName="fill" values="#050609;#050609;#0a1b2d;#0a1b2d;#050609"
+                 keyTimes="0;0.32;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
+        <animate attributeName="stroke" values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
+                 keyTimes="0;0.32;0.44;0.9;1" dur="9s" repeatCount="indefinite"/>
       </rect>
 
-      <text x="476" y="222" font-size="13" letter-spacing="1.4" fill="#8b96a9">Scan it. Tap arm. Walk away.</text>
+      <!-- shut -->
+      <g transform="translate(606 146)" opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.30;0.40;0.94;1"
+                 dur="9s" repeatCount="indefinite"/>
+        <g fill="none" stroke="#76808e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+           transform="translate(0 -14) scale(.95)">
+          <path d="M-1.3-6.9A11 11 0 0 1 0-7c7 0 10 7 10 7a18 18 0 0 1-2.2 3.2"/>
+          <path d="M-5.4-5.4A18 18 0 0 0-10 0s3 7 10 7a11 11 0 0 0 5.4-1.4"/>
+          <path d="M-2.1-7.8 2 2.1"/><path d="m-10-10 20 20"/>
+        </g>
+        <text y="14" text-anchor="middle" font-size="9" letter-spacing="1.4" fill="#76808e">NOT WATCHING</text>
+        <rect x="-34" y="28" width="68" height="18" rx="9" fill="#3d8fc4"/>
+        <text y="41" text-anchor="middle" font-size="9" letter-spacing="1.4" fill="#040a12" font-weight="700">ARM</text>
+      </g>
+
+      <!-- armed -->
+      <g transform="translate(606 146)" opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.40;0.48;0.9;0.96;1"
+                 dur="9s" repeatCount="indefinite"/>
+        <path d="M50 4 90 16v34c0 24-20 38-40 46C30 88 10 74 10 50V16z"
+              transform="translate(-30 -42) scale(.6)"
+              fill="#3d8fc4" fill-opacity=".08" stroke="#3d8fc4" stroke-width="3.4" stroke-linejoin="round"/>
+        <g fill="none" stroke="#3d8fc4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+           transform="translate(0 -16) scale(.85)">
+          <path d="M-10 0s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+          <circle cx="0" cy="0" r="3"/>
+        </g>
+        <text y="9" text-anchor="middle" font-size="8.5" letter-spacing="1.2" fill="#3d8fc4">WATCHING</text>
+        <g fill="#3d8fc4" fill-opacity=".28">
+          <rect x="-19" y="14" width="10" height="10" rx="3"/>
+          <rect x="-5" y="14" width="10" height="10" rx="3"/>
+          <rect x="9" y="14" width="10" height="10" rx="3"/>
+        </g>
+      </g>
+
+      <text x="476" y="222" font-size="13" letter-spacing="1.4" fill="#76808e">Scan it. Tap arm. Walk away.</text>
     </g>
 
     <!-- connector 2 -->
     <g>
-      <path d="M772 142h84" stroke="#8ea0ff" stroke-opacity=".22" stroke-width="1.5" stroke-dasharray="5 6"/>
-      <circle r="3.5" fill="#ff4d3d">
+      <path d="M772 142h84" stroke="#5c6572" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="5 6"/>
+      <circle r="3.5" fill="#f04438">
         <animateMotion path="M856 142h-84" dur="1.9s" repeatCount="indefinite"/>
         <animate attributeName="opacity" values="0;1;1;0" dur="1.9s" repeatCount="indefinite"/>
       </circle>
     </g>
 
-    <!-- ── 3. told ──────────────────────────────────────────────── -->
+    <!-- ── 3 · get told ─────────────────────────────────────────── -->
+    <!-- The stations, and only the one that fired is red. Everything else
+         stays exactly as calm as it was, which is what makes the red mean
+         something. -->
     <g>
-      <rect x="872" y="54" width="288" height="176" rx="14" fill="#101623" stroke="#8ea0ff" stroke-opacity=".16"/>
-      <text x="892" y="86" font-size="12" letter-spacing="3" fill="#ff4d3d">03 · GET TOLD</text>
+      <rect x="872" y="54" width="288" height="176" rx="14" fill="#0f1218" stroke="#3d8fc4" stroke-opacity=".18"/>
+      <text x="892" y="86" font-size="12" letter-spacing="3" fill="#f04438">03 · GET TOLD</text>
 
-      <g>
-        <rect x="892" y="104" width="80" height="38" rx="8" fill="#1a1113" stroke="#ff4d3d" stroke-opacity=".35">
-          <animate attributeName="fill" values="#141a28;#141a28;#3a1512;#141a28;#141a28"
-                   keyTimes="0;0.42;0.5;0.72;1" dur="3.4s" repeatCount="indefinite"/>
-          <animate attributeName="stroke-opacity" values=".25;.25;.95;.25;.25" keyTimes="0;0.42;0.5;0.72;1"
-                   dur="3.4s" repeatCount="indefinite"/>
-        </rect>
-        <text x="904" y="128" font-size="11" letter-spacing="1.4" fill="#e4bdb7">POWER</text>
-
-        <rect x="982" y="104" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
-        <text x="994" y="128" font-size="11" letter-spacing="1.4" fill="#7c8798">LID</text>
-
-        <rect x="1072" y="104" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
-        <text x="1084" y="128" font-size="11" letter-spacing="1.4" fill="#7c8798">USB</text>
-
-        <rect x="892" y="150" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
-        <text x="904" y="174" font-size="11" letter-spacing="1.4" fill="#7c8798">SCREEN</text>
-
-        <rect x="982" y="150" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
-        <text x="994" y="174" font-size="11" letter-spacing="1.4" fill="#7c8798">NET</text>
-
-        <rect x="1072" y="150" width="80" height="38" rx="8" fill="#141a28" stroke="#8ea0ff" stroke-opacity=".2"/>
-        <text x="1084" y="174" font-size="11" letter-spacing="1.4" fill="#7c8798">INPUT</text>
+      <g font-size="10" letter-spacing="1" text-anchor="middle">
+        <g>
+          <circle cx="932" cy="126" r="24" fill="#0a1b2d" stroke="#f04438" stroke-width="1.6">
+            <animate attributeName="stroke-opacity" values=".35;.35;1;1;.35;.35"
+                     keyTimes="0;0.40;0.48;0.72;0.80;1" dur="3.4s" repeatCount="indefinite"/>
+            <animate attributeName="fill" values="#0a1b2d;#0a1b2d;#2a0d0c;#2a0d0c;#0a1b2d;#0a1b2d"
+                     keyTimes="0;0.40;0.48;0.72;0.80;1" dur="3.4s" repeatCount="indefinite"/>
+          </circle>
+          <path d="M-7-8l7 17 2.2-6.8L9 0z" transform="translate(932 119)" fill="none" stroke="#f04438"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="932" y="143" fill="#f04438">INPUT</text>
+        </g>
+        <g fill="#5f829c" stroke="#1a3d5f">
+          <circle cx="996" cy="126" r="24" fill="#0a1b2d" stroke="#1a3d5f" stroke-width="1.4"/>
+          <text x="996" y="130" fill="#5f829c" stroke="none">POWER</text>
+          <circle cx="1060" cy="126" r="24" fill="#0a1b2d" stroke="#1a3d5f" stroke-width="1.4"/>
+          <text x="1060" y="130" fill="#5f829c" stroke="none">USB</text>
+          <circle cx="1124" cy="126" r="24" fill="#0a1b2d" stroke="#1a3d5f" stroke-width="1.4"/>
+          <text x="1124" y="130" fill="#5f829c" stroke="none">NET</text>
+        </g>
       </g>
 
-      <text x="892" y="222" font-size="13" letter-spacing="1.4" fill="#8b96a9">Your phone knows instantly.</text>
+      <text x="892" y="180" font-size="11" letter-spacing="1.2" fill="#f04438" font-weight="700">
+        SUSTAINED MOUSE OR KEYBOARD ACTIVITY
+      </text>
+
+      <text x="892" y="222" font-size="13" letter-spacing="1.4" fill="#76808e">Your phone knows instantly.</text>
     </g>
 
-    <text x="600" y="272" text-anchor="middle" font-size="11.5" letter-spacing="3" fill="#4d5769">
+    <text x="600" y="272" text-anchor="middle" font-size="11.5" letter-spacing="3" fill="#606a77">
       NO INTERNET REQUIRED · THE PHONE TALKS STRAIGHT TO THE LAPTOP
     </text>
 
-    <rect x=".5" y=".5" width="1199" height="299" rx="20" fill="none" stroke="#8ea0ff" stroke-opacity=".14"/>
+    <rect x=".5" y=".5" width="1199" height="299" rx="20" fill="none" stroke="#3d8fc4" stroke-opacity=".14"/>
   </g>
 </svg>
