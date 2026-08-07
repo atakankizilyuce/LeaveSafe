@@ -42,7 +42,7 @@ No account. No server. No internet needed. Your phone talks straight to your lap
 
 <div align="center">
 
-<img src="docs/assets/demo.gif" alt="Pairing, arming, the sensors gathering into a shield, an alert arriving, and disarming" width="300">
+<img src="docs/assets/demo.gif" alt="Pairing, arming, the sensors gathering into a shield, an alert arriving, and disarming" width="320">
 
 <br/>
 
