@@ -199,10 +199,20 @@
     padding: 18px 2px 22px;
 }
 
+/*
+ * The row is the word's height, whatever is standing next to it.
+ *
+ * The countdown is set in the mono face, whose line box is taller than the
+ * sans one the word uses — so for the three seconds it was on screen this row
+ * grew by four pixels and every card below it stepped down and back up again.
+ * A panel that twitches while it arms undermines the one thing the arming
+ * state is for: telling you calmly that it is on its way.
+ */
 .state-word-wrap {
     display: flex;
     align-items: baseline;
     gap: 14px;
+    height: clamp(2.4rem, 13vw, 3.4rem);
 }
 
 .state-word {
