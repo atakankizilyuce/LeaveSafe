@@ -11,9 +11,9 @@ import { armed, link, tripped } from '../src/lib/store';
 // line drawn in the alarm colour while the phone cannot hear the laptop would
 // be the panel asserting cover it no longer has.
 
-const STANDBY = '#6c8cff';
-const ARMED = '#ff4a35';
-const LOST = '#55637a';
+const STANDBY = '#5c6572';
+const ARMED = '#3d8fc4';
+const LOST = '#4a535e';
 
 /**
  * Just enough of a 2D context to let the component draw, and to record what it

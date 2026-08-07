@@ -3,32 +3,90 @@
  * room, one-handed, while slightly anxious. So state is not a badge — state is
  * the colour of the whole page.
  *
- * Standby is periwinkle: cool, instrument-idle, uneventful. Armed is vermilion,
- * and every surface shifts with it. There is no way to glance at this and be
- * unsure which one you are looking at.
+ * Which colour goes where is the decision that took the longest, and the answer
+ * is not the obvious one. Armed is the *good* news: it means the laptop is
+ * covered. Painting it red would tell the owner something has gone wrong at the
+ * exact moment nothing has, and would spend the alarm colour on a state that is
+ * not an alarm — so when something does fire, the page has nowhere louder left
+ * to go.
+ *
+ * The arc the page walks is therefore:
+ *
+ *   standby   near-black, low chroma      "nothing is watching"
+ *   arming    climbing towards the room    "give me three seconds"
+ *   armed     the identity colour, calm    "covered"
+ *   tripped   red, and ONLY here           "something happened"
+ *
+ * Red appears on exactly two surfaces in the whole product: the alert, and the
+ * one sensor that fired. Its absence everywhere else is what makes it mean
+ * something when it arrives.
+ *
+ * The identity colour is a desaturated sky blue rather than a green. Green and
+ * red are the worst possible pair for a signal one man in twelve cannot tell
+ * apart, and blue is the one hue no common form of colour blindness confuses
+ * with the alarm.
+ *
+ * What separates standby from armed is not only hue — a hue shift alone reads
+ * as decoration. It is brightness: every surface in the armed room is lighter
+ * than its standby counterpart, so the two are still obviously different
+ * states in a photograph with the colour taken out.
  */
 
 :root {
-    /* Surfaces: a deep slate with blue in it, like the inside of an instrument
-       case. Not black — black reads as "off", and this thing is never off. */
-    --void: #070b12;
-    --panel: #0d141f;
-    --raised: #131c2a;
-    --edge: #1c2738;
+    /* Standby. Almost black, almost colourless — this is the state where
+       nothing is being watched, and it should feel inert rather than
+       reassuring. The faint blue cast is the armed room's colour showing
+       through at low strength, so the two read as one family. */
+    --void: #050609;
+    --panel: #0a0c11;
+    --raised: #0f1218;
+    --edge: #1b2029;
 
-    /* Text */
-    --text: #e8edf6;
-    --quiet: #8494ae;
-    --faint: #55637a;
+    --text: #c8ced8;
+    --quiet: #76808e;
+    --faint: #606a77;
 
-    /* State */
-    --accent: #6c8cff; /* standby */
-    --trip: #ff4a35;
-    --warn: #ffab3d;
-    --ok: #4ade80;
+    /* State. The accent is the room's own — grey while nothing is watching. */
+    --accent: #5c6572;
+    --accent-rgb: 92, 101, 114;
 
-    --accent-rgb: 108, 140, 255;
-    --trip-rgb: 255, 74, 53;
+    /*
+     * The identity colour, held constant across every state.
+     *
+     * Pairing happens while disarmed — a deliberately inert room — and the one
+     * action on that screen still has to look like the product rather than like
+     * the absence of it. Anything that says "this is LeaveSafe" rather than
+     * "this is what LeaveSafe is doing right now" uses this.
+     */
+    --brand: #3d8fc4;
+    --brand-rgb: 61, 143, 196;
+
+    /* The alarm, and nothing but the alarm. */
+    --trip: #f04438;
+    --trip-rgb: 240, 68, 56;
+
+    /*
+     * Caution, which is not the same thing as an alarm: a sensor whose driver
+     * failed, a laptop that has moved, a certificate nobody has verified. Amber
+     * is deliberately kept out of the arming state — a countdown is not a
+     * warning — but a genuine fault still needs the colour every instrument
+     * panel ever built has used for one, and painting a fault blue would let it
+     * read as "watching".
+     */
+    --warn: #e0a75a;
+    --warn-rgb: 224, 167, 90;
+
+    /* Confirmation: a certificate that matches the code that was scanned. */
+    --ok: #5fbf95;
+
+    /* Drawn on top of --accent: a filled button's label, a switch knob. It
+       follows the state so the ink stays the near-black of that state's own
+       surfaces rather than one left over from another. */
+    --ink: #040508;
+
+    /* The backdrop a sheet sits on. Also state-shifted, so opening settings
+       while armed does not wash the page back towards neutral. */
+    --scrim: rgba(3, 4, 6, 0.78);
 
     /* Type. No web fonts: this is served from a binary on a network with no
        internet, so the personality has to come from treatment rather than from
@@ -49,17 +107,60 @@
     --state-shift: 620ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Armed. The accent becomes the alarm colour and the surfaces warm with it, so
-   the shift reads as one movement rather than a red badge on a blue page. */
-:root[data-armed='true'] {
-    --void: #100609;
-    --panel: #1a0b10;
-    --raised: #251016;
-    --edge: #3a1a20;
-    --quiet: #c99a97;
-    --faint: #7d5551;
-    --accent: #ff4a35;
-    --accent-rgb: 255, 74, 53;
+/*
+ * Arming, in three steps rather than one.
+ *
+ * A single midpoint room meant the page jumped twice — once into the midpoint
+ * and once out of it — and neither jump told you how far along the countdown
+ * was. Here the room climbs a third at a time, one step per second, so the
+ * colour *is* the countdown: by the time it stops moving it has already
+ * arrived at armed, and the number was only ever confirming what the page had
+ * been saying for three seconds.
+ *
+ * The accent goes to its armed value on the first step. The room is what
+ * ramps; the accent is the destination the room is ramping towards, and
+ * showing it from the start is what makes the climb legible as a climb.
+ */
+:root[data-state='arming'] {
+    --void: #05090e;
+    --panel: #0a111b;
+    --raised: #0f1926;
+    --edge: #1b2a3b;
+    --text: #cfd8e3;
+    --quiet: #7f92a4;
+    --faint: #607284;
+    --ink: #04070b;
+    --accent: #3d8fc4;
+    --accent-rgb: 61, 143, 196;
+    --scrim: rgba(3, 6, 10, 0.78);
+}
+
+:root[data-state='arming'][data-count='2'] {
+    --void: #050b14;
+    --panel: #0a1624;
+    --raised: #0f2033;
+    --edge: #1a334d;
+    --text: #d5e1ed;
+    --quiet: #87a3ba;
+    --faint: #5f7a90;
+    --ink: #04080f;
+}
+
+/* The last second is already the armed room. Nothing visibly changes when the
+   countdown ends, which is the point: the page committed before the word did. */
+:root[data-state='arming'][data-count='1'],
+:root[data-state='armed'] {
+    --void: #050e19;
+    --panel: #0a1b2d;
+    --raised: #0f2740;
+    --edge: #1a3d5f;
+    --text: #dcebf7;
+    --quiet: #8fb4d0;
+    --faint: #5f829c;
+    --accent: #3d8fc4;
+    --accent-rgb: 61, 143, 196;
+    --ink: #040a12;
+    --scrim: rgba(3, 7, 12, 0.78);
 }
 
 @media (prefers-reduced-motion: reduce) {

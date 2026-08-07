@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { captureAnchor } from '../lib/geo';
 import { primeSiren } from '../lib/siren';
 import { armed, send, showToast } from '../lib/store';
+import { Icon } from './Icons';
 
 const HOLD_MS = 1500;
 
@@ -14,6 +15,19 @@ const HOLD_MS = 1500;
 function buttonLabel(counting: number | null, isArmed: boolean): string {
     if (counting !== null) return 'Cancel';
     return isArmed ? 'Hold to disarm' : 'Arm';
+}
+
+/**
+ * The mark beside the label.
+ *
+ * A padlock rather than a shield: a shield says "protection" in the abstract,
+ * while a padlock says which way the switch is thrown right now — which is the
+ * thing this button changes. Cancel gets neither, because it undoes the tap
+ * rather than throwing the switch the other way.
+ */
+function buttonIcon(counting: number | null, isArmed: boolean): string {
+    if (counting !== null) return 'x';
+    return isArmed ? 'unlock' : 'lock';
 }
 
 interface Props {
@@ -148,7 +162,10 @@ export function ArmControl({ counting, onCountdown }: Props) {
                     style={{ '--fill': holding } as unknown as Record<string, string>}
                     aria-hidden="true"
                 />
-                <span class="arm-label">{label}</span>
+                <span class="arm-label">
+                    <Icon name={buttonIcon(counting, armed.value)} size={17} />
+                    {label}
+                </span>
             </button>
         </div>
     );

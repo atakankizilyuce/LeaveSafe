@@ -13,6 +13,7 @@ import {
     showToast,
     updateAvailable,
 } from '../lib/store';
+import { Icon } from './Icons';
 import { Scrim } from './Scrim';
 
 /**
@@ -347,6 +348,7 @@ export function SettingsSheet() {
 
                         <div class="sheet-actions">
                             <button type="button" class="alarm-primary" onClick={save}>
+                                <Icon name="check" />
                                 {saved ? 'Saved' : 'Save settings'}
                             </button>
                             <button
@@ -360,9 +362,13 @@ export function SettingsSheet() {
                                     screen.value = 'pair';
                                 }}
                             >
+                                {/* A chain with its middle gone: this breaks
+                                    the pairing rather than undoing a setting. */}
+                                <Icon name="unlink" />
                                 Forget this phone
                             </button>
                             <button type="button" class="sheet-reset" onClick={reset}>
+                                <Icon name="undo" />
                                 Reset everything
                             </button>
                         </div>

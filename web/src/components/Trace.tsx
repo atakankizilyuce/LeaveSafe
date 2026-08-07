@@ -7,10 +7,17 @@ const HEIGHT = 34;
 // Stated here rather than read back from the stylesheet. The accent variable is
 // mid-transition at exactly the moment the armed state flips, so
 // getComputedStyle would sample whatever colour the fade happened to be passing
-// through and leave the trace blue on a red page.
-const STANDBY = '#6c8cff';
-const ARMED = '#ff4a35';
-const LOST = '#55637a';
+// through and leave the trace grey on a page that has already gone blue.
+//
+// Standby is the room's own inert grey and armed is the identity colour: the
+// same two the panel around the trace is using, so the line agrees with the
+// page rather than commenting on it. There is no third colour for arming on
+// purpose — the trace reports whether the page is still running and whether the
+// laptop is being watched, arming is neither, and a three second flicker
+// through another colour would read as an event.
+const STANDBY = '#5c6572';
+const ARMED = '#3d8fc4';
+const LOST = '#4a535e';
 
 /**
  * What colour the line is drawn in.
