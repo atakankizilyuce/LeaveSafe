@@ -20,8 +20,8 @@ const (
 // accept step to hang an identity on, so the identity has to come from the
 // stack — and on Linux and Windows it does not come at all. tinygo's bluetooth
 // package passes a connection ID of zero for every write on both (BlueZ "doesn't
-// seem to tell who did the write"; the Windows backend has an open TODO where
-// the connection should be). Every central in radio range therefore collapses
+// seem to tell who did the write"; the Windows backend has a comment where the
+// connection should be). Every central in radio range therefore collapses
 // into a single client, and the moment the owner's phone pairs, so has everyone
 // else's — no key required, from anywhere in radio range.
 //
