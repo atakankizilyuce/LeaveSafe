@@ -74,11 +74,11 @@ export function Annunciator() {
             </div>
 
             <div
-                class="sring rise"
+                class="ring rise"
                 data-gathered={isArmed}
                 style={{ '--out-rows': outRows } as unknown as Record<string, string>}
             >
-                <div class="sring-orbit">
+                <div class="ring-orbit">
                     {placed.map(({ sensor, state, station: at }, i) => {
                         const slot = slots.get(sensor.name);
 
@@ -119,14 +119,14 @@ export function Annunciator() {
                     {/* The stated reasons, which only exist once the ring has
                         closed and the excluded ones have somewhere to be. */}
                     {isArmed && outRows > 0 && (
-                        <div class="sring-out" aria-hidden="true">
-                            <div class="sring-out-head readout">Not watching</div>
+                        <div class="ring-out" aria-hidden="true">
+                            <div class="ring-out-head readout">Not watching</div>
                             {outgoing.map((p) => {
                                 const slot = slots.get(p.sensor.name) ?? { x: 50, y: 118 };
                                 return (
                                     <div
                                         key={p.sensor.name}
-                                        class="sring-out-why"
+                                        class="ring-out-why"
                                         style={{ left: `${slot.x}%`, top: `${slot.y + 17}%` }}
                                     >
                                         <b>{SENSOR_CAPTIONS[p.sensor.name] ?? p.sensor.display_name}</b>
@@ -137,7 +137,7 @@ export function Annunciator() {
                         </div>
                     )}
 
-                    <div class="sring-core" data-tripped={placed.some((p) => p.state === 'tripped')}>
+                    <div class="ring-core" data-tripped={placed.some((p) => p.state === 'tripped')}>
                         {/* Two outlines that hand over to each other rather than
                             stacking: at rest there is no ring at all, because a
                             closed shape would claim a completeness the state has
@@ -166,7 +166,7 @@ export function Annunciator() {
 
             <button
                 type="button"
-                class="sring-more readout"
+                class="ring-more readout"
                 aria-expanded={explaining}
                 onClick={() => setExplaining(!explaining)}
             >

@@ -152,7 +152,7 @@ it('sends the ones that are not covering you out, with a reason each', () => {
     const out = Array.from(host.querySelectorAll('.snode[data-place="out"]'));
     expect(out).toHaveLength(3);
 
-    const reasons = Array.from(host.querySelectorAll('.sring-out-why span')).map((n) => n.textContent);
+    const reasons = Array.from(host.querySelectorAll('.ring-out-why span')).map((n) => n.textContent);
     expect(reasons).toEqual([
         'no sensor on this machine',
         'you switched it off',
@@ -167,7 +167,7 @@ it('keeps a tripped sensor on the ring rather than inside the shield', () => {
     const [node] = armedWith([sensor()]);
 
     expect(node.getAttribute('data-place')).toBe('trip');
-    expect(host.querySelector('.sring-core')?.getAttribute('data-tripped')).toBe('true');
+    expect(host.querySelector('.ring-core')?.getAttribute('data-tripped')).toBe('true');
 });
 
 // The reserved room under the orbit is the only thing holding the excluded
@@ -175,7 +175,7 @@ it('keeps a tripped sensor on the ring rather than inside the shield', () => {
 // fixed at two.
 it('reserves a row of room under the orbit for every row of excluded sensors', () => {
     armedWith([sensor(), sensor({ name: 'lid', display_name: 'Lid', enabled: false })]);
-    expect(host.querySelector<HTMLElement>('.sring')?.style.getPropertyValue('--out-rows')).toBe('1');
+    expect(host.querySelector<HTMLElement>('.ring')?.style.getPropertyValue('--out-rows')).toBe('1');
 
     render(null, host);
     armedWith([
@@ -185,14 +185,14 @@ it('reserves a row of room under the orbit for every row of excluded sensors', (
         sensor({ name: 'screen', display_name: 'Screen', enabled: false }),
         sensor({ name: 'input', display_name: 'Input', enabled: false }),
     ]);
-    expect(host.querySelector<HTMLElement>('.sring')?.style.getPropertyValue('--out-rows')).toBe('2');
+    expect(host.querySelector<HTMLElement>('.ring')?.style.getPropertyValue('--out-rows')).toBe('2');
 });
 
 it('holds nothing back from the shield when nothing has been excluded', () => {
     armedWith([sensor()]);
 
-    expect(host.querySelector<HTMLElement>('.sring')?.style.getPropertyValue('--out-rows')).toBe('0');
-    expect(host.querySelector('.sring-out')).toBeNull();
+    expect(host.querySelector<HTMLElement>('.ring')?.style.getPropertyValue('--out-rows')).toBe('0');
+    expect(host.querySelector('.ring-out')).toBeNull();
 });
 
 // The chips inside the shield are the count made concrete: one per sensor it is
@@ -237,17 +237,17 @@ it('flips the switch on the station the user tapped', () => {
 it('opens and closes the reference under the ring', () => {
     stateOf();
 
-    tap('.sring-more');
+    tap('.ring-more');
     expect(host.querySelector('.sref')).not.toBeNull();
 
-    tap('.sring-more');
+    tap('.ring-more');
     expect(host.querySelector('.sref')).toBeNull();
 });
 
 it('says in the reference that a faulted sensor is not watching right now', () => {
     stateOf({ failure: 'the charger driver stopped answering' });
 
-    tap('.sring-more');
+    tap('.ring-more');
 
     expect(host.querySelector('.sref-warn')?.textContent).toContain('the charger driver stopped answering');
 });
@@ -255,7 +255,7 @@ it('says in the reference that a faulted sensor is not watching right now', () =
 it('says in the reference that the machine has no such sensor', () => {
     stateOf({ available: false });
 
-    tap('.sring-more');
+    tap('.ring-more');
 
     expect(host.querySelector('.sref-warn')?.textContent).toContain('has no sensor for that');
 });
@@ -264,12 +264,12 @@ it('says in the reference that the machine has no such sensor', () => {
 // there is nothing to test on a machine without the sensor.
 it('offers the self-test only where there is a sensor to test', () => {
     stateOf();
-    tap('.sring-more');
+    tap('.ring-more');
     expect(host.querySelector<HTMLButtonElement>('.sref .chip')?.disabled).toBe(false);
 
     render(null, host);
     stateOf({ available: false });
-    tap('.sring-more');
+    tap('.ring-more');
     expect(host.querySelector<HTMLButtonElement>('.sref .chip')?.disabled).toBe(true);
 });
 
@@ -278,7 +278,7 @@ it('offers the self-test only where there is a sensor to test', () => {
 // describing sensors that are gone.
 it('drops a row when the sensor it describes goes away', () => {
     stateOf();
-    tap('.sring-more');
+    tap('.ring-more');
     expect(host.querySelectorAll('.sref-row')).toHaveLength(1);
 
     sensors.value = [];

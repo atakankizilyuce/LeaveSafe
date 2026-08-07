@@ -270,7 +270,7 @@
  * The reserved room appears only once there is something in it. Holding it
  * open at rest left a tall empty gap under a panel with nothing to put there.
  */
-.sring {
+.ring {
     width: 100%;
     max-width: 320px;
     margin: 0 auto;
@@ -278,14 +278,14 @@
     transition: padding-bottom 620ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.sring[data-gathered='true'] {
+.ring[data-gathered='true'] {
     padding-bottom: calc(var(--out-rows, 0) * 53%);
 }
 
 /* Square by construction, so the stations sit on a real circle rather than on
    an ellipse. A container query rather than a viewport one: what the type in
    here has to fit is this box, which is not the same thing as the screen. */
-.sring-orbit {
+.ring-orbit {
     position: relative;
     width: 100%;
     aspect-ratio: 1;
@@ -448,7 +448,7 @@
     z-index: 3;
 }
 
-.sring-out {
+.ring-out {
     position: absolute;
     inset: 0;
     opacity: 0;
@@ -456,11 +456,11 @@
     pointer-events: none;
 }
 
-.sring[data-gathered='true'] .sring-out {
+.ring[data-gathered='true'] .ring-out {
     opacity: 1;
 }
 
-.sring-out-head {
+.ring-out-head {
     position: absolute;
     top: 101%;
     left: 0;
@@ -470,7 +470,7 @@
     padding-top: 10px;
 }
 
-.sring-out-why {
+.ring-out-why {
     position: absolute;
     width: 30%;
     transform: translateX(-50%);
@@ -480,14 +480,14 @@
     gap: 1px;
 }
 
-.sring-out-why b {
+.ring-out-why b {
     font-family: var(--mono);
     font-size: 0.62rem;
     letter-spacing: 0.08em;
     color: var(--quiet);
 }
 
-.sring-out-why span {
+.ring-out-why span {
     font-size: 0.6rem;
     line-height: 1.35;
     color: var(--faint);
@@ -501,7 +501,7 @@
  * before the words do. What is there instead is a shut eye, the condition
  * underneath it, and the way out of it.
  */
-.sring-core {
+.ring-core {
     position: absolute;
     left: 50%;
     top: 50%;
@@ -518,7 +518,7 @@
     transition: transform 760ms cubic-bezier(0.34, 1.5, 0.64, 1) 260ms;
 }
 
-.sring[data-gathered='true'] .sring-core {
+.ring[data-gathered='true'] .ring-core {
     transform: translate(-50%, -50%) scale(1.12);
 }
 
@@ -541,14 +541,14 @@
     pointer-events: none;
 }
 
-.sring[data-gathered='true'] .core-shield {
+.ring[data-gathered='true'] .core-shield {
     opacity: 1;
     transform: none;
 }
 
 /* Something fired while it was covering you. The shield says so rather than
    going on looking calm around an alarm. */
-.sring-core[data-tripped='true'] .core-shield {
+.ring-core[data-tripped='true'] .core-shield {
     stroke: var(--trip);
     fill: rgba(var(--trip-rgb), 0.08);
 }
@@ -572,7 +572,7 @@
     transition: color var(--settle);
 }
 
-.sring[data-gathered='true'] .core-mark {
+.ring[data-gathered='true'] .core-mark {
     color: var(--accent);
 }
 
@@ -582,7 +582,7 @@
     transition: color var(--settle);
 }
 
-.sring[data-gathered='true'] .core-label {
+.ring[data-gathered='true'] .core-label {
     color: var(--accent);
 }
 
@@ -610,7 +610,7 @@
     transition: opacity 300ms ease 700ms, transform 300ms ease 700ms;
 }
 
-.sring[data-gathered='true'] .core-held {
+.ring[data-gathered='true'] .core-held {
     opacity: 1;
     transform: none;
 }
@@ -627,11 +627,11 @@
 
 @media (prefers-reduced-motion: reduce) {
     .snode,
-    .sring,
-    .sring-core,
+    .ring,
+    .ring-core,
     .core-shield,
     .core-held,
-    .sring-out {
+    .ring-out {
         transition-duration: 1ms !important;
     }
 
@@ -652,7 +652,7 @@
  * "USB" mean here — is asked once, on the first visit, about all of them at
  * the same time.
  */
-.sring-more {
+.ring-more {
     display: block;
     width: 100%;
     margin-top: 14px;
@@ -664,9 +664,9 @@
     transition: color var(--swift), border-color var(--swift);
 }
 
-.sring-more:hover,
-.sring-more:focus-visible,
-.sring-more[aria-expanded='true'] {
+.ring-more:hover,
+.ring-more:focus-visible,
+.ring-more[aria-expanded='true'] {
     color: var(--text);
     border-color: var(--accent);
 }
