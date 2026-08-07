@@ -41,7 +41,7 @@ export function PairScreen({ onPair, initialKey }: Props) {
                 <h1 class="pair-title">Leave it. We'll watch it.</h1>
                 <p class="pair-lead">Enter the key shown on your laptop, or scan its code to fill this in.</p>
 
-                <label class="pair-label readout" for="key">
+                <label class="pair-label readout" htmlFor="key">
                     Pairing key
                 </label>
                 <input
