@@ -3,6 +3,7 @@ import { shortFingerprint } from '../lib/fingerprint';
 import { groupKey } from '../lib/format';
 import { fingerprintVerdict, pairError, pairing, serverFingerprint } from '../lib/store';
 import { bluetoothSupported } from '../lib/transport';
+import { Icon } from './Icons';
 
 interface Props {
     onPair(key: string, over: 'websocket' | 'bluetooth'): void;
@@ -69,11 +70,16 @@ export function PairScreen({ onPair, initialKey }: Props) {
                     disabled={pairing.value || !ready}
                     onClick={() => submit('websocket')}
                 >
+                    {/* The field above this one is labelled "pairing key", so
+                        the button and the field say the same word twice: once
+                        in text and once in shape. */}
+                    <Icon name="key" />
                     {pairing.value ? 'Connecting…' : 'Connect'}
                 </button>
 
                 {bluetoothSupported() && (
                     <button type="button" class="pair-alt" onClick={() => submit('bluetooth')}>
+                        <Icon name="bluetooth" />
                         Connect over Bluetooth instead
                     </button>
                 )}
