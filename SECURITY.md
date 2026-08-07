@@ -1,193 +1,128 @@
 # Security policy
 
 LeaveSafe guards a laptop somebody walked away from. A flaw here does not leak
-data — it lets a machine be taken while its owner believes it is watched. Please
-report anything you find.
+data — it lets a machine be taken while its owner believes it is watched.
 
 ## Reporting a vulnerability
 
-**Do not open a public issue for a security problem.**
-
-Report it privately through GitHub's
+**Do not open a public issue.** Use GitHub's
 [Report a vulnerability](https://github.com/atakankizilyuce/LeaveSafe/security/advisories/new)
-form. It reaches the maintainers and nobody else, and it gives us a private
-place to work on a fix with you.
+form. If it is unavailable to you, open a normal issue saying only that you have
+found a security problem and would like a private channel — no details.
 
-If that form is unavailable to you, open a normal issue saying only that you
-have found a security problem and would like a private channel — no details —
-and a maintainer will get back to you.
+Include what an attacker gains in terms of the laptop and the alarm, how to
+reproduce it, the platform, `leavesafe -version`, and whether remote access was
+on, since that changes what is reachable.
 
-Please include, as far as you can:
-
-- What an attacker gains, in terms of the laptop and the alarm.
-- The steps to reproduce it, and the platform you saw it on.
-- The version: `leavesafe -version`.
-- Whether remote access was on, since that changes what is reachable.
-
-### What to expect
-
-- **Acknowledgement within 5 days.** If you have heard nothing after a week,
-  assume the report was lost and ping the issue tracker without details.
-- **An assessment within 14 days**, saying whether we agree it is a
-  vulnerability and what severity we think it carries.
-- **A fix released as soon as it is ready.** For anything that lets an attacker
-  suppress an alarm or pair without the key, that means a release of its own
-  rather than waiting for the next batch of features.
-- **Credit in the release notes and the advisory**, unless you would rather stay
-  anonymous. Say which you prefer.
-
-We will not take legal action against anyone who reports a flaw in good faith,
-tests only against machines they own, and gives us a reasonable chance to fix it
-before going public.
+Expect acknowledgement within 5 days, an assessment within 14, and a fix as soon
+as it is ready — a release of its own for anything that suppresses an alarm or
+pairs without the key. You get credit unless you would rather stay anonymous. We
+will not take legal action against anyone who reports in good faith, tests only
+machines they own, and gives us a chance to fix it before going public.
 
 ## Supported versions
 
-| Version | Supported |
-|---------|-----------|
-| Latest release | ✅ Fixes are released against it |
-| Anything older | ❌ Please upgrade before reporting |
+One line: the latest release. Check the problem is still present in it before
+reporting.
 
-There is one supported line. Before reporting, check that the problem is still
-present in the latest release — and in `main` if you can build it.
+Because there is one line, LeaveSafe asks GitHub once a day whether a newer
+release exists. That discloses one request a day to `api.github.com`, from which
+GitHub sees your IP and — from the `User-Agent` — that it is LeaveSafe and which
+version. Nothing else: no identifier, no configuration, no sensor data, no record
+of whether you are armed. Nothing is downloaded and nothing is replaced, and
+everything the endpoint returns is treated as untrusted. `"update_check": false`
+switches it off.
 
-## The update check, and what it tells GitHub
-
-Because there is one supported line, a copy left running on an old one is a real
-risk — so LeaveSafe asks GitHub whether a newer release exists and reports it on
-the dashboard and to the paired phone. It asks **once a day** by default, not
-once per start: a copy installed with `install-service` runs for weeks, and
-checking only at startup means the installations most in need of a fix are the
-least likely to hear about one.
-
-What this discloses is one request a day to `api.github.com`, from which GitHub
-can see your IP address and — from the `User-Agent` — that it is LeaveSafe and
-which version. Nothing else is sent: no identifier, no configuration, no sensor
-data, and no record of whether you are armed. There is no server of ours involved
-and no telemetry of any kind.
-
-**Nothing is downloaded and nothing is replaced.** The check reports; upgrading
-stays a thing you do. A security program that silently rewrites itself from the
-network is a larger trust decision than the one made by downloading a single file.
-
-Everything the endpoint returns is treated as untrusted: a version tag that does
-not look like a version is discarded, a link that does not point at `github.com`
-is replaced with the releases page, and the upgrade command shown to you comes
-from a fixed table in the binary rather than from anything GitHub sent.
-
-To switch it off entirely, set `"update_check": false` in the config or turn it
-off from the phone's settings screen. `"update_check_hours"` changes how often it
-asks, and `"update_channel": "beta"` opts into prereleases.
-
-## What is in scope
+## In scope
 
 Anything that lets someone:
 
 - Pair without the 16-digit key, or work around the per-address lockout.
-- Arm or disarm, dismiss an alarm, or read the machine's position without a
-  valid session.
+- Arm, disarm, dismiss an alarm, or read the machine's position without a valid
+  session.
 - Stop a real sensor event from reaching a paired phone.
-- Read the pairing key, the disarm PIN, a session token, or a geolocation API
-  key out of the running program, its config directory, or its network traffic.
-- Reach the machine's filesystem or run code on it through the HTTP server, the
-  WebSocket protocol, or the BLE transport.
+- Read the pairing key, the disarm PIN, a session token, or a geolocation API key
+  out of the running program, its config directory, or its network traffic.
+- Reach the filesystem or run code through the HTTP server, the WebSocket
+  protocol, or the BLE transport.
 - Escalate from the phone UI to anything the phone should not control.
 
-Reports about the release pipeline — a workflow that could be made to publish a
-binary that was not built from `main` — are in scope too.
+A release workflow that could be made to publish a binary not built from `main`
+counts too.
 
-## What is not in scope, and why
+## Not in scope
 
-These are known properties of the design rather than bugs. Please do not report
-them as vulnerabilities; if you have a way to *improve* one, a normal issue or
-pull request is very welcome.
+Known properties of the design, not bugs. A way to *improve* one is very welcome
+as an issue or a pull request.
 
-**An attacker with administrator access to the running machine wins.** They can
-stop the process, read its memory, or edit its config. LeaveSafe defends a
-laptop against someone who walks past it, not against someone who already owns
-it.
+**Administrator access to the running machine wins.** They can stop the process,
+read its memory, or edit its config. This defends a laptop against someone
+walking past it, not against someone who already owns it.
 
-**The TLS certificate is self-signed.** There is no certificate authority that
-could vouch for a laptop's LAN address. The phone will warn on first connection.
-Comparing the fingerprint — shown by the `cert` command, on the pairing screen,
-and carried in the QR code — is what tells that warning apart from an actual
-interception. See "TLS and what pairing does not prove" below for the limit of
-this.
+**The TLS certificate is self-signed** — no authority can vouch for a LAN
+address — so your phone warns on first connection. Comparing the fingerprint,
+shown by `cert`, on the pairing screen and in the QR code, is what tells that
+warning apart from an interception. Its limit is below.
 
-**A four-digit disarm PIN is guessable in ten thousand tries.** It is hashed
-with scrypt so it is not sitting in cleartext in `config.json`, and guesses are
-rate-limited to five per address per minute. It is a speed bump against someone
-holding an unlocked paired phone, not a second factor.
+**A four-digit PIN is guessable in ten thousand tries.** scrypt-hashed so it is
+not cleartext in `config.json`, and rate-limited to five guesses per address per
+minute. A speed bump against someone holding an unlocked paired phone, not a
+second factor.
 
-**Remote access publishes a port to the internet.** That is what it is for, and
-it is off by default and opt-in per install. With it on, the pairing key is the
-only thing between the internet and the alarm.
+**Remote access publishes a port to the internet.** That is what it is for. Off
+by default, opt-in per install, and with it on the pairing key is the only thing
+between the internet and the alarm.
 
-**The local network listener is plain HTTP, remote access or not.** Remote
-access runs on a second listener of its own rather than converting the only one,
-so the local-network path is unencrypted whether remote access is on or off: a
-pairing key sent over the LAN can be read by a hostile machine on the same
-Wi-Fi. This is the same posture as the default Wi-Fi-only mode, which is how
-almost every install runs. Earlier versions upgraded the *local* listener to TLS
-whenever remote access was on, which meant a self-signed certificate warning on
-every local connection and a re-pair every time the setting changed; the two
-listeners are what let the setting change without disturbing a connected phone.
-The internet-facing listener is TLS-only and refuses to start without a
-certificate.
+**The local listener is plain HTTP, remote access or not,** so a pairing key sent
+over the LAN can be read by a hostile machine on the same Wi-Fi. Remote access
+runs on a second, TLS-only listener rather than converting this one — which is
+what lets the setting change without disturbing a connected phone.
 
-**Bluetooth pairing runs on macOS only.** Not for want of a driver: the Windows
-and Linux Bluetooth stacks do not tell the application which device performed a
-write — the library reports a connection ID of zero for every one — so every
-device in radio range collapses into a single client, and one phone pairing
-would authenticate all of them without the key. LeaveSafe refuses to advertise
-there rather than offer that. macOS reports a real per-central identifier, so
-each phone gets its own session. Wi-Fi pairing is unaffected everywhere.
+**Bluetooth pairing runs on macOS only.** The Windows and Linux stacks do not
+report which device performed a write, so every device in radio range collapses
+into one client and a single phone pairing would authenticate all of them without
+the key. LeaveSafe refuses to advertise there rather than offer that. Wi-Fi
+pairing is unaffected everywhere.
 
-**The event log records when the machine was left alone.** It is written
-owner-readable only. Anyone who can read your home directory can read it.
+**The event log records when the machine was left alone.** Owner-readable only,
+so anyone who can read your home directory can read it.
 
-**LeaveSafe answers only to its IP address.** A request whose `Host` header is a
-DNS name is refused with 421, so reaching the dashboard at `laptop.local` or
-through a tunnel does not work. This is deliberate: it is the DNS rebinding
-defense. The WebSocket's Origin check cannot provide one, because a rebound page
-sends the attacker's own domain as both Origin and Host, so the two match and the
-check passes. Every address LeaveSafe hands out — in the QR code, in `urls`, in
-the certificate's SANs — is an address literal, so refusing everything else costs
-the documented flow nothing and closes the attack completely.
+**LeaveSafe answers only to its IP address**; a `Host` header carrying a DNS name
+is refused with 421. That is the DNS rebinding defense, and the WebSocket's
+Origin check cannot provide one — a rebound page sends the attacker's own domain
+as both Origin and Host, so they match. Every address LeaveSafe hands out is an
+address literal, so this costs the documented flow nothing.
 
-## TLS and what pairing does not prove
+**Sensor changes are refused while armed.** A toggle is one tap; disarming is a
+deliberate hold plus an optional PIN. Allowing toggles while armed would let
+anyone holding the paired phone switch every sensor off without passing the
+disarm check, while the panel still read ARMED.
 
-The certificate fingerprint travels in the QR code, and the phone refuses to
-send the pairing key if the server reports a different one. That catches a
-misdirected connection — wrong host, stale port forward, a certificate that
-changed since the code was printed — and it means the fingerprint is on the
-phone's own screen for comparison against the browser warning, rather than back
-on the laptop where nobody looks.
+## What pairing does not prove
 
-Both the key and the fingerprint ride in the URL **fragment**, after the `#`,
-and that is what makes the check mean anything. A fragment is never put on the
-wire: the browser strips it before building the request, so the key reaches the
-page's own JavaScript and no server sees it. Earlier versions put the key in the
-query string, which meant the first request line the phone sent already carried
-it — to whatever server answered that address, before any of the page had run
-and before the certificate could be checked. If you are looking at a QR code
-from an older build, its URL contains `?key=`; that key should be considered
-disclosed to whatever answered, and `rotate-key` on the laptop replaces it.
+The certificate fingerprint travels in the QR code and the phone refuses to send
+the key if the server reports a different one. That catches a misdirected
+connection — wrong host, stale port forward, a certificate changed since the code
+was printed — and puts the value on the phone's own screen for comparison against
+the browser warning.
 
-It is not proof against a determined interceptor. A browser gives page
-JavaScript no way to see the certificate of its own connection, so the
-comparison relies on what the server says about itself, and a proxy that
-terminates TLS with the user's accepted certificate and relays honestly to the
-real server would pass it. Closing that properly needs a password-authenticated
-key exchange over the socket, so the pairing key never leaves the phone at all.
-That is a change worth making and it has not been made yet.
+Both the key and the fingerprint ride in the URL **fragment**, which is never put
+on the wire: the key reaches the page's own JavaScript and no server sees it.
+Older builds put it in the query string, so the first request line already
+carried it to whatever answered. A QR code containing `?key=` is from such a
+build; treat that key as disclosed and run `rotate-key`.
+
+**It is not proof against a determined interceptor.** A browser gives page
+JavaScript no way to see the certificate of its own connection, so the comparison
+relies on what the server says about itself — and a proxy terminating TLS with
+the user's accepted certificate, relaying honestly to the real server, would pass
+it. Closing that needs a password-authenticated key exchange so the key never
+leaves the phone. Worth doing; not done yet.
 
 Until then: **compare the fingerprint on the pairing screen against the one in
-your browser's certificate warning before you accept it**, especially over
-remote access. They should match, and they should keep matching on every later
-connection.
+your browser's warning before accepting it**, especially over remote access.
 
-## Reporting a dependency vulnerability
+## Dependencies
 
-Dependencies are updated by Dependabot, and every push runs `govulncheck`. If
-you see an advisory that CI has not caught, open a normal issue — a public
-advisory is public already.
+Dependabot updates them and every push runs `govulncheck`. If you see an advisory
+CI has not caught, open a normal issue — a public advisory is public already.
