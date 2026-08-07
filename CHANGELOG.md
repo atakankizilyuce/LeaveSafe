@@ -100,6 +100,44 @@ diff is small.
 
 ### Changed
 
+- **Armed is no longer red.** Being covered is good news, and painting it red
+  told the owner something had gone wrong at the exact moment nothing had — and
+  spent the alarm colour on a state that is not an alarm, leaving the page
+  nowhere louder to go when something did fire. Standby is now an almost
+  colourless near-black, arming climbs towards armed a third at a time so the
+  colour of the page *is* the countdown, and armed is a calm blue. Red appears on
+  exactly two surfaces in the whole product: the alert, and the one sensor that
+  fired. Blue rather than green, because green and red are the pair one man in
+  twelve cannot tell apart.
+
+- **The sensors are an orbit around the thing that watches with them.** Six
+  tiles changing colour was a legend; arming now pulls every sensor that is
+  actually covering you into the middle, and the ring closes into a shield
+  around them. The ones that are not covering you travel the other way, into a
+  region of their own with a stated reason each — `no sensor on this machine`,
+  `you switched it off`, `its driver stopped answering` — because dimming them
+  where they stood read as "these are somehow still involved". A sensor that has
+  tripped goes nowhere: it stays on the ring in red, since it is the thing you
+  came to look at. Each station is still its own switch, and each carries a
+  badge whose *shape* says what it is doing, so the state survives a reader who
+  cannot see the colour.
+
+- **Buttons say what they do.** Every action carries an icon beside its label —
+  a padlock closing and opening for arm and disarm, a key for pairing, a
+  crossed-out bell for dismissing an alarm. Beside the words, never instead of
+  them.
+
+- **What a sensor watches, and its self-test, moved to one disclosure under the
+  ring** rather than an "i" in the corner of each of six tiles. The ring has no
+  corner to put six of those in, and the question it answers is asked once, on
+  the first visit, about all of them at the same time.
+
+- **The README is half the length it was.** Remote access, location, autostart,
+  configuration and development each moved to a page of their own under `docs/`,
+  and every screenshot, the demo GIF and both animated SVGs were recaptured
+  against the new design. `SECURITY.md` is shorter too — every limitation is
+  still there, with the reasoning tightened around it.
+
 - **The release attestation runs on a newer action.** `attest-build-provenance`
   moved from v3 to v4.1.1. It is what lets `gh attestation verify` prove a
   downloaded binary came out of this repository's release run, so it is worth
