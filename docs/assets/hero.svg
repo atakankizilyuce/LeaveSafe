@@ -1,166 +1,283 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="LeaveSafe — leave your laptop, stay safe. The panel shifts from standby to armed and raises an alert.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="LeaveSafe — leave your laptop, stay safe. The sensors gather into a shield when it is armed, and the shield turns red when one of them fires.">
   <title>LeaveSafe — leave your laptop, stay safe</title>
+
+  <!--
+    Hand-written SMIL, no scripts and no external fetches, so GitHub will render
+    it. One eleven second loop: standby, arming, armed, an alert, and back.
+
+    The colour decisions are the product's own. Standby is an almost colourless
+    near-black, because that is the state where nothing is being watched.
+    Armed is a calm sky blue, because being covered is good news and painting it
+    red would spend the alarm colour on a state that is not an alarm. Red
+    appears on exactly one beat of this loop, and that is the point of it.
+  -->
 
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0c1019"/>
-      <stop offset="1" stop-color="#06080e"/>
+      <stop offset="0" stop-color="#0a0c11">
+        <animate attributeName="stop-color"
+                 values="#0a0c11;#0a0c11;#0a1b2d;#0a1b2d;#0a0c11"
+                 keyTimes="0;0.28;0.40;0.90;1" dur="11s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="1" stop-color="#050609">
+        <animate attributeName="stop-color"
+                 values="#050609;#050609;#050e19;#050e19;#050609"
+                 keyTimes="0;0.28;0.40;0.90;1" dur="11s" repeatCount="indefinite"/>
+      </stop>
     </linearGradient>
 
     <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-      <path d="M28 0H0v28" fill="none" stroke="#c8d4ff" stroke-opacity=".045" stroke-width="1"/>
+      <path d="M28 0H0v28" fill="none" stroke="#8fb4d0" stroke-opacity=".05" stroke-width="1"/>
     </pattern>
 
     <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#8ea0ff" stop-opacity="0"/>
-      <stop offset=".5" stop-color="#8ea0ff" stop-opacity=".35"/>
-      <stop offset="1" stop-color="#8ea0ff" stop-opacity="0"/>
+      <stop offset="0" stop-color="#3d8fc4" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#3d8fc4" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#3d8fc4" stop-opacity="0"/>
     </linearGradient>
 
     <radialGradient id="halo" cx=".5" cy=".5" r=".5">
-      <stop offset="0" stop-color="#6c7cff" stop-opacity=".38">
-        <animate attributeName="stop-color"
-                 values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#ff4d3d;#6c7cff"
-                 keyTimes="0;0.30;0.40;0.70;0.92;1" dur="11s" repeatCount="indefinite"/>
+      <stop offset="0" stop-color="#3d8fc4" stop-opacity=".10">
+        <animate attributeName="stop-opacity" values=".04;.04;.24;.24;.30;.04"
+                 keyTimes="0;0.28;0.42;0.66;0.80;1" dur="11s" repeatCount="indefinite"/>
+        <animate attributeName="stop-color" values="#3d8fc4;#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4"
+                 keyTimes="0;0.62;0.66;0.70;0.84;1" dur="11s" repeatCount="indefinite"/>
       </stop>
-      <stop offset="1" stop-color="#6c7cff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#3d8fc4" stop-opacity="0"/>
     </radialGradient>
-
-    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="7"/>
-    </filter>
 
     <clipPath id="frame">
       <rect x="0" y="0" width="1200" height="320" rx="20"/>
     </clipPath>
+
+    <!-- One sensor station: a ring with its name under a mark. -->
+    <g id="node-ring">
+      <circle r="27" fill="#0f1218" stroke="currentColor" stroke-opacity=".55" stroke-width="1.4"/>
+    </g>
   </defs>
 
   <g clip-path="url(#frame)">
     <rect width="1200" height="320" fill="url(#bg)"/>
     <rect width="1200" height="320" fill="url(#grid)"/>
-    <ellipse cx="250" cy="150" rx="520" ry="300" fill="url(#halo)"/>
+    <ellipse cx="905" cy="160" rx="330" ry="260" fill="url(#halo)"/>
 
-    <!-- scanning sweep -->
-    <rect x="-320" y="0" width="320" height="320" fill="url(#sweep)">
+    <!-- The sweep only runs while something is being watched. -->
+    <rect x="-320" y="0" width="320" height="320" fill="url(#sweep)" opacity="0">
       <animate attributeName="x" values="-320;1200" dur="5.5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.38;0.44;0.86;0.92;1"
+               dur="11s" repeatCount="indefinite"/>
     </rect>
 
     <!-- ── wordmark ─────────────────────────────────────────────── -->
     <text x="64" y="118" font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
-          font-size="62" font-weight="700" letter-spacing="-1.5" fill="#eef2fb">Leave<tspan fill="#6c7cff">Safe<animate
-      attributeName="fill" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-      keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/></tspan></text>
+          font-size="62" font-weight="700" letter-spacing="-1.5" fill="#dcebf7">Leave<tspan
+      fill="#5c6572">Safe<animate attributeName="fill"
+      values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
+      keyTimes="0;0.28;0.40;0.90;1" dur="11s" repeatCount="indefinite"/></tspan></text>
 
     <text x="66" y="152" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
-          font-size="13" letter-spacing="4.4" fill="#7b879c">LEAVE YOUR LAPTOP. STAY SAFE.</text>
+          font-size="13" letter-spacing="4.4" fill="#76808e">LEAVE YOUR LAPTOP. STAY SAFE.</text>
 
     <!-- ── state readout ────────────────────────────────────────── -->
     <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" letter-spacing="2.6">
       <g opacity="1">
-        <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.28;0.36;0.96;1"
+        <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.26;0.32;0.96;1"
                  dur="11s" repeatCount="indefinite"/>
-        <circle cx="72" cy="209" r="5" fill="#6c7cff"/>
-        <text x="90" y="215" fill="#aeb9cd">STANDBY · 6 SENSORS READY</text>
+        <circle cx="72" cy="209" r="5" fill="#5c6572"/>
+        <text x="90" y="215" fill="#76808e">STANDBY · NOTHING IS WATCHED</text>
       </g>
       <g opacity="0">
-        <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0" keyTimes="0;0.36;0.42;0.66;0.70;0.88;0.92;0.96;1"
+        <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0" keyTimes="0;0.32;0.40;0.62;0.66;0.84;0.88;0.96;1"
                  dur="11s" repeatCount="indefinite"/>
-        <circle cx="72" cy="209" r="5" fill="#ff4d3d"/>
-        <text x="90" y="215" fill="#f0b6ae">ARMED · WATCHING 6 SENSORS</text>
+        <circle cx="72" cy="209" r="5" fill="#3d8fc4"/>
+        <text x="90" y="215" fill="#8fb4d0">ARMED · WATCHING 6 SENSORS</text>
       </g>
       <g opacity="0">
-        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.70;0.74;0.86;0.90;1"
+        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.66;0.70;0.82;0.86;1"
                  dur="11s" repeatCount="indefinite"/>
-        <circle cx="72" cy="209" r="5" fill="#ff4d3d">
+        <circle cx="72" cy="209" r="5" fill="#f04438">
           <animate attributeName="opacity" values="1;.15;1" dur="0.7s" repeatCount="indefinite"/>
         </circle>
-        <text x="90" y="215" fill="#ff6b5c" font-weight="700">ALERT · CHARGER DISCONNECTED</text>
+        <text x="90" y="215" fill="#f04438" font-weight="700">ALERT · SOMEBODY TOUCHED IT</text>
       </g>
     </g>
 
     <!-- ── trace line ───────────────────────────────────────────── -->
-    <path d="M64 258h420" stroke="#6c7cff" stroke-opacity=".55" stroke-width="1.6" fill="none">
-      <animate attributeName="stroke" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-               keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/>
+    <path d="M64 258h420" stroke="#5c6572" stroke-width="1.6" fill="none">
+      <animate attributeName="stroke" values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
+               keyTimes="0;0.28;0.40;0.90;1" dur="11s" repeatCount="indefinite"/>
     </path>
-    <path d="M64 258h180l7-13 6 24 7-11h226" stroke="#ff4d3d" stroke-width="1.8" fill="none" opacity="0"
+    <path d="M64 258h180l7-14 6 26 7-12h226" stroke="#f04438" stroke-width="1.8" fill="none" opacity="0"
           stroke-linejoin="round">
-      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.70;0.73;0.84;0.88;1"
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.66;0.69;0.80;0.84;1"
                dur="11s" repeatCount="indefinite"/>
     </path>
 
-    <!-- ── annunciator ──────────────────────────────────────────── -->
-    <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">
-      <!-- row 1 -->
-      <g>
-        <rect x="640" y="62" width="164" height="82" rx="12" fill="#121826" stroke="#6c7cff" stroke-opacity=".30" stroke-width="1.4">
-          <animate attributeName="stroke" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-                   keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/>
-          <animate attributeName="fill" values="#121826;#121826;#1a1113;#3a1512;#1a1113;#121826"
-                   keyTimes="0;0.68;0.72;0.78;0.86;1" dur="11s" repeatCount="indefinite"/>
-          <animate attributeName="stroke-opacity" values=".3;.3;.85;.85;.3;.3" keyTimes="0;0.68;0.74;0.86;0.92;1"
+    <text x="64" y="292" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+          font-size="11.5" letter-spacing="2.6" fill="#606a77">NO CLOUD · NO ACCOUNTS · ONE QR SCAN</text>
+
+    <!-- ── the orbit, and what it becomes ───────────────────────── -->
+    <!--
+      Arming pulls every sensor that is covering you into the middle, and the
+      ring that held them apart closes into a shield. "These six are now inside
+      the thing that is watching" is a sentence the shape says by itself.
+    -->
+    <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="9" letter-spacing="0.8"
+       text-anchor="middle">
+
+      <!-- POWER -->
+      <g color="#606a77" opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.32;0.44;0.88;0.96;1"
+                 dur="11s" repeatCount="indefinite"/>
+        <g transform="translate(905 52)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;0 108;0 108;0 0;0 0"
+                            keyTimes="0;0.32;0.44;0.88;0.96;1" dur="11s" repeatCount="indefinite"/>
+          <use href="#node-ring"/>
+          <path d="M-6-9v6M6-9v6M-9-3h18v4a9 9 0 0 1-18 0zM0 10v5" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -4)"/>
+          <text y="16" fill="currentColor">POWER</text>
+        </g>
+      </g>
+
+      <!-- LID -->
+      <g color="#606a77" opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.34;0.46;0.88;0.96;1"
+                 dur="11s" repeatCount="indefinite"/>
+        <g transform="translate(998.5 106)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;-93.5 54;-93.5 54;0 0;0 0"
+                            keyTimes="0;0.34;0.46;0.88;0.96;1" dur="11s" repeatCount="indefinite"/>
+          <use href="#node-ring"/>
+          <path d="M-8 3v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M-10 3h20l-1 3h-18z" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/>
+          <text y="16" fill="currentColor">LID</text>
+        </g>
+      </g>
+
+      <!-- USB -->
+      <g color="#606a77" opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.36;0.48;0.88;0.96;1"
+                 dur="11s" repeatCount="indefinite"/>
+        <g transform="translate(998.5 214)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;-93.5 -54;-93.5 -54;0 0;0 0"
+                            keyTimes="0;0.36;0.48;0.88;0.96;1" dur="11s" repeatCount="indefinite"/>
+          <use href="#node-ring"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+             transform="translate(0 -4)">
+            <circle cx="-6" cy="7" r="2"/><path d="M-4.6 5.6 6-5M2-7h6v6M-0.5 1.5 3 5l-2 4"/>
+          </g>
+          <text y="16" fill="currentColor">USB</text>
+        </g>
+      </g>
+
+      <!-- SCREEN -->
+      <g color="#606a77" opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.38;0.50;0.88;0.96;1"
+                 dur="11s" repeatCount="indefinite"/>
+        <g transform="translate(905 268)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;0 -108;0 -108;0 0;0 0"
+                            keyTimes="0;0.38;0.50;0.88;0.96;1" dur="11s" repeatCount="indefinite"/>
+          <use href="#node-ring"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+             transform="translate(0 -4)">
+            <rect x="-10" y="-7" width="20" height="12" rx="2"/><path d="M-4 9h8M0 5v4"/>
+          </g>
+          <text y="16" fill="currentColor">SCREEN</text>
+        </g>
+      </g>
+
+      <!-- NETWORK -->
+      <g color="#606a77" opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.40;0.52;0.88;0.96;1"
+                 dur="11s" repeatCount="indefinite"/>
+        <g transform="translate(811.5 214)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;93.5 -54;93.5 -54;0 0;0 0"
+                            keyTimes="0;0.40;0.52;0.88;0.96;1" dur="11s" repeatCount="indefinite"/>
+          <use href="#node-ring"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+             transform="translate(0 -3)">
+            <path d="M-10.6-3.4a16 16 0 0 1 21.2 0" transform="scale(.62)"/>
+            <path d="M-7 .3a11 11 0 0 1 14 0" transform="scale(.9)"/>
+            <path d="M-3.5 3.9a6 6 0 0 1 7 0" transform="scale(1.1)"/>
+            <circle cx="0" cy="7" r="1.2"/>
+          </g>
+          <text y="16" fill="currentColor">NETWORK</text>
+        </g>
+      </g>
+
+      <!-- INPUT — the one that fires -->
+      <g color="#606a77" opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1;0;0;1;1" keyTimes="0;0.42;0.54;0.65;0.67;0.83;0.85;0.88;0.96;1"
+                 dur="11s" repeatCount="indefinite"/>
+        <animate attributeName="color" values="#606a77;#606a77;#f04438;#f04438;#606a77;#606a77"
+                 keyTimes="0;0.64;0.67;0.84;0.87;1" dur="11s" repeatCount="indefinite"/>
+        <g transform="translate(811.5 106)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;93.5 54;93.5 54;0 0;0 0;0 0"
+                            keyTimes="0;0.42;0.54;0.64;0.66;0.96;1" dur="11s" repeatCount="indefinite"/>
+          <use href="#node-ring"/>
+          <path d="M-7-8l7 17 2.2-6.8L9 0z" fill="none" stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -4)"/>
+          <text y="16" fill="currentColor">INPUT</text>
+        </g>
+      </g>
+
+      <!-- The core: a shut eye that opens, inside a ring that closes. -->
+      <g transform="translate(905 160)">
+        <!-- shut: no outline at all, because a closed shape would claim a
+             completeness the state has not got -->
+        <g opacity="1">
+          <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.30;0.40;0.90;0.97;1"
                    dur="11s" repeatCount="indefinite"/>
-        </rect>
-        <text x="660" y="96" font-size="14" letter-spacing="1.6" font-weight="700" fill="#dbe3f2">POWER</text>
-        <text x="660" y="122" font-size="11.5" letter-spacing="2" fill="#6c7789">READY<animate
-          attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.70;0.73;0.85;0.89;1"
-          dur="11s" repeatCount="indefinite"/></text>
-        <text x="660" y="122" font-size="11.5" letter-spacing="2" font-weight="700" fill="#ff6b5c" opacity="0">TRIPPED
-          <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.70;0.73;0.85;0.89;1"
+          <g fill="none" stroke="#76808e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             transform="translate(0 -16) scale(1.3)">
+            <path d="M-1.3-6.9A11 11 0 0 1 0-7c7 0 10 7 10 7a18 18 0 0 1-2.2 3.2"/>
+            <path d="M-5.4-5.4A18 18 0 0 0-10 0s3 7 10 7a11 11 0 0 0 5.4-1.4"/>
+            <path d="M-2.1-7.8 2 2.1"/><path d="m-10-10 20 20"/>
+          </g>
+          <text y="18" fill="#76808e" font-size="12" letter-spacing="2.4">NOT WATCHING</text>
+          <text y="36" fill="#3d8fc4" font-size="10" letter-spacing="2">TAP TO ARM</text>
+        </g>
+
+        <!-- armed: the shield, the open eye, and a chip per sensor held -->
+        <g opacity="0">
+          <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.44;0.52;0.90;0.96;1"
                    dur="11s" repeatCount="indefinite"/>
-        </text>
-      </g>
-
-      <g>
-        <rect x="818" y="62" width="164" height="82" rx="12" fill="#121826" stroke="#6c7cff" stroke-opacity=".30" stroke-width="1.4">
-          <animate attributeName="stroke" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-                   keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/>
-        </rect>
-        <text x="838" y="96" font-size="14" letter-spacing="1.6" font-weight="700" fill="#dbe3f2">LID</text>
-        <text x="838" y="122" font-size="11.5" letter-spacing="2" fill="#6c7789">READY</text>
-      </g>
-
-      <g>
-        <rect x="996" y="62" width="164" height="82" rx="12" fill="#121826" stroke="#6c7cff" stroke-opacity=".30" stroke-width="1.4">
-          <animate attributeName="stroke" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-                   keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/>
-        </rect>
-        <text x="1016" y="96" font-size="14" letter-spacing="1.6" font-weight="700" fill="#dbe3f2">USB</text>
-        <text x="1016" y="122" font-size="11.5" letter-spacing="2" fill="#6c7789">READY</text>
-      </g>
-
-      <!-- row 2 -->
-      <g>
-        <rect x="640" y="160" width="164" height="82" rx="12" fill="#121826" stroke="#6c7cff" stroke-opacity=".30" stroke-width="1.4">
-          <animate attributeName="stroke" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-                   keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/>
-        </rect>
-        <text x="660" y="194" font-size="14" letter-spacing="1.6" font-weight="700" fill="#dbe3f2">SCREEN</text>
-        <text x="660" y="220" font-size="11.5" letter-spacing="2" fill="#6c7789">READY</text>
-      </g>
-
-      <g>
-        <rect x="818" y="160" width="164" height="82" rx="12" fill="#121826" stroke="#6c7cff" stroke-opacity=".30" stroke-width="1.4">
-          <animate attributeName="stroke" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-                   keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/>
-        </rect>
-        <text x="838" y="194" font-size="14" letter-spacing="1.6" font-weight="700" fill="#dbe3f2">NETWORK</text>
-        <text x="838" y="220" font-size="11.5" letter-spacing="2" fill="#6c7789">READY</text>
-      </g>
-
-      <g>
-        <rect x="996" y="160" width="164" height="82" rx="12" fill="#121826" stroke="#6c7cff" stroke-opacity=".30" stroke-width="1.4">
-          <animate attributeName="stroke" values="#6c7cff;#6c7cff;#ff4d3d;#ff4d3d;#6c7cff"
-                   keyTimes="0;0.30;0.40;0.92;1" dur="11s" repeatCount="indefinite"/>
-        </rect>
-        <text x="1016" y="194" font-size="14" letter-spacing="1.6" font-weight="700" fill="#dbe3f2">INPUT</text>
-        <text x="1016" y="220" font-size="11.5" letter-spacing="2" fill="#6c7789">READY</text>
+          <path d="M50 4 90 16v34c0 24-20 38-40 46C30 88 10 74 10 50V16z"
+                transform="translate(-75 -75) scale(1.5)"
+                fill="#3d8fc4" fill-opacity=".07" stroke="#3d8fc4" stroke-width="2.2" stroke-linejoin="round">
+            <animate attributeName="stroke" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+                     keyTimes="0;0.64;0.68;0.84;0.88;1" dur="11s" repeatCount="indefinite"/>
+            <animate attributeName="fill" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+                     keyTimes="0;0.64;0.68;0.84;0.88;1" dur="11s" repeatCount="indefinite"/>
+          </path>
+          <g fill="none" stroke="#3d8fc4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             transform="translate(0 -20) scale(1.3)">
+            <animate attributeName="stroke" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+                     keyTimes="0;0.64;0.68;0.84;0.88;1" dur="11s" repeatCount="indefinite"/>
+            <path d="M-10 0s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+            <circle cx="0" cy="0" r="3"/>
+          </g>
+          <text y="14" fill="#3d8fc4" font-size="12" letter-spacing="2.4">WATCHING
+            <animate attributeName="fill" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+                     keyTimes="0;0.64;0.68;0.84;0.88;1" dur="11s" repeatCount="indefinite"/>
+          </text>
+          <g fill="#3d8fc4" fill-opacity=".22">
+            <rect x="-33" y="24" width="16" height="16" rx="5"/>
+            <rect x="-14" y="24" width="16" height="16" rx="5"/>
+            <rect x="5" y="24" width="16" height="16" rx="5"/>
+            <rect x="-24" y="43" width="16" height="16" rx="5"/>
+            <rect x="-5" y="43" width="16" height="16" rx="5"/>
+            <rect x="-43" y="43" width="16" height="16" rx="5"/>
+          </g>
+        </g>
       </g>
     </g>
 
-    <text x="640" y="278" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
-          font-size="11.5" letter-spacing="2.6" fill="#4d5769">NO CLOUD · NO ACCOUNTS · ONE QR SCAN</text>
-
-    <rect x="0.5" y="0.5" width="1199" height="319" rx="20" fill="none" stroke="#8ea0ff" stroke-opacity=".14"/>
+    <rect x="0.5" y="0.5" width="1199" height="319" rx="20" fill="none" stroke="#3d8fc4" stroke-opacity=".14"/>
   </g>
 </svg>
