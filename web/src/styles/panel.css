@@ -723,7 +723,22 @@
 
 /* ── Sheet, dialogs, toast ─────────────────────────────────────────────── */
 
+/*
+ * A <dialog>, so the first four declarations are undoing the browser's own: it
+ * gives a dialog a border, a padding, a shrink-to-fit box and an auto margin,
+ * all of which fight a backdrop that has to cover the viewport exactly.
+ * `max-width`/`max-height` go too, or the sheet is capped short of the edges on
+ * a small screen.
+ */
 .sheet-scrim {
+    border: none;
+    padding: 0;
+    margin: 0;
+    max-width: none;
+    max-height: none;
+    width: 100%;
+    height: 100%;
+    color: inherit;
     position: fixed;
     inset: 0;
     z-index: 40;
