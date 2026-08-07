@@ -1,5 +1,6 @@
 import { stopSiren } from '../lib/siren';
 import { alarm, send } from '../lib/store';
+import { Icon } from './Icons';
 
 /**
  * What you see when something touched your laptop.
@@ -25,7 +26,10 @@ export function AlarmOverlay() {
                 <div class="alarm-eyebrow readout">Alert</div>
                 <p class="alarm-msg">{active.message}</p>
                 <div class="alarm-actions">
+                    {/* A crossed-out bell, not a tick. This button does not
+                        agree with the alert — it stops the noise. */}
                     <button type="button" class="alarm-primary" onClick={() => dismiss('dismiss_alarm')}>
+                        <Icon name="bellOff" />
                         Dismiss
                     </button>
                     <button
@@ -33,9 +37,11 @@ export function AlarmOverlay() {
                         class="chip"
                         onClick={() => dismiss('dismiss_alarm_pause', { duration: 5 })}
                     >
+                        <Icon name="pause" size={13} />
                         Pause this sensor 5s
                     </button>
                     <button type="button" class="chip" onClick={() => dismiss('dismiss_alarm_disable')}>
+                        <Icon name="power" size={13} />
                         Stop using this sensor
                     </button>
                 </div>

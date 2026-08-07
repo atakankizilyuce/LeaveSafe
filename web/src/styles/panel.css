@@ -13,7 +13,7 @@
 }
 
 .pair-mark {
-    color: var(--accent);
+    color: var(--brand);
     margin-bottom: 26px;
 }
 
@@ -82,7 +82,7 @@
 }
 
 .key-progress span[data-filled='true'] {
-    background: var(--accent);
+    background: var(--brand);
 }
 
 .pair-go {
@@ -90,8 +90,8 @@
     padding: 15px;
     border: none;
     border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: #060a12;
+    background: var(--brand);
+    color: var(--ink);
     font-weight: 650;
     font-size: 0.98rem;
     letter-spacing: -0.01em;
@@ -122,7 +122,7 @@
 .pair-alt:hover,
 .pair-alt:focus-visible {
     color: var(--text);
-    border-color: var(--accent);
+    border-color: var(--brand);
 }
 
 .pair-error {
@@ -177,6 +177,20 @@
 .pair-cert-hint code {
     font-family: var(--mono);
     color: var(--text);
+}
+
+/*
+ * Pairing happens in the standby room, whose accent is deliberately grey —
+ * nothing is being watched, and the page says so. The one action on this
+ * screen still has to look like the product rather than like the absence of
+ * it, so everything here uses the identity colour instead of the state one.
+ */
+.pair :focus-visible {
+    outline-color: var(--brand);
+}
+
+.pair .field:focus {
+    border-color: var(--brand);
 }
 
 /* ── State header ──────────────────────────────────────────────────────── */
@@ -245,207 +259,151 @@
 
 /* ── Annunciator ───────────────────────────────────────────────────────── */
 
-.grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+/*
+ * The orbit, and the room under it that the excluded sensors move into.
+ *
+ * The box is capped and centred at the same width as the orbit inside it, so
+ * every percentage below — station, exit slot, reason — resolves against the
+ * same square. That is what keeps the geometry identical at 380px and at
+ * 560px instead of drifting apart as the card grows.
+ *
+ * The reserved room appears only once there is something in it. Holding it
+ * open at rest left a tall empty gap under a panel with nothing to put there.
+ */
+.sring {
+    width: 100%;
+    max-width: 320px;
+    margin: 0 auto;
+    padding-bottom: 0;
+    transition: padding-bottom 620ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-@media (max-width: 380px) {
-    .grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
+.sring[data-gathered='true'] {
+    padding-bottom: calc(var(--out-rows, 0) * 53%);
+}
+
+/* Square by construction, so the stations sit on a real circle rather than on
+   an ellipse. A container query rather than a viewport one: what the type in
+   here has to fit is this box, which is not the same thing as the screen. */
+.sring-orbit {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    container-type: inline-size;
 }
 
 /*
- * A caption light. Dim and unremarkable at rest, outlined while it is watching,
- * and unmistakable once it has fired — the same job an annunciator panel does
- * in a cockpit, and for the same reason.
+ * A station. Placed by its own centre — hence the translate, which every other
+ * transform in here has to carry as well or the node jumps half its own width
+ * the moment anything else moves it.
  */
-/* The tile and its "i" together. The two are siblings rather than nested,
-   because a button inside a button is not a thing a browser will build — and
-   they press as one, because from the thumb's point of view they are one tile. */
-.cap-slot {
-    position: relative;
-    display: flex;
-    transition: transform var(--swift);
-}
-
-.cap-slot:active {
-    transform: scale(0.97);
-}
-
-.cap {
-    position: relative;
+.snode {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    transform: translate(-50%, -50%);
+    width: 19.4%;
+    aspect-ratio: 1;
+    padding: 0;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 5px;
-    width: 100%;
-    min-height: 74px;
-    padding: 11px 10px;
-    border: 1px solid var(--edge);
-    border-radius: var(--radius-sm);
-    background: var(--raised);
-    text-align: left;
-    overflow: hidden;
-    transition: border-color var(--settle), background var(--settle);
-}
-
-.cap-label {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.13em;
-    color: var(--faint);
-    /* Clear of the "i" in the corner. */
-    padding-right: 20px;
-    overflow-wrap: anywhere;
-    transition: color var(--settle);
-}
-
-.cap-foot {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 5px;
-    width: 100%;
-}
-
-/*
- * The switch on the face of the caption light.
- *
- * The tile was already the only thing on this screen that said whether a sensor
- * was on, and it was not the thing that changed it — the change lived a tap
- * deeper, in a panel that opened first. Drawing the switch where the state is
- * makes the tap that changes it the obvious one, and shows which way it goes
- * before it is made.
- */
-.cap-switch {
-    position: relative;
-    flex-shrink: 0;
-    width: 27px;
-    height: 16px;
-    border: 1px solid var(--edge);
-    border-radius: 100px;
-    background: var(--panel);
-    transition: background var(--swift), border-color var(--swift);
-}
-
-.cap-knob {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--faint);
-    transition: transform var(--swift), background var(--swift);
-}
-
-.cap[aria-checked='true'] .cap-switch {
-    background: var(--accent);
-    border-color: var(--accent);
-}
-
-.cap[aria-checked='true'] .cap-knob {
-    transform: translateX(11px);
-    background: #060a12;
-}
-
-/* A sensor this machine does not have has no switch position worth showing. */
-.cap[aria-disabled='true'] .cap-switch {
-    opacity: 0.5;
-}
-
-/* Small, quiet, and out of the way of the thumb that wants the switch: this is
-   for the first visit and the one time a sensor says it is unavailable, not for
-   every day. */
-.cap-info {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    z-index: 1;
-    display: flex;
     align-items: center;
     justify-content: center;
-    width: 21px;
-    height: 21px;
-    padding: 0;
+    gap: 2px;
     border: 1px solid var(--edge);
     border-radius: 50%;
-    background: transparent;
+    background: var(--raised);
     color: var(--faint);
+    overflow: visible;
+    z-index: 1;
+    /* Each delay is baked into its own property. A standalone transition-delay
+       after the shorthand overrides every per-property delay in it, which is
+       what dimmed the nodes at the start of the journey instead of the end. */
+    transition:
+        left 760ms cubic-bezier(0.32, 0.72, 0, 1) var(--delay),
+        top 760ms cubic-bezier(0.32, 0.72, 0, 1) var(--delay),
+        transform 760ms cubic-bezier(0.32, 0.72, 0, 1) var(--delay),
+        opacity 220ms ease calc(var(--delay) + 640ms),
+        border-color 400ms ease var(--delay),
+        background 400ms ease var(--delay),
+        color 400ms ease var(--delay);
+}
+
+.snode:active {
+    transform: translate(-50%, -50%) scale(0.94);
+}
+
+.snode .sensor-icon {
+    display: block;
+    width: 34%;
+    height: auto;
+}
+
+.snode-name {
     font-family: var(--mono);
-    font-size: 0.66rem;
-    line-height: 1;
-    transition: color var(--swift), border-color var(--swift);
+    font-size: clamp(0.5rem, 2.6cqw, 0.6rem);
+    letter-spacing: 0.06em;
 }
 
-.cap-info:hover,
-.cap-info:focus-visible,
-.cap-info[aria-expanded='true'] {
-    color: var(--text);
-    border-color: var(--accent);
-}
-
-.cap-state {
+/* Three pieces of information in one small circle: the icon says which sensor,
+   the name confirms it in words, and the badge says what it is doing — so the
+   state survives a colour-blind reader and a glance too quick to register hue. */
+.snode-badge {
+    position: absolute;
+    top: -2%;
+    right: -2%;
+    width: 26%;
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--edge);
     color: var(--faint);
-    font-size: 0.58rem;
-    transition: color var(--settle);
+    transition: color var(--settle), border-color var(--settle);
 }
 
-.cap[data-enabled='true'] .cap-label {
+/* Ready is on and waiting; watching is on and working. The difference is worth
+   one step of brightness and no more — neither is an event. */
+.snode[data-state='ready'] {
     color: var(--quiet);
 }
 
-.cap[data-watching='true'] {
-    border-color: rgba(var(--accent-rgb), 0.45);
+.snode[data-state='watching'],
+.snode[data-state='watching'] .snode-badge {
+    color: var(--accent);
+    border-color: var(--accent);
 }
 
-.cap[data-watching='true'] .cap-label {
-    color: var(--text);
-}
-
-/* The "i" dims with the tile it belongs to, since it is only a sibling of it —
-   but it stays usable, because on an unavailable sensor it is the one control
-   with something left to say. */
-.cap[data-off='true'],
-.cap[data-off='true'] ~ .cap-info {
-    opacity: 0.42;
-}
-
-/* A sensor that is configured to watch and is not watching — its driver failed
-   and the laptop is restarting the loop. Deliberately not styled like `off`,
-   which is a state the user chose, and not like `tripped`, which is the alarm
-   itself. This is the panel admitting a gap in its own cover, so it is marked
-   rather than dimmed. */
-.cap[data-failed='true'] {
-    border-color: var(--warn);
+/* Switched off, or absent from this machine. Marked with a dashed edge rather
+   than dimmed: being off is a fact the user chose and needs to be able to read,
+   not a detail worth hiding. */
+.snode[data-state='off'],
+.snode[data-state='unavailable'] {
     border-style: dashed;
 }
 
-.cap[data-failed='true'] .cap-state {
+/* Enabled, available, and still not watching: the driver failed and the laptop
+   is restarting it. Deliberately not styled like `off`, which is a state the
+   user chose, and not like `tripped`, which is the alarm itself. This is the
+   panel admitting a gap in its own cover, so it is marked rather than dimmed. */
+.snode[data-state='fault'],
+.snode[data-state='fault'] .snode-badge {
     color: var(--warn);
+    border-color: var(--warn);
 }
 
 /* Fired. The flash is fast and the decay is slow, which is how a real caption
    light behaves and why it catches the eye without being a strobe. */
-.cap[data-lit='true'] {
+.snode[data-state='tripped'],
+.snode[data-state='tripped'] .snode-badge {
+    color: var(--trip);
     border-color: var(--trip);
+}
+
+.snode[data-state='tripped'] {
     background: rgba(var(--trip-rgb), 0.16);
     animation: capflash 900ms ease-out;
-}
-
-.cap[data-lit='true'] .cap-label,
-.cap[data-lit='true'] .cap-state {
-    color: var(--trip);
-}
-
-.cap[data-lit='true'][aria-checked='true'] .cap-switch {
-    background: var(--trip);
-    border-color: var(--trip);
 }
 
 @keyframes capflash {
@@ -457,52 +415,355 @@
     }
 }
 
+/* ── where each sensor goes once the ring closes ───────────────────────── */
+
+/* Inwards, to the middle of the shield, fading as it lands: it is inside the
+   thing that is watching now, and the shield is what represents it. */
+.snode[data-place='in'] {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0.34);
+    opacity: 0;
+    border-color: var(--accent);
+}
+
+/*
+ * Outwards, to a region with its own heading and a reason each.
+ *
+ * Dimming them where they stood was the first attempt, and on the same surface
+ * as the ones being watched it read as "these are somehow still involved".
+ * Opposite direction, separate place, stated reason: three signals that all say
+ * the same thing, and none of them a colour.
+ */
+.snode[data-place='out'] {
+    left: var(--out-x);
+    top: var(--out-y);
+    transform: translate(-50%, -50%) scale(0.82);
+    border-style: dashed;
+}
+
+/* A sensor that has fired goes nowhere. It is no longer one of the quiet ones
+   doing their job — it is the thing you came to look at. */
+.snode[data-place='trip'] {
+    z-index: 3;
+}
+
+.sring-out {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 340ms ease 700ms;
+    pointer-events: none;
+}
+
+.sring[data-gathered='true'] .sring-out {
+    opacity: 1;
+}
+
+.sring-out-head {
+    position: absolute;
+    top: 101%;
+    left: 0;
+    right: 0;
+    text-align: center;
+    border-top: 1px dashed var(--edge);
+    padding-top: 10px;
+}
+
+.sring-out-why {
+    position: absolute;
+    width: 30%;
+    transform: translateX(-50%);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.sring-out-why b {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    color: var(--quiet);
+}
+
+.sring-out-why span {
+    font-size: 0.6rem;
+    line-height: 1.35;
+    color: var(--faint);
+}
+
+/* ── the core, and what it becomes ─────────────────────────────────────── */
+
+/*
+ * At rest this has no outline at all. A closed ring would claim a completeness
+ * the state has not got: nothing is being watched, and the shape should say so
+ * before the words do. What is there instead is a shut eye, the condition
+ * underneath it, and the way out of it.
+ */
+.sring-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 50%;
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    text-align: center;
+    z-index: 2;
+    transition: transform 760ms cubic-bezier(0.34, 1.5, 0.64, 1) 260ms;
+}
+
+.sring[data-gathered='true'] .sring-core {
+    transform: translate(-50%, -50%) scale(1.12);
+}
+
+/* The shield arrives on the same beat the sensors do, so the shape and its
+   contents land together rather than as two events. */
+.core-shield {
+    position: absolute;
+    inset: -5.4%;
+    width: 110.8%;
+    height: 110.8%;
+    fill: rgba(var(--accent-rgb), 0.07);
+    stroke: var(--accent);
+    stroke-width: 2.2;
+    stroke-linejoin: round;
+    opacity: 0;
+    transform: scale(0.88);
+    transition: opacity 380ms ease 620ms,
+        transform 560ms cubic-bezier(0.34, 1.45, 0.64, 1) 620ms,
+        stroke 460ms ease;
+    pointer-events: none;
+}
+
+.sring[data-gathered='true'] .core-shield {
+    opacity: 1;
+    transform: none;
+}
+
+/* Something fired while it was covering you. The shield says so rather than
+   going on looking calm around an alarm. */
+.sring-core[data-tripped='true'] .core-shield {
+    stroke: var(--trip);
+    fill: rgba(var(--trip-rgb), 0.08);
+}
+
+/* The readout has to sit above the shield's fill, and the shield has to stay
+   absolutely positioned — catching it here would turn it into a flex item and
+   collapse its height. */
+.core-mark,
+.core-label,
+.core-hint,
+.core-held {
+    position: relative;
+    z-index: 1;
+}
+
+/* The eye opens as the shield closes: one gesture, not two. */
+.core-mark {
+    display: grid;
+    place-items: center;
+    color: var(--quiet);
+    transition: color var(--settle);
+}
+
+.sring[data-gathered='true'] .core-mark {
+    color: var(--accent);
+}
+
+.core-label {
+    max-width: 110px;
+    line-height: 1.3;
+    transition: color var(--settle);
+}
+
+.sring[data-gathered='true'] .core-label {
+    color: var(--accent);
+}
+
+/* The hint sits under the condition: what is true, then what to do about it. */
+.core-hint {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    color: var(--brand);
+    opacity: 0.85;
+    margin-top: 2px;
+}
+
+/* What the shield collected. Up to six, so it wraps rather than squeezing —
+   three across is also the arrangement that stays optically centred inside a
+   shape whose lower half narrows. */
+.core-held {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 72%;
+    gap: 3px;
+    margin-top: 3px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 300ms ease 700ms, transform 300ms ease 700ms;
+}
+
+.sring[data-gathered='true'] .core-held {
+    opacity: 1;
+    transform: none;
+}
+
+.core-chip {
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 6px;
+    background: rgba(var(--accent-rgb), 0.16);
+    color: var(--accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .cap[data-lit='true'] {
+    .snode,
+    .sring,
+    .sring-core,
+    .core-shield,
+    .core-held,
+    .sring-out {
+        transition-duration: 1ms !important;
+    }
+
+    .snode[data-state='tripped'] {
         animation: none;
     }
+
     .state-count {
         animation: none;
     }
 }
 
-.cap-detail {
-    margin-top: 12px;
-    padding: 13px;
+/* ── what the sensors actually watch ───────────────────────────────────── */
+
+/*
+ * One disclosure for all six rather than an "i" on every station. The ring has
+ * no corner to put six of those in, and the question this answers — what does
+ * "USB" mean here — is asked once, on the first visit, about all of them at
+ * the same time.
+ */
+.sring-more {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px;
     border: 1px solid var(--edge);
     border-radius: var(--radius-sm);
-    background: var(--raised);
+    background: transparent;
+    color: var(--quiet);
+    transition: color var(--swift), border-color var(--swift);
 }
 
-.cap-detail-head {
+.sring-more:hover,
+.sring-more:focus-visible,
+.sring-more[aria-expanded='true'] {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.sref {
+    margin-top: 10px;
+}
+
+.sref-row {
+    padding: 12px 0;
+    border-top: 1px solid var(--edge);
+}
+
+.sref-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 6px;
-}
-
-.cap-desc {
-    color: var(--quiet);
-    font-size: 0.85rem;
-    margin: 0 0 12px;
-}
-
-.cap-warn {
-    color: var(--warn);
-    font-size: 0.82rem;
-    margin: 0 0 12px;
-}
-
-.cap-actions {
-    display: flex;
     gap: 8px;
-    flex-wrap: wrap;
 }
 
-.cap-actions .chip:disabled {
+.sref-mark {
+    display: grid;
+    place-items: center;
+    color: var(--quiet);
+}
+
+.sref-head strong {
+    font-size: 0.89rem;
+    font-weight: 600;
+}
+
+.sref-state {
+    margin-left: auto;
+    color: var(--faint);
+}
+
+.sref-row[data-state='watching'] .sref-mark,
+.sref-row[data-state='watching'] .sref-state {
+    color: var(--accent);
+}
+
+.sref-row[data-state='fault'] .sref-state {
+    color: var(--warn);
+}
+
+.sref-row[data-state='tripped'] .sref-state {
+    color: var(--trip);
+}
+
+.sref-desc {
+    color: var(--quiet);
+    font-size: 0.82rem;
+    margin: 6px 0 0;
+}
+
+.sref-warn {
+    color: var(--warn);
+    font-size: 0.8rem;
+    margin: 6px 0 0;
+}
+
+.sref .chip:disabled {
     opacity: 0.4;
     cursor: default;
+}
+
+/* ── icons in buttons ──────────────────────────────────────────────────── */
+
+/* The icon rides with the label rather than replacing it, so a button reads at
+   a glance and still says what it does in words. */
+.btn-icon {
+    flex: none;
+    opacity: 0.9;
+}
+
+.arm-label,
+.chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.chip {
+    gap: 6px;
+}
+
+/* The full-width ones are blocks, not inline boxes. As inline-flex they would
+   sit on a text line and pick up its leading, which is a stray few pixels
+   between two buttons that are meant to stack flush. */
+.pair-go,
+.pair-alt,
+.alarm-primary,
+.sheet-reset {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 /* ── Position ──────────────────────────────────────────────────────────── */
@@ -521,7 +782,7 @@
 
 .moved {
     border: 1px solid var(--warn);
-    background: rgba(255, 171, 61, 0.12);
+    background: rgba(var(--warn-rgb), 0.12);
     color: var(--warn);
     border-radius: var(--radius-sm);
     padding: 9px 11px;
@@ -669,16 +930,26 @@
     pointer-events: none;
 }
 
+/*
+ * Filled in the identity colour rather than in the state one.
+ *
+ * Standby's accent is a deliberately inert grey, and a large button filled
+ * with it reads as a disabled control — the one thing the primary action on
+ * the screen must not look like. It also matches the "tap to arm" line inside
+ * the ring, which is the same instruction in the same colour. The state signal
+ * is unaffected: every other surface still ramps, and this button inverts to
+ * an outline the moment it is armed.
+ */
 .arm {
     pointer-events: auto;
     position: relative;
     width: 100%;
     max-width: 528px;
     padding: 18px;
-    border: 1px solid var(--accent);
+    border: 1px solid var(--brand);
     border-radius: var(--radius);
-    background: var(--accent);
-    color: #060a12;
+    background: var(--brand);
+    color: var(--ink);
     font-size: 1rem;
     font-weight: 650;
     letter-spacing: -0.01em;
@@ -695,6 +966,7 @@
    something you have to mean. */
 .arm[data-armed='true'] {
     background: transparent;
+    border-color: var(--accent);
     color: var(--accent);
 }
 
@@ -745,7 +1017,7 @@
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    background: rgba(3, 6, 11, 0.72);
+    background: var(--scrim);
     backdrop-filter: blur(6px);
     overscroll-behavior: contain;
     animation: fade var(--swift) both;
@@ -990,7 +1262,7 @@
 
 .switch[aria-checked='true'] .switch-knob {
     transform: translateX(19px);
-    background: #060a12;
+    background: var(--ink);
 }
 
 .sheet-actions {
@@ -1004,7 +1276,7 @@
     border: none;
     border-radius: var(--radius-sm);
     background: var(--accent);
-    color: #060a12;
+    color: var(--ink);
     font-weight: 650;
     font-size: 0.95rem;
     transition: opacity var(--swift), transform var(--swift), background var(--state-shift);
@@ -1083,7 +1355,9 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: rgba(10, 2, 4, 0.9);
+    /* Not --scrim. The alarm overlay is the alarm's own surface: it is red-black
+       whether the panel behind it happens to be standing by or armed. */
+    background: rgba(14, 5, 7, 0.92);
 }
 
 /* A field that breathes rather than a border that blinks. It fills the screen,
@@ -1140,7 +1414,7 @@
 
 .alarm-actions .alarm-primary {
     background: var(--trip);
-    color: #12060a;
+    color: #140507;
 }
 
 .alarm-actions .chip {

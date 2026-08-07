@@ -7,8 +7,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#070b12",
-  "theme_color": "#070b12",
+  "background_color": "#050609",
+  "theme_color": "#050609",
   "categories": ["utilities", "security"],
   "icons": [
     {

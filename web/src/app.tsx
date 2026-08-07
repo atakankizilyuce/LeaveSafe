@@ -501,12 +501,28 @@ export function App() {
     const [counting, setCounting] = useState<number | null>(null);
     const [autoKey, setAutoKey] = useState('');
 
-    // Reflect the armed state onto the root element. Every colour in the sheet
-    // hangs off this one attribute, so arming shifts the whole page at once
-    // rather than repainting a badge.
+    // Reflect the state onto the root element. Every colour in the sheet hangs
+    // off this one attribute, so arming shifts the whole page at once rather
+    // than repainting a badge.
+    //
+    // Three values rather than two, because the countdown is its own state: for
+    // those three seconds the tap can still be taken back, and the page has to
+    // say so rather than standing at standby and then snapping to armed.
+    //
+    // The count goes on the root as well, and it is not decoration: the arming
+    // room climbs a third of the way to armed for each second of it, so the
+    // colour of the page *is* the countdown. By the time the number runs out
+    // the page has already arrived, and nothing visibly changes when the word
+    // does.
     useEffect(() => {
-        document.documentElement.dataset.armed = String(armed.value);
-    }, [armed.value]);
+        const root = document.documentElement;
+        root.dataset.state = armed.value ? 'armed' : counting !== null ? 'arming' : 'standby';
+        if (counting !== null && !armed.value) {
+            root.dataset.count = String(counting);
+        } else {
+            delete root.dataset.count;
+        }
+    }, [armed.value, counting]);
 
     useEffect(() => {
         loadLog();
