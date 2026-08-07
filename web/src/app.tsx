@@ -497,6 +497,19 @@ function pair(key: string, over: 'websocket' | 'bluetooth') {
     setTransport(connectWebSocket(handlers));
 }
 
+/**
+ * Which of the three rooms the page is in.
+ *
+ * Armed wins over arming, because the countdown is over the moment the laptop
+ * says it is watching. Arming wins over standby, because those three seconds
+ * are a state of their own — the tap can still be taken back, and the page has
+ * to say so rather than standing at standby and then snapping to armed.
+ */
+function pageState(isArmed: boolean, counting: number | null): 'armed' | 'arming' | 'standby' {
+    if (isArmed) return 'armed';
+    return counting === null ? 'standby' : 'arming';
+}
+
 export function App() {
     const [counting, setCounting] = useState<number | null>(null);
     const [autoKey, setAutoKey] = useState('');
@@ -516,7 +529,7 @@ export function App() {
     // does.
     useEffect(() => {
         const root = document.documentElement;
-        root.dataset.state = armed.value ? 'armed' : counting !== null ? 'arming' : 'standby';
+        root.dataset.state = pageState(armed.value, counting);
         if (counting !== null && !armed.value) {
             root.dataset.count = String(counting);
         } else {
