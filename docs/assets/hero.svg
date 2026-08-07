@@ -1,27 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="LeaveSafe — leave your laptop, stay safe. The sensors gather into a shield when it is armed, and the shield turns red when one of them fires.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="LeaveSafe — leave your laptop, stay safe. Six sensors gather into a shield around the laptop when it is armed, and when one of them fires the alert travels to the phone, which turns red.">
   <title>LeaveSafe — leave your laptop, stay safe</title>
 
   <!--
     Hand-written SMIL, no scripts and no external fetches, so GitHub will render
-    it. One twelve second loop: standby, arming, armed, an alert, and back.
+    it. One twelve second loop: standby, arming, armed, an alert on the phone,
+    and back.
+
+    The scene is the product's own sentence, in the order it happens. A laptop
+    is left behind. Six sensors close around it as a shield. One of them is
+    touched, and the alert travels down the wire to the phone in your pocket.
+    An earlier version of this banner drew only the shield, which left out the
+    half of LeaveSafe that actually wakes you up.
+
+    Every sensor has its own berth in the row inside the shield, and travels to
+    it from its own place in the ring. Six sensors converging on one point —
+    what this banner used to do — has no correct answer for where they land,
+    and it showed: the row sat off the shield's axis and its lower half hung
+    out of the point.
+
+    A sensor also keeps its opacity until it is home, and the berth it hands
+    over to fades in on the same beat at the same place. The two shapes are
+    never both missing, so the banner never sits empty while the readout claims
+    it is armed.
 
     Everything that moves is eased rather than linear. `calcMode="spline"` with
-    keySplines "0.32 0.72 0 1" is the same curve the panel itself uses for a
-    state change — a fast start that settles rather than arriving at full speed
-    — and holds between beats are left linear because nothing is travelling
-    through them. Linear motion is what made the earlier version of this banner
-    read as a slideshow of positions instead of an animation.
+    keySplines "0.32 0.72 0 1" is the same curve the panel uses for a state
+    change — a fast start that settles rather than arriving at full speed — and
+    holds between beats are left linear because nothing is travelling through
+    them.
 
-    A node also keeps its opacity until it is nearly home, and gets it back as
-    soon as it sets off again. Fading across the whole journey made six sensors
-    disappear in mid-air, which is the opposite of the thing being shown: they
-    go *into* the shield.
-
-    The colour decisions are the product's own. Standby is an almost colourless
-    near-black, because that is the state where nothing is being watched. Armed
-    is a calm sky blue, because being covered is good news and painting it red
-    would spend the alarm colour on a state that is not an alarm. Red appears on
-    exactly one beat of this loop, and that is the point of it.
+    The colours are the product's own, from web/src/styles/tokens.css. Standby
+    is an almost colourless near-black, because that is the state where nothing
+    is being watched. Armed is a calm sky blue, because being covered is good
+    news and painting it red would spend the alarm colour on a state that is
+    not an alarm. Red appears on exactly one beat of this loop, and that is the
+    point of it.
   -->
 
   <defs>
@@ -29,14 +42,14 @@
       <stop offset="0" stop-color="#0a0c11">
         <animate attributeName="stop-color"
                  values="#0a0c11;#0a0c11;#0a1b2d;#0a1b2d;#0a0c11"
-                 keyTimes="0;0.26;0.42;0.92;1"
+                 keyTimes="0;0.22;0.42;0.90;1"
                  calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
                  dur="12s" repeatCount="indefinite"/>
       </stop>
       <stop offset="1" stop-color="#050609">
         <animate attributeName="stop-color"
                  values="#050609;#050609;#050e19;#050e19;#050609"
-                 keyTimes="0;0.26;0.42;0.92;1"
+                 keyTimes="0;0.22;0.42;0.90;1"
                  calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
                  dur="12s" repeatCount="indefinite"/>
       </stop>
@@ -48,19 +61,19 @@
 
     <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#3d8fc4" stop-opacity="0"/>
-      <stop offset=".5" stop-color="#3d8fc4" stop-opacity=".22"/>
+      <stop offset=".5" stop-color="#3d8fc4" stop-opacity=".20"/>
       <stop offset="1" stop-color="#3d8fc4" stop-opacity="0"/>
     </linearGradient>
 
     <radialGradient id="halo" cx=".5" cy=".5" r=".5">
       <stop offset="0" stop-color="#3d8fc4" stop-opacity=".10">
-        <animate attributeName="stop-opacity" values=".04;.04;.24;.24;.30;.04"
-                 keyTimes="0;0.26;0.44;0.66;0.78;1"
+        <animate attributeName="stop-opacity" values=".04;.04;.22;.22;.30;.04"
+                 keyTimes="0;0.22;0.44;0.64;0.78;1"
                  calcMode="spline"
                  keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0.32 0.72 0 1"
                  dur="12s" repeatCount="indefinite"/>
         <animate attributeName="stop-color" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
-                 keyTimes="0;0.62;0.68;0.82;0.88;1"
+                 keyTimes="0;0.62;0.67;0.83;0.88;1"
                  calcMode="spline"
                  keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
                  dur="12s" repeatCount="indefinite"/>
@@ -69,187 +82,278 @@
     </radialGradient>
 
     <clipPath id="frame">
-      <rect x="0" y="0" width="1200" height="320" rx="20"/>
+      <rect x="0" y="0" width="1200" height="340" rx="20"/>
     </clipPath>
 
-    <g id="node-ring">
-      <circle r="27" fill="#0f1218" stroke="currentColor" stroke-opacity=".55" stroke-width="1.4"/>
+    <!-- A sensor at rest in the ring: a station you could tap. -->
+    <g id="station">
+      <circle r="24" fill="#0f1218" stroke="currentColor" stroke-opacity=".55" stroke-width="1.4"/>
     </g>
   </defs>
 
   <g clip-path="url(#frame)">
-    <rect width="1200" height="320" fill="url(#bg)"/>
-    <rect width="1200" height="320" fill="url(#grid)"/>
-    <ellipse cx="905" cy="160" rx="330" ry="260" fill="url(#halo)"/>
+    <rect width="1200" height="340" fill="url(#bg)"/>
+    <rect width="1200" height="340" fill="url(#grid)"/>
+    <ellipse cx="820" cy="170" rx="360" ry="270" fill="url(#halo)"/>
 
     <!-- The sweep only runs while something is being watched, and its own pass
          is linear on purpose: a scan that eases looks like it is losing
          interest halfway across. -->
-    <rect x="-320" y="0" width="320" height="320" fill="url(#sweep)" opacity="0">
-      <animate attributeName="x" values="-320;1200" dur="6s" repeatCount="indefinite"/>
+    <rect x="-340" y="0" width="340" height="340" fill="url(#sweep)" opacity="0">
+      <animate attributeName="x" values="-340;1200" dur="6s" repeatCount="indefinite"/>
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.40;0.46;0.88;0.94;1"
                dur="12s" repeatCount="indefinite"/>
     </rect>
 
     <!-- ── wordmark ─────────────────────────────────────────────── -->
-    <text x="64" y="118" font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
+    <text x="64" y="128" font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
           font-size="62" font-weight="700" letter-spacing="-1.5" fill="#dcebf7">Leave<tspan
       fill="#5c6572">Safe<animate attributeName="fill"
       values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
-      keyTimes="0;0.26;0.42;0.92;1"
+      keyTimes="0;0.22;0.42;0.90;1"
       calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
       dur="12s" repeatCount="indefinite"/></tspan></text>
 
-    <text x="66" y="152" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+    <text x="66" y="162" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
           font-size="13" letter-spacing="4.4" fill="#76808e">LEAVE YOUR LAPTOP. STAY SAFE.</text>
 
     <!-- ── state readout ────────────────────────────────────────── -->
     <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" letter-spacing="2.6">
       <g opacity="1">
-        <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.24;0.32;0.96;1"
+        <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.20;0.28;0.96;1"
                  dur="12s" repeatCount="indefinite"/>
-        <circle cx="72" cy="209" r="5" fill="#5c6572"/>
-        <text x="90" y="215" fill="#76808e">STANDBY · NOTHING IS WATCHED</text>
+        <circle cx="72" cy="224" r="5" fill="#5c6572"/>
+        <text x="90" y="230" fill="#76808e">STANDBY · NOTHING IS WATCHED</text>
       </g>
       <g opacity="0">
         <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0"
-                 keyTimes="0;0.32;0.40;0.62;0.66;0.84;0.88;0.96;1"
+                 keyTimes="0;0.28;0.36;0.61;0.65;0.85;0.89;0.96;1"
                  dur="12s" repeatCount="indefinite"/>
-        <circle cx="72" cy="209" r="5" fill="#3d8fc4"/>
-        <text x="90" y="215" fill="#8fb4d0">ARMED · WATCHING 6 SENSORS</text>
+        <circle cx="72" cy="224" r="5" fill="#3d8fc4"/>
+        <text x="90" y="230" fill="#8fb4d0">ARMED · WATCHING 6 SENSORS</text>
       </g>
       <g opacity="0">
-        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.66;0.70;0.82;0.86;1"
+        <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.65;0.69;0.83;0.87;1"
                  dur="12s" repeatCount="indefinite"/>
-        <circle cx="72" cy="209" r="5" fill="#f04438">
+        <circle cx="72" cy="224" r="5" fill="#f04438">
           <animate attributeName="opacity" values="1;.15;1" dur="0.9s"
                    calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" repeatCount="indefinite"/>
         </circle>
-        <text x="90" y="215" fill="#f04438" font-weight="700">ALERT · SOMEBODY TOUCHED IT</text>
+        <text x="90" y="230" fill="#f04438" font-weight="700">ALERT · SOMEBODY TOUCHED IT</text>
       </g>
     </g>
 
     <!-- ── trace line ───────────────────────────────────────────── -->
-    <path d="M64 258h420" stroke="#5c6572" stroke-width="1.6" fill="none">
+    <path d="M64 274h420" stroke="#5c6572" stroke-width="1.6" fill="none">
       <animate attributeName="stroke" values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
-               keyTimes="0;0.26;0.42;0.92;1"
+               keyTimes="0;0.22;0.42;0.90;1"
                calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
                dur="12s" repeatCount="indefinite"/>
     </path>
-    <path d="M64 258h180l7-14 6 26 7-12h226" stroke="#f04438" stroke-width="1.8" fill="none" opacity="0"
+    <path d="M64 274h180l7-14 6 26 7-12h226" stroke="#f04438" stroke-width="1.8" fill="none" opacity="0"
           stroke-linejoin="round">
-      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.67;0.70;0.80;0.84;1"
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.66;0.69;0.81;0.85;1"
                dur="12s" repeatCount="indefinite"/>
     </path>
 
-    <text x="64" y="292" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+    <text x="64" y="310" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
           font-size="11.5" letter-spacing="2.6" fill="#606a77">NO CLOUD · NO ACCOUNTS · ONE QR SCAN</text>
 
-    <!-- ── the orbit, and what it becomes ───────────────────────── -->
+    <!-- ── the alarm path ───────────────────────────────────────── -->
     <!--
-      Arming pulls every sensor that is covering you into the middle, and the
-      ring that held them apart closes into a shield. "These six are now inside
-      the thing that is watching" is a sentence the shape says by itself.
-
-      Each station leaves a beat after the one before it, so the six arrive as a
-      gathering rather than as a single blink.
+      Drawn once the sensors are berthed, because this is the wire the alert
+      will use and there is nothing to carry until then. It is dashed at rest
+      and carries one bright pulse on the beat a sensor fires.
     -->
-    <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="9" letter-spacing="0.8"
-       text-anchor="middle">
+    <path d="M896 166H1034" fill="none" stroke="#3d8fc4" stroke-opacity=".45" stroke-width="1.4"
+          stroke-dasharray="5 6" stroke-dashoffset="0" opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.40;0.46;0.90;0.94;1"
+               calcMode="spline"
+               keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+               dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="stroke-dashoffset" values="0;-44" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="stroke" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+               keyTimes="0;0.63;0.67;0.83;0.87;1"
+               calcMode="spline"
+               keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+               dur="12s" repeatCount="indefinite"/>
+    </path>
 
-      <!-- POWER -->
-      <g color="#606a77">
-        <animate attributeName="opacity" values="1;1;1;0;0;1;1"
-                 keyTimes="0;0.300;0.394;0.420;0.860;0.887;1"
+    <circle r="4.5" fill="#f04438" opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.640;0.652;0.700;0.712;1"
+               dur="12s" repeatCount="indefinite"/>
+      <animateMotion path="M896 166H1034" keyPoints="0;0;1;1" keyTimes="0;0.645;0.705;1"
+                     calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                     dur="12s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- ── the laptop, and what closes around it ────────────────── -->
+    <!--
+      The shield draws itself in from the top point rather than popping into
+      place, and it finishes on the beat the last sensor berths, so the two
+      motions read as one gesture: the sensors come in, the shield shuts.
+    -->
+    <g transform="translate(790 166)">
+      <path d="M0 -124 104 -88V8c0 60-46 96-104 116C-58 104-104 68-104 8v-96z"
+            fill="#3d8fc4" fill-opacity="0" stroke="#3d8fc4" stroke-width="2.4" stroke-linejoin="round"
+            stroke-dasharray="1000" stroke-dashoffset="1000">
+        <!-- 1000 is comfortably longer than the outline, so an offset of 1000
+             leaves the whole path inside the gap. A dash length that only just
+             covers the perimeter leaves a nick at the apex where the pattern
+             wraps, and the nick is visible at rest. -->
+        <animate attributeName="stroke-dashoffset" values="1000;1000;0;0;1000;1000"
+                 keyTimes="0;0.250;0.420;0.900;0.958;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
                  dur="12s" repeatCount="indefinite"/>
-        <g transform="translate(905 52)">
-          <animateTransform attributeName="transform" type="translate" additive="sum"
-                            values="0 0;0 0;0 108;0 108;0 0;0 0"
-                            keyTimes="0;0.300;0.420;0.860;0.950;1"
-                            calcMode="spline"
-                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                            dur="12s" repeatCount="indefinite"/>
-          <use href="#node-ring"/>
-          <path d="M-6-9v6M6-9v6M-9-3h18v4a9 9 0 0 1-18 0zM0 10v5" fill="none" stroke="currentColor"
-                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -4)"/>
-          <text y="16" fill="currentColor">POWER</text>
-        </g>
+        <animate attributeName="fill-opacity" values="0;0;.07;.07;0;0"
+                 keyTimes="0;0.400;0.470;0.900;0.930;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                 dur="12s" repeatCount="indefinite"/>
+        <animate attributeName="stroke" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+                 keyTimes="0;0.630;0.670;0.830;0.870;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                 dur="12s" repeatCount="indefinite"/>
+        <animate attributeName="fill" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+                 keyTimes="0;0.630;0.670;0.830;0.870;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                 dur="12s" repeatCount="indefinite"/>
+      </path>
+
+      <!-- The laptop is the only thing on screen that never moves. It is what
+           you walked away from. -->
+      <g transform="translate(0 -34)" fill="none" stroke="#5c6572" stroke-width="1.8"
+         stroke-linejoin="round" stroke-linecap="round">
+        <animate attributeName="stroke" values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
+                 keyTimes="0;0.22;0.42;0.90;1"
+                 calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
+                 dur="12s" repeatCount="indefinite"/>
+        <rect x="-52" y="-38" width="104" height="52" rx="5"/>
+        <rect x="-45" y="-31" width="90" height="38" rx="2" fill="#080a0e" stroke-width="0">
+          <animate attributeName="fill" values="#080a0e;#080a0e;#0d1e30;#0d1e30;#080a0e"
+                   keyTimes="0;0.22;0.42;0.90;1"
+                   calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
+                   dur="12s" repeatCount="indefinite"/>
+        </rect>
+        <path d="M-60 18h120l9 11h-138z"/>
       </g>
 
-      <!-- LID -->
-      <g color="#606a77">
-        <animate attributeName="opacity" values="1;1;1;0;0;1;1"
-                 keyTimes="0;0.312;0.406;0.432;0.860;0.887;1"
-                 dur="12s" repeatCount="indefinite"/>
-        <g transform="translate(998.5 106)">
-          <animateTransform attributeName="transform" type="translate" additive="sum"
-                            values="0 0;0 0;-93.5 54;-93.5 54;0 0;0 0"
-                            keyTimes="0;0.312;0.432;0.860;0.950;1"
-                            calcMode="spline"
-                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                            dur="12s" repeatCount="indefinite"/>
-          <use href="#node-ring"/>
-          <path d="M-8 3v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M-10 3h20l-1 3h-18z" fill="none" stroke="currentColor"
-                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/>
-          <text y="16" fill="currentColor">LID</text>
-        </g>
-      </g>
-
-      <!-- USB -->
-      <g color="#606a77">
-        <animate attributeName="opacity" values="1;1;1;0;0;1;1"
-                 keyTimes="0;0.324;0.418;0.444;0.860;0.887;1"
-                 dur="12s" repeatCount="indefinite"/>
-        <g transform="translate(998.5 214)">
-          <animateTransform attributeName="transform" type="translate" additive="sum"
-                            values="0 0;0 0;-93.5 -54;-93.5 -54;0 0;0 0"
-                            keyTimes="0;0.324;0.444;0.860;0.950;1"
-                            calcMode="spline"
-                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                            dur="12s" repeatCount="indefinite"/>
-          <use href="#node-ring"/>
-          <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-             transform="translate(0 -4)">
-            <circle cx="-6" cy="7" r="2"/><path d="M-4.6 5.6 6-5M2-7h6v6M-0.5 1.5 3 5l-2 4"/>
+      <!-- ── the six berths ─────────────────────────────────────── -->
+      <!--
+        Each one fades in exactly where its sensor lands, on the same beat, so
+        the handover reads as the sensor settling rather than as a swap. This
+        is the row the panel itself draws under the eye when it is armed.
+      -->
+      <g stroke-linecap="round" stroke-linejoin="round">
+        <g opacity="0" transform="translate(-57.5 50)">
+          <animate attributeName="opacity" values="0;0;1;1;0;0"
+                   keyTimes="0;0.335;0.370;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
+          <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
+          <g fill="none" stroke="#3d8fc4" stroke-width="2.6" transform="scale(.46)">
+            <path d="M-10.6-3.4a16 16 0 0 1 21.2 0" transform="scale(.62)"/>
+            <path d="M-7 .3a11 11 0 0 1 14 0" transform="scale(.9)"/>
+            <path d="M-3.5 3.9a6 6 0 0 1 7 0" transform="scale(1.1)"/>
+            <circle cx="0" cy="7" r="1.2"/>
           </g>
-          <text y="16" fill="currentColor">USB</text>
         </g>
-      </g>
 
-      <!-- SCREEN -->
-      <g color="#606a77">
-        <animate attributeName="opacity" values="1;1;1;0;0;1;1"
-                 keyTimes="0;0.336;0.430;0.456;0.860;0.887;1"
-                 dur="12s" repeatCount="indefinite"/>
-        <g transform="translate(905 268)">
-          <animateTransform attributeName="transform" type="translate" additive="sum"
-                            values="0 0;0 0;0 -108;0 -108;0 0;0 0"
-                            keyTimes="0;0.336;0.456;0.860;0.950;1"
-                            calcMode="spline"
-                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                            dur="12s" repeatCount="indefinite"/>
-          <use href="#node-ring"/>
-          <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-             transform="translate(0 -4)">
+        <g opacity="0" transform="translate(-34.5 50)">
+          <animate attributeName="opacity" values="0;0;1;1;0;0"
+                   keyTimes="0;0.345;0.380;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
+          <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
+          <path d="M-6-9v6M6-9v6M-9-3h18v4a9 9 0 0 1-18 0zM0 10v5" fill="none" stroke="#3d8fc4"
+                stroke-width="2.6" transform="scale(.46) translate(0 -1)"/>
+        </g>
+
+        <g opacity="0" transform="translate(-11.5 50)">
+          <animate attributeName="opacity" values="0;0;1;1;0;0"
+                   keyTimes="0;0.355;0.390;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
+          <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
+          <g fill="none" stroke="#3d8fc4" stroke-width="2.6" transform="scale(.46) translate(0 -1)">
             <rect x="-10" y="-7" width="20" height="12" rx="2"/><path d="M-4 9h8M0 5v4"/>
           </g>
-          <text y="16" fill="currentColor">SCREEN</text>
+        </g>
+
+        <g opacity="0" transform="translate(11.5 50)">
+          <animate attributeName="opacity" values="0;0;1;1;0;0"
+                   keyTimes="0;0.365;0.400;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
+          <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
+          <path d="M-8 3v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M-10 3h20l-1 3h-18z" fill="none"
+                stroke="#3d8fc4" stroke-width="2.6" transform="scale(.46)"/>
+        </g>
+
+        <g opacity="0" transform="translate(34.5 50)">
+          <animate attributeName="opacity" values="0;0;1;1;0;0"
+                   keyTimes="0;0.375;0.410;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
+          <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
+          <g fill="none" stroke="#3d8fc4" stroke-width="2.6" transform="scale(.46) translate(0 -1)">
+            <circle cx="-6" cy="7" r="2"/><path d="M-4.6 5.6 6-5M2-7h6v6M-0.5 1.5 3 5l-2 4"/>
+          </g>
+        </g>
+
+        <!--
+          INPUT berths last and sits nearest the wire, which is where the alert
+          leaves from. It is the one that fires, so it is the one that goes red
+          while the other five stay blue underneath the reddening shield.
+        -->
+        <g opacity="0" transform="translate(57.5 50)" color="#3d8fc4">
+          <animate attributeName="opacity" values="0;0;1;1;0;0"
+                   keyTimes="0;0.385;0.420;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
+          <animate attributeName="color" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
+                   keyTimes="0;0.625;0.660;0.830;0.870;1"
+                   calcMode="spline"
+                   keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                   dur="12s" repeatCount="indefinite"/>
+          <animateTransform attributeName="transform" type="scale" additive="sum"
+                            values="1;1;1.5;1.5;1;1"
+                            keyTimes="0;0.625;0.665;0.830;0.870;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.34 0.9 0.5 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <rect x="-9" y="-9" width="18" height="18" rx="5" fill="currentColor" fill-opacity=".16"/>
+          <path d="M-7-8l7 17 2.2-6.8L9 0z" fill="none" stroke="currentColor" stroke-width="2.6"
+                transform="scale(.46) translate(0 -1)"/>
         </g>
       </g>
+    </g>
 
-      <!-- NETWORK -->
-      <g color="#606a77">
-        <animate attributeName="opacity" values="1;1;1;0;0;1;1"
-                 keyTimes="0;0.348;0.442;0.468;0.860;0.887;1"
+    <!-- ── the ring, and the journey in ─────────────────────────── -->
+    <!--
+      Six stations, six berths, and the assignment runs left to right so no two
+      paths cross on the way in. Each one leaves a beat after the one before
+      it, so the six arrive as a gathering rather than as a single blink.
+
+      The label goes early in the journey. A four-letter word shrinking to a
+      third of its size is unreadable long before it arrives, and reading a
+      smear is worse than reading nothing.
+    -->
+    <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="9" letter-spacing="0.8"
+       text-anchor="middle" color="#606a77">
+
+      <!-- NETWORK · left of the ring, first berth -->
+      <g opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1"
+                 keyTimes="0;0.330;0.350;0.905;0.925;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1; 0 0 1 1"
                  dur="12s" repeatCount="indefinite"/>
-        <g transform="translate(811.5 214)">
+        <g transform="translate(652 166)">
           <animateTransform attributeName="transform" type="translate" additive="sum"
-                            values="0 0;0 0;93.5 -54;93.5 -54;0 0;0 0"
-                            keyTimes="0;0.348;0.468;0.860;0.950;1"
+                            values="0 0;0 0;80.5 50;80.5 50;0 0;0 0"
+                            keyTimes="0;0.240;0.350;0.900;0.958;1"
                             calcMode="spline"
                             keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
                             dur="12s" repeatCount="indefinite"/>
-          <use href="#node-ring"/>
+          <animateTransform attributeName="transform" type="scale" additive="sum"
+                            values="1;1;0.45;0.45;1;1"
+                            keyTimes="0;0.240;0.350;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <use href="#station"/>
           <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
              transform="translate(0 -3)">
             <path d="M-10.6-3.4a16 16 0 0 1 21.2 0" transform="scale(.62)"/>
@@ -257,115 +361,250 @@
             <path d="M-3.5 3.9a6 6 0 0 1 7 0" transform="scale(1.1)"/>
             <circle cx="0" cy="7" r="1.2"/>
           </g>
-          <text y="16" fill="currentColor">NETWORK</text>
+          <g opacity="1">
+            <animate attributeName="opacity" values="1;1;0;0;1;1"
+                     keyTimes="0;0.240;0.280;0.905;0.945;1" dur="12s" repeatCount="indefinite"/>
+            <text y="38" fill="currentColor">NETWORK</text>
+          </g>
         </g>
       </g>
 
-      <!--
-        INPUT is the one that fires. It comes back out to its own station for
-        the alert rather than staying inside the shield, because a sensor that
-        has tripped is the thing you came to look at — the panel does exactly
-        this, and for the same reason.
-      -->
-      <g color="#606a77">
-        <animate attributeName="opacity" values="1;1;1;0;0;1;1"
-                 keyTimes="0;0.360;0.454;0.480;0.630;0.650;1"
-                 dur="12s" repeatCount="indefinite"/>
-        <animate attributeName="color" values="#606a77;#606a77;#f04438;#f04438;#606a77;#606a77"
-                 keyTimes="0;0.640;0.680;0.830;0.870;1"
+      <!-- POWER · top left -->
+      <g opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1"
+                 keyTimes="0;0.340;0.360;0.905;0.925;1"
                  calcMode="spline"
-                 keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                 keySplines="0 0 1 1; 0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1; 0 0 1 1"
                  dur="12s" repeatCount="indefinite"/>
-        <g transform="translate(811.5 106)">
+        <g transform="translate(721 62)">
           <animateTransform attributeName="transform" type="translate" additive="sum"
-                            values="0 0;0 0;93.5 54;93.5 54;0 0;0 0;0 0"
-                            keyTimes="0;0.360;0.480;0.630;0.660;0.950;1"
+                            values="0 0;0 0;34.5 154;34.5 154;0 0;0 0"
+                            keyTimes="0;0.250;0.360;0.900;0.958;1"
                             calcMode="spline"
-                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0 0 1 1"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
                             dur="12s" repeatCount="indefinite"/>
-          <use href="#node-ring"/>
+          <animateTransform attributeName="transform" type="scale" additive="sum"
+                            values="1;1;0.45;0.45;1;1"
+                            keyTimes="0;0.250;0.360;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <use href="#station"/>
+          <path d="M-6-9v6M6-9v6M-9-3h18v4a9 9 0 0 1-18 0zM0 10v5" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -4)"/>
+          <g opacity="1">
+            <animate attributeName="opacity" values="1;1;0;0;1;1"
+                     keyTimes="0;0.250;0.290;0.905;0.945;1" dur="12s" repeatCount="indefinite"/>
+            <text y="38" fill="currentColor">POWER</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- SCREEN · bottom left -->
+      <g opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1"
+                 keyTimes="0;0.350;0.370;0.905;0.925;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1; 0 0 1 1"
+                 dur="12s" repeatCount="indefinite"/>
+        <g transform="translate(721 270)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;57.5 -54;57.5 -54;0 0;0 0"
+                            keyTimes="0;0.260;0.370;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <animateTransform attributeName="transform" type="scale" additive="sum"
+                            values="1;1;0.45;0.45;1;1"
+                            keyTimes="0;0.260;0.370;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <use href="#station"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+             transform="translate(0 -4)">
+            <rect x="-10" y="-7" width="20" height="12" rx="2"/><path d="M-4 9h8M0 5v4"/>
+          </g>
+          <g opacity="1">
+            <animate attributeName="opacity" values="1;1;0;0;1;1"
+                     keyTimes="0;0.260;0.300;0.905;0.945;1" dur="12s" repeatCount="indefinite"/>
+            <text y="38" fill="currentColor">SCREEN</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- LID · top right -->
+      <g opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1"
+                 keyTimes="0;0.360;0.380;0.905;0.925;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1; 0 0 1 1"
+                 dur="12s" repeatCount="indefinite"/>
+        <g transform="translate(859 62)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;-57.5 154;-57.5 154;0 0;0 0"
+                            keyTimes="0;0.270;0.380;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <animateTransform attributeName="transform" type="scale" additive="sum"
+                            values="1;1;0.45;0.45;1;1"
+                            keyTimes="0;0.270;0.380;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <use href="#station"/>
+          <path d="M-8 3v-8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8M-10 3h20l-1 3h-18z" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/>
+          <g opacity="1">
+            <animate attributeName="opacity" values="1;1;0;0;1;1"
+                     keyTimes="0;0.270;0.310;0.905;0.945;1" dur="12s" repeatCount="indefinite"/>
+            <text y="38" fill="currentColor">LID</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- USB · bottom right -->
+      <g opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1"
+                 keyTimes="0;0.370;0.390;0.905;0.925;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1; 0 0 1 1"
+                 dur="12s" repeatCount="indefinite"/>
+        <g transform="translate(859 270)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;-34.5 -54;-34.5 -54;0 0;0 0"
+                            keyTimes="0;0.280;0.390;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <animateTransform attributeName="transform" type="scale" additive="sum"
+                            values="1;1;0.45;0.45;1;1"
+                            keyTimes="0;0.280;0.390;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <use href="#station"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+             transform="translate(0 -4)">
+            <circle cx="-6" cy="7" r="2"/><path d="M-4.6 5.6 6-5M2-7h6v6M-0.5 1.5 3 5l-2 4"/>
+          </g>
+          <g opacity="1">
+            <animate attributeName="opacity" values="1;1;0;0;1;1"
+                     keyTimes="0;0.280;0.320;0.905;0.945;1" dur="12s" repeatCount="indefinite"/>
+            <text y="38" fill="currentColor">USB</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- INPUT · right of the ring, nearest the wire -->
+      <g opacity="1">
+        <animate attributeName="opacity" values="1;1;0;0;1;1"
+                 keyTimes="0;0.380;0.400;0.905;0.925;1"
+                 calcMode="spline"
+                 keySplines="0 0 1 1; 0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1; 0 0 1 1"
+                 dur="12s" repeatCount="indefinite"/>
+        <g transform="translate(928 166)">
+          <animateTransform attributeName="transform" type="translate" additive="sum"
+                            values="0 0;0 0;-80.5 50;-80.5 50;0 0;0 0"
+                            keyTimes="0;0.290;0.400;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <animateTransform attributeName="transform" type="scale" additive="sum"
+                            values="1;1;0.45;0.45;1;1"
+                            keyTimes="0;0.290;0.400;0.900;0.958;1"
+                            calcMode="spline"
+                            keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                            dur="12s" repeatCount="indefinite"/>
+          <use href="#station"/>
           <path d="M-7-8l7 17 2.2-6.8L9 0z" fill="none" stroke="currentColor" stroke-width="1.6"
                 stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -4)"/>
-          <text y="16" fill="currentColor">INPUT</text>
-        </g>
-      </g>
-
-      <!-- The core: a shut eye that opens, inside a ring that closes. -->
-      <g transform="translate(905 160)">
-        <g opacity="1">
-          <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.28;0.38;0.90;0.97;1"
-                   calcMode="spline"
-                   keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                   dur="12s" repeatCount="indefinite"/>
-          <g fill="none" stroke="#76808e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-             transform="translate(0 -16) scale(1.3)">
-            <path d="M-1.3-6.9A11 11 0 0 1 0-7c7 0 10 7 10 7a18 18 0 0 1-2.2 3.2"/>
-            <path d="M-5.4-5.4A18 18 0 0 0-10 0s3 7 10 7a11 11 0 0 0 5.4-1.4"/>
-            <path d="M-2.1-7.8 2 2.1"/><path d="m-10-10 20 20"/>
-          </g>
-          <text y="18" fill="#76808e" font-size="12" letter-spacing="2.4">NOT WATCHING</text>
-          <text y="36" fill="#3d8fc4" font-size="10" letter-spacing="2">TAP TO ARM</text>
-        </g>
-
-        <!--
-          The shield draws itself in on the beat the last sensor lands, and it
-          overshoots a little on the way — the same spring the panel's own core
-          uses, so the shape arrives rather than appears.
-        -->
-        <g opacity="0">
-          <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.44;0.50;0.90;0.95;1"
-                   calcMode="spline"
-                   keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                   dur="12s" repeatCount="indefinite"/>
-          <animateTransform attributeName="transform" type="scale"
-                            values="0.88;0.88;1.03;1;1;0.9;0.88"
-                            keyTimes="0;0.44;0.505;0.545;0.90;0.95;1"
-                            calcMode="spline"
-                            keySplines="0 0 1 1; 0.34 0.9 0.5 1; 0.4 0 0.6 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                            dur="12s" repeatCount="indefinite"/>
-          <path d="M50 4 90 16v34c0 24-20 38-40 46C30 88 10 74 10 50V16z"
-                transform="translate(-75 -75) scale(1.5)"
-                fill="#3d8fc4" fill-opacity=".07" stroke="#3d8fc4" stroke-width="2.2" stroke-linejoin="round">
-            <animate attributeName="stroke" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
-                     keyTimes="0;0.640;0.680;0.830;0.870;1"
-                     calcMode="spline"
-                     keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                     dur="12s" repeatCount="indefinite"/>
-            <animate attributeName="fill" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
-                     keyTimes="0;0.640;0.680;0.830;0.870;1"
-                     calcMode="spline"
-                     keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                     dur="12s" repeatCount="indefinite"/>
-          </path>
-          <g fill="none" stroke="#3d8fc4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-             transform="translate(0 -20) scale(1.3)">
-            <animate attributeName="stroke" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
-                     keyTimes="0;0.640;0.680;0.830;0.870;1"
-                     calcMode="spline"
-                     keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                     dur="12s" repeatCount="indefinite"/>
-            <path d="M-10 0s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
-            <circle cx="0" cy="0" r="3"/>
-          </g>
-          <text y="14" fill="#3d8fc4" font-size="12" letter-spacing="2.4">WATCHING
-            <animate attributeName="fill" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
-                     keyTimes="0;0.640;0.680;0.830;0.870;1"
-                     calcMode="spline"
-                     keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
-                     dur="12s" repeatCount="indefinite"/>
-          </text>
-          <g fill="#3d8fc4" fill-opacity=".22">
-            <rect x="-33" y="24" width="16" height="16" rx="5"/>
-            <rect x="-14" y="24" width="16" height="16" rx="5"/>
-            <rect x="5" y="24" width="16" height="16" rx="5"/>
-            <rect x="-43" y="43" width="16" height="16" rx="5"/>
-            <rect x="-24" y="43" width="16" height="16" rx="5"/>
-            <rect x="-5" y="43" width="16" height="16" rx="5"/>
+          <g opacity="1">
+            <animate attributeName="opacity" values="1;1;0;0;1;1"
+                     keyTimes="0;0.290;0.330;0.905;0.945;1" dur="12s" repeatCount="indefinite"/>
+            <text y="38" fill="currentColor">INPUT</text>
           </g>
         </g>
       </g>
     </g>
 
-    <rect x="0.5" y="0.5" width="1199" height="319" rx="20" fill="none" stroke="#3d8fc4" stroke-opacity=".14"/>
+    <!-- ── the phone ────────────────────────────────────────────── -->
+    <!--
+      The half of the product the old banner left out. It is dark while nothing
+      is watched, carries a quiet ARMED badge while the shield holds, and it is
+      the thing that goes off — screen flooded, shaking in your pocket — on the
+      beat the pulse reaches it. That is the moment LeaveSafe exists for.
+    -->
+    <g transform="translate(1080 166)">
+      <g>
+        <!-- The shake starts when the pulse lands and runs only while the
+             alert is up. Three units is a buzz, not an earthquake. -->
+        <animateTransform attributeName="transform" type="translate"
+                          values="0 0;0 0;2.5 0;-2.5 0;2 0;-2 0;1 0;0 0;0 0"
+                          keyTimes="0;0.700;0.706;0.712;0.718;0.724;0.730;0.736;1"
+                          dur="12s" repeatCount="indefinite"/>
+
+        <rect x="-44" y="-88" width="88" height="176" rx="14" fill="#0b0e14" stroke="#1b2029"
+              stroke-width="1.6"/>
+        <rect x="-37" y="-79" width="74" height="158" rx="7" fill="#080a0e">
+          <animate attributeName="fill"
+                   values="#080a0e;#080a0e;#0b1c2c;#0b1c2c;#3d100d;#3d100d;#0b1c2c;#0b1c2c;#080a0e;#080a0e"
+                   keyTimes="0;0.30;0.40;0.695;0.715;0.830;0.870;0.900;0.960;1"
+                   calcMode="spline"
+                   keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                   dur="12s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="-9" y="-83" width="18" height="4" rx="2" fill="#1b2029"/>
+
+        <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" text-anchor="middle">
+          <!-- asleep -->
+          <g opacity="1">
+            <animate attributeName="opacity" values="1;1;0;0;1;1"
+                     keyTimes="0;0.30;0.38;0.905;0.955;1"
+                     calcMode="spline"
+                     keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                     dur="12s" repeatCount="indefinite"/>
+            <circle cx="0" cy="-6" r="3" fill="#2a303a"/>
+            <text y="16" font-size="9" letter-spacing="1.6" fill="#3a424e">ASLEEP</text>
+          </g>
+
+          <!-- armed -->
+          <g opacity="0">
+            <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0"
+                     keyTimes="0;0.38;0.44;0.675;0.700;0.845;0.880;0.900;0.930;1"
+                     calcMode="spline"
+                     keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                     dur="12s" repeatCount="indefinite"/>
+            <path d="M0 -34 22 -26v20c0 13-10 21-22 25-12-4-22-12-22-25v-20z" fill="#3d8fc4"
+                  fill-opacity=".10" stroke="#3d8fc4" stroke-width="1.8" stroke-linejoin="round"/>
+            <text y="-6" font-size="10" letter-spacing="1.4" fill="#8fb4d0">ARMED</text>
+            <text y="34" font-size="8.5" letter-spacing="1.2" fill="#4d5d6e">6 SENSORS</text>
+          </g>
+
+          <!-- alert -->
+          <g opacity="0">
+            <animate attributeName="opacity" values="0;0;1;1;0;0"
+                     keyTimes="0;0.700;0.715;0.830;0.860;1"
+                     calcMode="spline"
+                     keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                     dur="12s" repeatCount="indefinite"/>
+            <g fill="none" stroke="#f04438" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               transform="translate(0 -34)">
+              <path d="M-9 4a9 9 0 0 1 18 0c0 5 2 7 2 7h-22s2-2 2-7z"/>
+              <path d="M-3 14a3 3 0 0 0 6 0"/>
+              <animate attributeName="stroke-opacity" values="1;.25;1" dur="0.6s"
+                       calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" repeatCount="indefinite"/>
+            </g>
+            <text y="0" font-size="11" letter-spacing="1.2" font-weight="700" fill="#f04438">ALERT</text>
+            <text y="18" font-size="8.5" letter-spacing="1" fill="#e88a83">INPUT</text>
+            <rect x="-30" y="34" width="60" height="18" rx="6" fill="#f04438"/>
+            <text y="46.5" font-size="8.5" letter-spacing="1" fill="#2a0c0b" font-weight="700">DISMISS</text>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <rect x="0.5" y="0.5" width="1199" height="339" rx="20" fill="none" stroke="#3d8fc4" stroke-opacity=".14"/>
   </g>
 </svg>
