@@ -122,10 +122,13 @@ jobs:
           - os: ubuntu-latest
             # -race needs cgo, which is only guaranteed present on the Unix runners.
             race: "-race"
+            label: linux
           - os: macos-latest
             race: "-race"
+            label: macos
           - os: windows-latest
             race: ""
+            label: windows
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -143,7 +146,7 @@ jobs:
         shell: bash
         run: |
           total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
-          echo "### Coverage: $total" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Coverage (linux leg only): $total" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           go tool cover -func=coverage.out >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -152,14 +155,30 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: go tool cover -html=coverage.out -o coverage.html
 
-      - name: Upload coverage report
+      # Every leg produces a profile, but only for the files its GOOS compiles.
+      # Naming them apart is what lets the sonar job download all three side by
+      # side; left as coverage.out they would overwrite one another.
+      - name: Name the profile after the platform that produced it
+        shell: bash
+        run: mv coverage.out coverage-${{ matrix.label }}.out
+
+      - name: Upload the coverage profile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-report-${{ matrix.label }}
+          path: coverage-${{ matrix.label }}.out
+          retention-days: 14
+
+      # The HTML report is for whoever is reading the run, and it is kept in its
+      # own artifact so that the sonar job never downloads it. Analysing it fails
+      # the quality gate on its own — see the coverage.html note in
+      # sonar-project.properties.
+      - name: Upload the coverage HTML report
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: coverage-report
-          path: |
-            coverage.out
-            coverage.html
+          name: coverage-html
+          path: coverage.html
           retention-days: 14
 
   # ---------------------------------------------------------------------------
@@ -472,8 +491,11 @@ jobs:
         run: go tool govulncheck ./...
 
   # ---------------------------------------------------------------------------
-  # Code quality. SonarQube Cloud reads the coverage profile the Linux test leg
-  # already produces and reports a quality gate on the pull request.
+  # Code quality. Each leg of the test matrix already produces a coverage profile
+  # for the files its own GOOS compiles; this job merges all three and hands the
+  # result to SonarQube Cloud, which reports a quality gate on the pull request.
+  # Reading only the Linux profile would leave every _darwin.go and _windows.go
+  # file counted as uncovered, tests or no tests.
   #
   # This job is deliberately absent from ci-success's needs list below. It cannot
   # run without SONAR_TOKEN, a pull request opened from a fork never receives
@@ -500,10 +522,43 @@ jobs:
           # from git blame. The default shallow checkout has no blame to read.
           fetch-depth: 0
 
-      - name: Fetch the coverage profile from the Linux test run
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Fetch every platform's coverage profile
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: coverage-report
+          pattern: coverage-report-*
+          merge-multiple: true
+
+      - name: Merge the three profiles into the one Sonar reads
+        shell: bash
+        run: |
+          # Each leg only compiled its own GOOS, so a platform file appears in
+          # exactly one profile while portable files appear in all three with
+          # identical block boundaries. Summing the counters per block is
+          # therefore a plain union, and it is what `go tool cover` already does
+          # with the duplicate blocks `go test` emits per test binary.
+          #
+          # Sonar accepts several report paths, but whether it unions or
+          # overwrites a file present in more than one of them is undocumented,
+          # and guessing wrong would silently lower every portable file. Merging
+          # here keeps that decision in the repository.
+          {
+            echo "mode: atomic"
+            awk 'FNR > 1 {
+                   key = $1 " " $2
+                   count[key] += $3
+                   if (!(key in seen)) { seen[key]; order[++n] = key }
+                 }
+                 END { for (i = 1; i <= n; i++) print order[i], count[order[i]] }' \
+              coverage-linux.out coverage-macos.out coverage-windows.out
+          } > coverage.out
+
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+          echo "### Coverage across all three platforms: $total" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch the phone interface's coverage
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
