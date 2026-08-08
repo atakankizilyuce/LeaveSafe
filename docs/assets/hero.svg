@@ -69,6 +69,7 @@
 
       .ls-mark                                   { fill: #3d8fc4 !important; }
       .ls-trace, .ls-laptop                      { stroke: #3d8fc4 !important; }
+      .ls-laptop                                 { transform: translate(0px, -34px) !important; }
       .ls-laptop-screen                          { fill: #0d1e30 !important; }
       .ls-phone-screen                           { fill: #0b1c2c !important; }
       .ls-phone-body                             { transform: none !important; }
@@ -268,10 +269,30 @@
                  dur="12s" repeatCount="indefinite"/>
       </path>
 
-      <!-- The laptop is the only thing on screen that never moves. It is what
-           you walked away from. -->
-      <g class="ls-laptop" transform="translate(0 -34)" fill="none" stroke="#5c6572" stroke-width="1.8"
+      <!--
+        The laptop is what you walked away from, and it sits in the middle of
+        the ring while nothing is watching it — the six sensors are arranged
+        around this point, so anywhere else reads as a mistake.
+
+        It gives up the middle only when the sensors arrive to take it: the row
+        they berth into needs the lower half of the shield, so the laptop rises
+        by its own height as the shield closes, on the shield's own keyTimes.
+        It travels once, in the one direction, and comes back when the sensors
+        return to the ring.
+
+        The resting offset is 4.5 rather than 0 because the drawing is not
+        centred on its own origin: the base hangs 29 below it and the screen
+        rises 38 above, so the shape's middle sits 4.5 high. Measured, not
+        guessed — the ring's centre and the laptop's now read the same y.
+      -->
+      <g class="ls-laptop" fill="none" stroke="#5c6572" stroke-width="1.8"
          stroke-linejoin="round" stroke-linecap="round">
+        <animateTransform attributeName="transform" type="translate"
+                          values="0 4.5;0 4.5;0 -34;0 -34;0 4.5;0 4.5"
+                          keyTimes="0;0.250;0.420;0.900;0.958;1"
+                          calcMode="spline"
+                          keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1; 0 0 1 1"
+                          dur="12s" repeatCount="indefinite"/>
         <animate attributeName="stroke" values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
                  keyTimes="0;0.22;0.42;0.90;1"
                  calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
