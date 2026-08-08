@@ -37,6 +37,51 @@
     point of it.
   -->
 
+  <!--
+    A twelve second loop with no way to stop it is a problem for anyone who has
+    asked their system not to animate, and SMIL has no play state to set.
+    `display: none` on the animation elements does not stop them either — it was
+    tried, and the banner kept looping.
+
+    What does work is the cascade: an author `!important` declaration outranks an
+    animation, SMIL included. So rather than stopping the loop, the rules below
+    pin every property it touches, and the banner settles on one frame: armed,
+    the shield shut around the laptop, the six sensors berthed inside it, the
+    phone carrying its quiet ARMED badge. The state the product spends its time
+    in. The loop still runs underneath, but nothing it sets is visible.
+
+    Only properties CSS can reach are pinned. The two that it cannot — the
+    sweep's x and the alert pulse's motion path — are hidden with opacity
+    instead, which CSS can reach.
+  -->
+  <style>
+    @media (prefers-reduced-motion: reduce) {
+      #bg stop:first-of-type   { stop-color: #0a1b2d !important; }
+      #bg stop:last-of-type    { stop-color: #050e19 !important; }
+      #halo stop:first-of-type { stop-color: #3d8fc4 !important; stop-opacity: .22 !important; }
+
+      .ls-sweep, .ls-pulse, .ls-trace-alert, .ls-station,
+      .ls-readout-standby, .ls-readout-alert,
+      .ls-phone-asleep, .ls-phone-alert          { opacity: 0 !important; }
+
+      .ls-berth, .ls-readout-armed,
+      .ls-phone-armed, .ls-wire                  { opacity: 1 !important; }
+
+      .ls-mark                                   { fill: #3d8fc4 !important; }
+      .ls-trace, .ls-laptop                      { stroke: #3d8fc4 !important; }
+      .ls-laptop-screen                          { fill: #0d1e30 !important; }
+      .ls-phone-screen                           { fill: #0b1c2c !important; }
+      .ls-phone-body                             { transform: none !important; }
+
+      .ls-wire   { stroke: #3d8fc4 !important; stroke-dashoffset: 0 !important; }
+      .ls-shield { stroke: #3d8fc4 !important; fill: #3d8fc4 !important;
+                   stroke-dashoffset: 0 !important; fill-opacity: .07 !important; }
+
+      .ls-berth-input { color: #3d8fc4 !important;
+                        transform: translate(57.5px, 50px) !important; }
+    }
+  </style>
+
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0a0c11">
@@ -99,7 +144,7 @@
     <!-- The sweep only runs while something is being watched, and its own pass
          is linear on purpose: a scan that eases looks like it is losing
          interest halfway across. -->
-    <rect x="-340" y="0" width="340" height="340" fill="url(#sweep)" opacity="0">
+    <rect class="ls-sweep" x="-340" y="0" width="340" height="340" fill="url(#sweep)" opacity="0">
       <animate attributeName="x" values="-340;1200" dur="6s" repeatCount="indefinite"/>
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.40;0.46;0.88;0.94;1"
                dur="12s" repeatCount="indefinite"/>
@@ -108,7 +153,7 @@
     <!-- ── wordmark ─────────────────────────────────────────────── -->
     <text x="64" y="128" font-family="Helvetica Neue,Helvetica,Arial,sans-serif"
           font-size="62" font-weight="700" letter-spacing="-1.5" fill="#dcebf7">Leave<tspan
-      fill="#5c6572">Safe<animate attributeName="fill"
+      class="ls-mark" fill="#5c6572">Safe<animate attributeName="fill"
       values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
       keyTimes="0;0.22;0.42;0.90;1"
       calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
@@ -119,20 +164,20 @@
 
     <!-- ── state readout ────────────────────────────────────────── -->
     <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" letter-spacing="2.6">
-      <g opacity="1">
+      <g class="ls-readout-standby" opacity="1">
         <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.20;0.28;0.96;1"
                  dur="12s" repeatCount="indefinite"/>
         <circle cx="72" cy="224" r="5" fill="#5c6572"/>
         <text x="90" y="230" fill="#76808e">STANDBY · NOTHING IS WATCHED</text>
       </g>
-      <g opacity="0">
+      <g class="ls-readout-armed" opacity="0">
         <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0"
                  keyTimes="0;0.28;0.36;0.61;0.65;0.85;0.89;0.96;1"
                  dur="12s" repeatCount="indefinite"/>
         <circle cx="72" cy="224" r="5" fill="#3d8fc4"/>
         <text x="90" y="230" fill="#8fb4d0">ARMED · WATCHING 6 SENSORS</text>
       </g>
-      <g opacity="0">
+      <g class="ls-readout-alert" opacity="0">
         <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.65;0.69;0.83;0.87;1"
                  dur="12s" repeatCount="indefinite"/>
         <circle cx="72" cy="224" r="5" fill="#f04438">
@@ -144,13 +189,13 @@
     </g>
 
     <!-- ── trace line ───────────────────────────────────────────── -->
-    <path d="M64 274h420" stroke="#5c6572" stroke-width="1.6" fill="none">
+    <path class="ls-trace" d="M64 274h420" stroke="#5c6572" stroke-width="1.6" fill="none">
       <animate attributeName="stroke" values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
                keyTimes="0;0.22;0.42;0.90;1"
                calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
                dur="12s" repeatCount="indefinite"/>
     </path>
-    <path d="M64 274h180l7-14 6 26 7-12h226" stroke="#f04438" stroke-width="1.8" fill="none" opacity="0"
+    <path class="ls-trace-alert" d="M64 274h180l7-14 6 26 7-12h226" stroke="#f04438" stroke-width="1.8" fill="none" opacity="0"
           stroke-linejoin="round">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.66;0.69;0.81;0.85;1"
                dur="12s" repeatCount="indefinite"/>
@@ -165,7 +210,7 @@
       will use and there is nothing to carry until then. It is dashed at rest
       and carries one bright pulse on the beat a sensor fires.
     -->
-    <path d="M896 166H1034" fill="none" stroke="#3d8fc4" stroke-opacity=".45" stroke-width="1.4"
+    <path class="ls-wire" d="M896 166H1034" fill="none" stroke="#3d8fc4" stroke-opacity=".45" stroke-width="1.4"
           stroke-dasharray="5 6" stroke-dashoffset="0" opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.40;0.46;0.90;0.94;1"
                calcMode="spline"
@@ -179,7 +224,7 @@
                dur="12s" repeatCount="indefinite"/>
     </path>
 
-    <circle r="4.5" fill="#f04438" opacity="0">
+    <circle class="ls-pulse" r="4.5" fill="#f04438" opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.640;0.652;0.700;0.712;1"
                dur="12s" repeatCount="indefinite"/>
       <animateMotion path="M896 166H1034" keyPoints="0;0;1;1" keyTimes="0;0.645;0.705;1"
@@ -194,7 +239,7 @@
       motions read as one gesture: the sensors come in, the shield shuts.
     -->
     <g transform="translate(790 166)">
-      <path d="M0 -124 104 -88V8c0 60-46 96-104 116C-58 104-104 68-104 8v-96z"
+      <path class="ls-shield" d="M0 -124 104 -88V8c0 60-46 96-104 116C-58 104-104 68-104 8v-96z"
             fill="#3d8fc4" fill-opacity="0" stroke="#3d8fc4" stroke-width="2.4" stroke-linejoin="round"
             stroke-dasharray="1000" stroke-dashoffset="1000">
         <!-- 1000 is comfortably longer than the outline, so an offset of 1000
@@ -225,14 +270,14 @@
 
       <!-- The laptop is the only thing on screen that never moves. It is what
            you walked away from. -->
-      <g transform="translate(0 -34)" fill="none" stroke="#5c6572" stroke-width="1.8"
+      <g class="ls-laptop" transform="translate(0 -34)" fill="none" stroke="#5c6572" stroke-width="1.8"
          stroke-linejoin="round" stroke-linecap="round">
         <animate attributeName="stroke" values="#5c6572;#5c6572;#3d8fc4;#3d8fc4;#5c6572"
                  keyTimes="0;0.22;0.42;0.90;1"
                  calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
                  dur="12s" repeatCount="indefinite"/>
         <rect x="-52" y="-38" width="104" height="52" rx="5"/>
-        <rect x="-45" y="-31" width="90" height="38" rx="2" fill="#080a0e" stroke-width="0">
+        <rect class="ls-laptop-screen" x="-45" y="-31" width="90" height="38" rx="2" fill="#080a0e" stroke-width="0">
           <animate attributeName="fill" values="#080a0e;#080a0e;#0d1e30;#0d1e30;#080a0e"
                    keyTimes="0;0.22;0.42;0.90;1"
                    calcMode="spline" keySplines="0 0 1 1; 0.32 0.72 0 1; 0 0 1 1; 0.32 0.72 0 1"
@@ -248,7 +293,7 @@
         is the row the panel itself draws under the eye when it is armed.
       -->
       <g stroke-linecap="round" stroke-linejoin="round">
-        <g opacity="0" transform="translate(-57.5 50)">
+        <g class="ls-berth" opacity="0" transform="translate(-57.5 50)">
           <animate attributeName="opacity" values="0;0;1;1;0;0"
                    keyTimes="0;0.335;0.370;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
           <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
@@ -260,7 +305,7 @@
           </g>
         </g>
 
-        <g opacity="0" transform="translate(-34.5 50)">
+        <g class="ls-berth" opacity="0" transform="translate(-34.5 50)">
           <animate attributeName="opacity" values="0;0;1;1;0;0"
                    keyTimes="0;0.345;0.380;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
           <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
@@ -268,7 +313,7 @@
                 stroke-width="2.6" transform="scale(.46) translate(0 -1)"/>
         </g>
 
-        <g opacity="0" transform="translate(-11.5 50)">
+        <g class="ls-berth" opacity="0" transform="translate(-11.5 50)">
           <animate attributeName="opacity" values="0;0;1;1;0;0"
                    keyTimes="0;0.355;0.390;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
           <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
@@ -277,7 +322,7 @@
           </g>
         </g>
 
-        <g opacity="0" transform="translate(11.5 50)">
+        <g class="ls-berth" opacity="0" transform="translate(11.5 50)">
           <animate attributeName="opacity" values="0;0;1;1;0;0"
                    keyTimes="0;0.365;0.400;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
           <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
@@ -285,7 +330,7 @@
                 stroke="#3d8fc4" stroke-width="2.6" transform="scale(.46)"/>
         </g>
 
-        <g opacity="0" transform="translate(34.5 50)">
+        <g class="ls-berth" opacity="0" transform="translate(34.5 50)">
           <animate attributeName="opacity" values="0;0;1;1;0;0"
                    keyTimes="0;0.375;0.410;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
           <rect x="-9" y="-9" width="18" height="18" rx="5" fill="#3d8fc4" fill-opacity=".16"/>
@@ -299,7 +344,7 @@
           leaves from. It is the one that fires, so it is the one that goes red
           while the other five stay blue underneath the reddening shield.
         -->
-        <g opacity="0" transform="translate(57.5 50)" color="#3d8fc4">
+        <g class="ls-berth ls-berth-input" opacity="0" transform="translate(57.5 50)" color="#3d8fc4">
           <animate attributeName="opacity" values="0;0;1;1;0;0"
                    keyTimes="0;0.385;0.420;0.900;0.930;1" dur="12s" repeatCount="indefinite"/>
           <animate attributeName="color" values="#3d8fc4;#3d8fc4;#f04438;#f04438;#3d8fc4;#3d8fc4"
@@ -334,7 +379,7 @@
        text-anchor="middle" color="#606a77">
 
       <!-- NETWORK · left of the ring, first berth -->
-      <g opacity="1">
+      <g class="ls-station" opacity="1">
         <animate attributeName="opacity" values="1;1;0;0;1;1"
                  keyTimes="0;0.330;0.350;0.905;0.925;1"
                  calcMode="spline"
@@ -370,7 +415,7 @@
       </g>
 
       <!-- POWER · top left -->
-      <g opacity="1">
+      <g class="ls-station" opacity="1">
         <animate attributeName="opacity" values="1;1;0;0;1;1"
                  keyTimes="0;0.340;0.360;0.905;0.925;1"
                  calcMode="spline"
@@ -401,7 +446,7 @@
       </g>
 
       <!-- SCREEN · bottom left -->
-      <g opacity="1">
+      <g class="ls-station" opacity="1">
         <animate attributeName="opacity" values="1;1;0;0;1;1"
                  keyTimes="0;0.350;0.370;0.905;0.925;1"
                  calcMode="spline"
@@ -434,7 +479,7 @@
       </g>
 
       <!-- LID · top right -->
-      <g opacity="1">
+      <g class="ls-station" opacity="1">
         <animate attributeName="opacity" values="1;1;0;0;1;1"
                  keyTimes="0;0.360;0.380;0.905;0.925;1"
                  calcMode="spline"
@@ -465,7 +510,7 @@
       </g>
 
       <!-- USB · bottom right -->
-      <g opacity="1">
+      <g class="ls-station" opacity="1">
         <animate attributeName="opacity" values="1;1;0;0;1;1"
                  keyTimes="0;0.370;0.390;0.905;0.925;1"
                  calcMode="spline"
@@ -498,7 +543,7 @@
       </g>
 
       <!-- INPUT · right of the ring, nearest the wire -->
-      <g opacity="1">
+      <g class="ls-station" opacity="1">
         <animate attributeName="opacity" values="1;1;0;0;1;1"
                  keyTimes="0;0.380;0.400;0.905;0.925;1"
                  calcMode="spline"
@@ -537,7 +582,7 @@
       beat the pulse reaches it. That is the moment LeaveSafe exists for.
     -->
     <g transform="translate(1080 166)">
-      <g>
+      <g class="ls-phone-body">
         <!-- The shake starts when the pulse lands and runs only while the
              alert is up. Three units is a buzz, not an earthquake. -->
         <animateTransform attributeName="transform" type="translate"
@@ -547,7 +592,7 @@
 
         <rect x="-44" y="-88" width="88" height="176" rx="14" fill="#0b0e14" stroke="#1b2029"
               stroke-width="1.6"/>
-        <rect x="-37" y="-79" width="74" height="158" rx="7" fill="#080a0e">
+        <rect class="ls-phone-screen" x="-37" y="-79" width="74" height="158" rx="7" fill="#080a0e">
           <animate attributeName="fill"
                    values="#080a0e;#080a0e;#0b1c2c;#0b1c2c;#3d100d;#3d100d;#0b1c2c;#0b1c2c;#080a0e;#080a0e"
                    keyTimes="0;0.30;0.40;0.695;0.715;0.830;0.870;0.900;0.960;1"
@@ -559,7 +604,7 @@
 
         <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" text-anchor="middle">
           <!-- asleep -->
-          <g opacity="1">
+          <g class="ls-phone-asleep" opacity="1">
             <animate attributeName="opacity" values="1;1;0;0;1;1"
                      keyTimes="0;0.30;0.38;0.905;0.955;1"
                      calcMode="spline"
@@ -570,7 +615,7 @@
           </g>
 
           <!-- armed -->
-          <g opacity="0">
+          <g class="ls-phone-armed" opacity="0">
             <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0"
                      keyTimes="0;0.38;0.44;0.675;0.700;0.845;0.880;0.900;0.930;1"
                      calcMode="spline"
@@ -583,7 +628,7 @@
           </g>
 
           <!-- alert -->
-          <g opacity="0">
+          <g class="ls-phone-alert" opacity="0">
             <animate attributeName="opacity" values="0;0;1;1;0;0"
                      keyTimes="0;0.700;0.715;0.830;0.860;1"
                      calcMode="spline"
