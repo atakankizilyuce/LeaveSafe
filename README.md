@@ -6,7 +6,8 @@
 
 ### Leave your laptop. Stay safe.
 
-A cross-platform device security monitor that turns your phone into a remote alarm for your laptop — no cloud, no accounts, one QR scan.
+**A cross-platform device security monitor that turns your phone into a remote alarm for your laptop.**<br/>
+Run it, scan the QR code, tap *Arm*, and walk away. The moment anyone touches your machine, your phone goes off in your pocket — and the laptop starts screaming too.
 
 <br/>
 
@@ -20,25 +21,21 @@ A cross-platform device security monitor that turns your phone into a remote ala
 
 <br/>
 
-**[See it work](#see-it-work) · [Set it up](#set-it-up) · [The interface](#the-interface) · [How it works](#how-it-works) · [Security](#security)**
+**[Demo](#demo) · [Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [Usage](#usage) · [How it works](#how-it-works) · [Security](#security) · [Docs](#documentation)**
 
 </div>
 
 <br/>
 
-## The problem
-
-You are in a café, a library, a co-working space. You need to stand up — the counter, the bathroom, a phone call outside. Your laptop is on the table. You either carry it with you every single time, or you leave it and hope.
-
-**LeaveSafe is the third option.** Run it, scan the QR code with your phone, tap *Arm*, and walk away. The laptop watches its own charger, lid, USB ports, screen lock, network and input. The moment any of them changes, your phone goes off in your pocket — and the laptop starts screaming too.
-
-The phone is the convenience, not the alarm: when its screen locks, the operating system freezes the page, so an alert may not reach it until you open it again. The laptop sounds regardless.
+Sometimes you have to leave your laptop on the table — the counter, the bathroom, a phone call outside. LeaveSafe watches it while you are gone: the charger, the lid, the USB ports, the screen, the network and the input devices. If any of them changes, you know within a second.
 
 No account. No server. No internet needed. Your phone talks straight to your laptop over your local network or Bluetooth, and the 16-digit pairing key never leaves the two of them.
 
+> The phone is the convenience, not the alarm. When its screen locks, the operating system freezes the page, so an alert may not reach it until you open it again. The laptop sounds regardless.
+
 <br/>
 
-## See it work
+## Demo
 
 <div align="center">
 
@@ -46,29 +43,59 @@ No account. No server. No internet needed. Your phone talks straight to your lap
 
 <br/>
 
-**Tap arm → the page climbs towards armed for three seconds → the sensors gather into a shield → someone touches the laptop → your phone knows.**
+**Tap arm → three seconds → the sensors gather into a shield → someone touches the laptop → your phone knows.**
 
-*Recorded from one real session. The alert is a genuine input-sensor event read from the operating system, not a mock-up — see [docs/assets](docs/assets/README.md).*
+<sub>Recorded from one real session. The alert is a genuine input-sensor event read from the operating system, not a mock-up — see [docs/assets](docs/assets/README.md).</sub>
 
 </div>
 
 <br/>
 
-## Set it up
+## Features
 
-### 1 · Download it
+- **QR code pairing** — no app to install; the phone opens a page served by your own laptop
+- **Six sensors** — power, lid, USB, screen, network and input, each switchable and self-testable from the phone
+- **Tap to arm, hold to disarm** — disarming asks for a second and a half of deliberate intent
+- **A local siren with volume escalation**, so the laptop sounds whether or not your phone is awake
+- **Disconnect alarm** if every phone drops off while armed, plus an optional scrypt-hashed disarm PIN
+- **Wi-Fi everywhere, Bluetooth Low Energy on macOS**
+- **Optional [remote access](docs/remote-access.md) and [location](docs/location.md)** — both off by default, both switchable while it runs
+- **[Starts when you log in](docs/service.md)**, survives a panicking sensor, and reports the gap after a crash
+- **An audit log** of every security event, and **signed provenance** on every release artifact
 
-Use a package manager if you have one — it puts `leavesafe` on your `PATH` and makes upgrading one command:
+<br/>
+
+## Installation
+
+### Package managers
+
+Recommended — this puts `leavesafe` on your `PATH` and makes upgrading one command:
 
 ```bash
-brew tap atakankizilyuce/tap && brew install leavesafe          # macOS / Linux
-scoop bucket add atakankizilyuce https://github.com/atakankizilyuce/homebrew-tap && scoop install leavesafe
-winget install LeaveSafe.LeaveSafe                              # Windows
+# macOS / Linux — Homebrew
+brew tap atakankizilyuce/tap && brew install leavesafe
+
+# Windows — WinGet
+winget install LeaveSafe.LeaveSafe
+
+# Windows — Scoop
+scoop bucket add atakankizilyuce https://github.com/atakankizilyuce/homebrew-tap
+scoop install leavesafe
 ```
 
-Or grab the binary for your machine from the [Releases page](https://github.com/atakankizilyuce/LeaveSafe/releases): `leavesafe-windows-amd64.exe`, `leavesafe-linux-amd64`, `leavesafe-linux-arm64`, `leavesafe-darwin-amd64`, `leavesafe-darwin-arm64`. One file, no installer, no dependencies. On Linux and macOS, `chmod +x` it first.
+### Binaries
 
-However you install it, LeaveSafe tells you when a newer release exists — and names the command that upgrades *your* installation. Nothing is ever downloaded or replaced without you.
+Download from the [Releases page](https://github.com/atakankizilyuce/LeaveSafe/releases). One file, no installer, no dependencies.
+
+| Platform | File |
+|---|---|
+| Windows (x64) | `leavesafe-windows-amd64.exe` |
+| Linux (x64 / ARM64) | `leavesafe-linux-amd64` · `leavesafe-linux-arm64` |
+| macOS (Intel / Apple silicon) | `leavesafe-darwin-amd64` · `leavesafe-darwin-arm64` |
+
+On Linux and macOS, `chmod +x` the file before running it.
+
+However you install it, LeaveSafe tells you when a newer release exists and names the command that upgrades *your* installation. Nothing is downloaded or replaced without you.
 
 <details>
 <summary><b>macOS says the developer cannot be verified</b></summary>
@@ -99,7 +126,9 @@ A [CycloneDX SBOM](https://cyclonedx.org/) listing every dependency is attached 
 
 <br/>
 
-### 2 · Run it
+## Quick start
+
+### 1. Run it
 
 Double-click it, or run it from a terminal. The dashboard takes over the window: a QR code on the left, live status on the right, the log along the bottom.
 
@@ -109,11 +138,13 @@ Double-click it, or run it from a terminal. The dashboard takes over the window:
 
 > **First run only:** LeaveSafe asks whether you want [remote access](docs/remote-access.md). If you are not sure, answer no — you can turn it on later from the phone, and local pairing works either way.
 
-<br/>
+### 2. Scan it with your phone
 
-### 3 · Scan it, arm it, walk away
+Point your camera at the QR code and open the link. There is no app to install — it is a web page served by your own laptop, and the scan fills the pairing key in for you.
 
-Point your phone's camera at the QR code and open the link. No app to install — it is a web page served by your own laptop, and the scan fills the pairing key in for you.
+### 3. Arm it, and walk away
+
+Tap **Arm**. The page climbs towards armed for three seconds, the sensors gather into a shield, and your laptop is being watched.
 
 <table>
 <tr>
@@ -122,23 +153,27 @@ Point your phone's camera at the QR code and open the link. No app to install �
 <br/><sub><b>Scanned.</b> The key arrives pre-filled. Typing the 16 digits by hand works too.</sub>
 </td>
 <td width="33%" align="center">
-<img src="docs/assets/phone-standby.png" alt="The phone panel in standby: six sensor stations around a closed eye" width="100%">
-<br/><sub><b>Paired.</b> A shut eye, and the sensors standing apart. Nothing is being watched yet.</sub>
-</td>
-<td width="33%" align="center">
 <img src="docs/assets/phone-arming.png" alt="The phone counting down while arming, the page a shade closer to armed" width="100%">
 <br/><sub><b>Arming.</b> Three seconds, and the page climbs a third of the way with each one.</sub>
+</td>
+<td width="33%" align="center">
+<img src="docs/assets/phone-armed.png" alt="The phone armed: the sensors gathered inside a shield with an open eye" width="100%">
+<br/><sub><b>Armed.</b> Every sensor covering you is inside the shield; the rest stand below it with a reason each.</sub>
 </td>
 </tr>
 </table>
 
-**Arming is a tap; disarming is a hold.** Arming by accident costs you nothing — you are standing right there. Disarming by accident silently turns off the thing guarding your laptop, so it asks for a second and a half of deliberate intent.
+<br/>
+
+## Usage
+
+### On your phone
 
 <table>
 <tr>
 <td width="34%" align="center">
-<img src="docs/assets/phone-armed.png" alt="The phone armed: the sensors gathered inside a shield with an open eye" width="100%">
-<br/><sub><b>Armed.</b> Every sensor that is covering you is inside the shield. The ones that are not stand below it, each with the reason why.</sub>
+<img src="docs/assets/phone-standby.png" alt="The phone panel in standby: six sensor stations around a closed eye" width="100%">
+<br/><sub><b>Standby.</b> A shut eye, and the sensors standing apart. Nothing is being watched yet.</sub>
 </td>
 <td width="33%" align="center">
 <img src="docs/assets/phone-alarm.png" alt="An alert on the phone reading Sustained mouse or keyboard activity detected" width="100%">
@@ -151,15 +186,7 @@ Point your phone's camera at the QR code and open the link. No app to install �
 </tr>
 </table>
 
-<br/>
-
-## The interface
-
-### On your phone
-
-**Armed is not red.** Being covered is good news, and painting it red would tell you something has gone wrong at the exact moment nothing has — and spend the alarm colour on a state that is not an alarm. So standby is an almost colourless near-black, armed is a calm blue, and red appears on exactly two surfaces in the whole product: the alert, and the one sensor that fired. Blue rather than green, because green and red are the pair one man in twelve cannot tell apart.
-
-Tap any station to turn that sensor on or off. Arming pulls every sensor that is actually covering you into the middle, and the ring closes into a shield around them; the rest travel the other way, into a region of their own with a stated reason each.
+Tap any station to turn that sensor on or off. Arming pulls every sensor that is actually covering you into a shield in the middle; the rest travel the other way, each with a stated reason.
 
 <table>
 <tr>
@@ -203,6 +230,8 @@ Type any of these into the dashboard while it runs:
 | `rotate-key` | New pairing key, all sessions invalidated |
 | `help` · `Ctrl+C` | The list above; graceful shutdown |
 
+Settings persist in a config file between runs — [Configuration](docs/configuration.md) lists every option.
+
 <br/>
 
 ## How it works
@@ -213,6 +242,8 @@ Type any of these into the dashboard while it runs:
 
 The binary runs three things at once: the sensor monitor that reads the operating system, a WebSocket (and optionally Bluetooth) server your phone connects to, and the terminal dashboard. Nothing else is involved — no broker, no relay, no account, no telemetry.
 
+### The sensors
+
 | Sensor | What trips it |
 |--------|---------------|
 | **Power** | The charger is unplugged or plugged in |
@@ -222,7 +253,18 @@ The binary runs three things at once: the sensor monitor that reads the operatin
 | **Network** | An interface or its IP address changes |
 | **Input** | Sustained keyboard or mouse activity |
 
-Each one is implemented natively per platform — `/sys` and `/proc` on Linux, Win32 calls and PowerShell on Windows, `pmset`, `ioreg` and `system_profiler` on macOS. A sensor that cannot work on your machine reports itself unavailable instead of silently never firing, and a sensor whose driver fails reads `fault` rather than `ready`.
+Each is implemented natively per platform — `/sys` and `/proc` on Linux, Win32 and PowerShell on Windows, `pmset`, `ioreg` and `system_profiler` on macOS. A sensor that cannot work on your machine reports itself unavailable rather than silently never firing.
+
+### Platform support
+
+| Feature | Windows | Linux | macOS |
+|---------|:-------:|:-----:|:-----:|
+| Power · Lid · USB · Screen · Network · Input | ✅ | ✅ | ✅ |
+| Local alarm siren | ✅ | ✅ | ✅ |
+| Wi-Fi positioning | ✅ | ✅ | ❌ |
+| Bluetooth Low Energy | ❌ | ❌ | ✅ |
+
+Bluetooth pairing runs on macOS only: the Windows and Linux stacks do not tell the application *which* device sent a message, and a pairing that cannot be kept to one phone would authenticate every device in radio range. Wi-Fi pairing — what the QR code uses — works on all three.
 
 <details>
 <summary><b>The pairing handshake, step by step</b></summary>
@@ -250,57 +292,29 @@ sequenceDiagram
     L->>L: Stop monitoring
 ```
 
-The pairing key is generated fresh on every run and carries a Luhn check digit, so a mistyped digit is rejected before it counts as a failed attempt. Five genuinely wrong keys from the same address trigger a 60-second lockout — counted per source, so a stranger cannot lock you out of your own laptop.
-
 </details>
-
-<br/>
-
-## Features
-
-- **QR code pairing** over Wi-Fi everywhere, or Bluetooth Low Energy on macOS — no app, no account
-- **Six sensors**, each switchable, pausable and self-testable from the phone
-- **A local siren with volume escalation**, so the laptop sounds whether or not your phone is awake
-- **Disconnect alarm** if every phone drops off while armed, and an optional scrypt-hashed disarm PIN
-- **Optional [remote access](docs/remote-access.md) and [location](docs/location.md)** — both off by default, both switchable while it runs
-- **[Starts when you log in](docs/service.md)**, survives a panicking sensor, and reports the gap after a crash
-- **An audit log** of every security event, and **signed provenance** on every release artifact
-
-<br/>
-
-## Platform support
-
-| Feature | Windows | Linux | macOS |
-|---------|:-------:|:-----:|:-----:|
-| Power · Lid · USB · Screen · Network · Input | ✅ | ✅ | ✅ |
-| Local alarm siren | ✅ | ✅ | ✅ |
-| Wi-Fi positioning | ✅ | ✅ | ❌ |
-| Bluetooth Low Energy | ❌ | ❌ | ✅ |
-
-Bluetooth pairing runs on macOS only. Windows and Linux are not missing a driver: their Bluetooth stacks do not tell the application *which* device sent a message, and a pairing that cannot be kept to one phone would authenticate every device in radio range the moment yours paired. Wi-Fi pairing is unaffected on all three, and is what the QR code uses.
 
 <br/>
 
 ## Security
 
-| Layer | Detail |
-|-------|--------|
-| **Pairing key** | 16 digits with a Luhn check digit, generated fresh each run — or stored owner-only when running headless, which is what lets a phone reconnect after a reboot |
-| **Session tokens** | 256-bit random hex strings, never reused, expiring after 24 hours or 8 hours idle |
+| Layer | Default |
+|-------|---------|
+| **Pairing key** | 16 digits with a Luhn check digit, generated fresh each run, so a mistyped digit never counts as a failed attempt |
+| **Session tokens** | 256-bit random hex, never reused, expiring after 24 hours or 8 hours idle |
 | **Rate limiting** | 60-second lockout after 5 failed attempts, counted **per source address** so a stranger cannot lock you out |
-| **Session limit** | Maximum 3 concurrent connections |
-| **Disarm PIN** | Optional, hashed with scrypt, guessed against the same lockout as the pairing key |
-| **Disconnect alarm** | Triggers after a 30-second grace period if all clients drop while armed |
-| **Transport** | Local network by default. With remote access enabled the port is published to the internet over HTTPS — never plain HTTP |
-| **Certificate** | Self-signed, with its fingerprint carried in the QR code so the phone can check which server it reached before sending the key |
+| **Session limit** | 3 concurrent connections |
+| **Disarm PIN** | Optional, hashed with scrypt, against the same lockout as the pairing key |
+| **Transport** | Local network only. With remote access enabled the port is published over HTTPS — never plain HTTP |
+| **Certificate** | Self-signed, its fingerprint carried in the QR code so the phone can check which server it reached before sending the key |
 
-All of these values are configurable; the defaults are shown. Nothing is uploaded to any server: even in remote access mode the phone talks directly to your laptop.
+All of these are configurable; the defaults are shown. Nothing is uploaded anywhere — even with remote access the phone talks directly to your laptop.
 
-[`SECURITY.md`](SECURITY.md) sets out what is in scope, what is deliberately not, and how to report a flaw privately. Read the section on what pairing does and does not prove before you rely on remote access.
+[`SECURITY.md`](SECURITY.md) sets out what is in scope, what is deliberately not, and how to report a flaw privately. **Read the section on what pairing does and does not prove before you rely on remote access.**
 
 <br/>
 
-## More
+## Documentation
 
 | | |
 |---|---|
@@ -309,6 +323,7 @@ All of these values are configurable; the defaults are shown. Nothing is uploade
 | [Location](docs/location.md) | How the machine's position is worked out, and why it is off by default |
 | [Starting at login](docs/service.md) | `install-service`, and what happens after a crash or a reboot |
 | [Development](docs/development.md) | Building, the phone interface, the checks, and what CI actually proves |
+| [Manual verification](docs/manual-verification.md) | The hardware checklist no CI runner can cover |
 | [Releasing](docs/releasing.md) | The order to cut a release in |
 
 <br/>
