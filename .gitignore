@@ -439,6 +439,10 @@ specs/
 # checks the phone UI. They describe one run, not the project.
 .playwright-mcp/
 
+# Screenshots dropped in to point at something that looks wrong. They are how a
+# bug was reported, not part of the product.
+debug*/
+
 # vitest writes the phone interface's coverage here; the report is uploaded
 # as a CI artifact rather than kept in the tree.
 web/coverage/
