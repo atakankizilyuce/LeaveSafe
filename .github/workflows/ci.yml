@@ -467,6 +467,23 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # A Go binary carries no Windows version resource unless one is linked
+      # into it, and an executable that names no company, product or purpose is
+      # what an antivirus machine-learning model scores worst — Defender's
+      # verdict on an anonymous unsigned file is about the anonymity, not about
+      # anything this program does. This compiles winres/winres.json into an
+      # object `go build` picks up on its own, because of the _windows_amd64
+      # suffix the tool puts on the name. Building it here as well as in the
+      # release means a broken resource fails on the pull request that broke it
+      # rather than on a tag.
+      - name: Windows resources
+        if: matrix.goos == 'windows'
+        run: |
+          go tool go-winres make \
+            --in winres/winres.json \
+            --arch ${{ matrix.goarch }} \
+            --out cmd/leavesafe/rsrc
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}

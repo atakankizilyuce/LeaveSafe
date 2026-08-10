@@ -136,7 +136,24 @@ However you install it, LeaveSafe tells you when a newer release exists and name
 
 This release was published without a signing certificate. Open **System Settings → Privacy & Security** and click **Open Anyway** next to the LeaveSafe entry.
 
+Installing with `brew` does not raise the prompt at all. Gatekeeper checks files carrying the quarantine attribute, which a browser attaches to a download and Homebrew's formula path does not. That is a difference in how the file reached you, not in how much it deserves your trust — so verify the provenance either way.
+
 Older instructions told you to run `xattr -d com.apple.quarantine`. Do not — and be wary of any security tool that tells you to. That command disarms exactly the check that would catch a tampered download. Verify the provenance instead.
+
+</details>
+
+<details>
+<summary><b>Windows warns about the file, or Defender takes it away</b></summary>
+
+<br/>
+
+This release was published without a signing certificate, so SmartScreen warns the first time it runs: **More info → Run anyway**.
+
+Defender may go further and quarantine the download, usually naming it `Trojan:Win32/Bearfoos.B!ml`. The `!ml` on the end is the part worth reading: it means a machine-learning model guessed, rather than a signature matching something known. Those models guess this way about executables that are unsigned, carry no publisher, and have been downloaded by almost nobody yet — whatever language they were written in. [A Go build tool](https://github.com/go-task/task/issues/210), [a Rust one](https://github.com/openai/codex/issues/3207) and [a Microsoft project](https://github.com/microsoft/apm/issues/487) have all been flagged by the same family.
+
+That explanation is not proof, and it is not meant to be taken on trust. Verify the provenance below instead: the attestation says which workflow, at which commit, produced the exact file on your disk — a narrower and more checkable claim than any antivirus verdict in either direction. If it does not verify, the file did not come from here, and no amount of explanation should persuade you to run it.
+
+If it does verify and Defender still objects, [Microsoft's submission portal](https://www.microsoft.com/en-us/wdsi/filesubmission) is where the false positive gets corrected. That is worth doing rather than adding an exclusion: a corrected model reaches everyone, while an exclusion is a hole in one machine's defences that outlives the reason it was made.
 
 </details>
 
@@ -151,6 +168,8 @@ Every release artifact carries a signed attestation naming the workflow and the 
 gh attestation verify leavesafe-linux-amd64 --repo atakankizilyuce/LeaveSafe
 shasum -a 256 -c leavesafe-linux-amd64.sha256        # a .sha256 ships beside each file too
 ```
+
+On Windows the file is `leavesafe-windows-amd64.exe`, `gh attestation verify` takes the same form, and `Get-FileHash` stands in for `shasum`.
 
 A [CycloneDX SBOM](https://cyclonedx.org/) listing every dependency is attached to each release, so you can check what is inside the binary against a vulnerability database without building it yourself.
 
@@ -357,6 +376,7 @@ All of these are configurable; the defaults are shown. Nothing is uploaded anywh
 | [Development](docs/development.md) | Building, the phone interface, the checks, and what CI actually proves |
 | [Manual verification](docs/manual-verification.md) | The hardware checklist no CI runner can cover |
 | [Releasing](docs/releasing.md) | The order to cut a release in |
+| [Code signing policy](docs/code-signing-policy.md) | Who can sign a release, what the signature proves, what leaves your machine, and how to remove it |
 
 <br/>
 
@@ -372,6 +392,8 @@ make check              # what CI runs: format, vet, lint, frontend, vulncheck, 
 Two things CI will catch that are easy to forget: if you changed anything under `web/src`, run `npm run build` in `web/` and commit `web/dist` — the binary embeds it, so a stale build ships a UI that does not match its source. And if you changed something a user would notice, add a line to [`CHANGELOG.md`](CHANGELOG.md) under Unreleased.
 
 **Found a security flaw?** Do not open an issue. [`SECURITY.md`](SECURITY.md) has the private reporting route.
+
+Taking part here means keeping to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 <br/>
 

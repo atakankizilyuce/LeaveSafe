@@ -83,6 +83,21 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # See the same step in ci.yml for why an anonymous executable is worth
+      # avoiding. The version is stripped of its leading v because a version
+      # resource holds numbers; a rehearsal passes a commit instead, which has
+      # no numbers to give, and the numeric fields stay at zero while the
+      # strings still say which build this is.
+      - name: Windows resources
+        if: matrix.goos == 'windows'
+        run: |
+          go tool go-winres make \
+            --in winres/winres.json \
+            --arch ${{ matrix.goarch }} \
+            --out cmd/leavesafe/rsrc \
+            --file-version "${VERSION#v}" \
+            --product-version "${VERSION#v}"
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -174,13 +189,30 @@ jobs:
 
           security delete-keychain "$KEYCHAIN"
 
-      # WINDOWS_CERTIFICATE is a .pfx, base64-encoded (`base64 -w0 cert.pfx`),
-      # which means an OV certificate. An EV one cannot be used here: since June
-      # 2023 its private key must live on a hardware token or HSM, so it can
-      # never be handed to a hosted runner as a file. Signing with EV needs a
-      # cloud-HSM service (Azure Trusted Signing, DigiCert KeyLocker, SSL.com
-      # eSigner) or a self-hosted runner with the token attached — replace this
-      # step with the provider's action and leave everything around it alone.
+      # WINDOWS_CERTIFICATE is a .pfx, base64-encoded (`base64 -w0 cert.pfx`).
+      # That path is only open to a certificate issued before June 2023, or one
+      # from a CA nobody else trusts: since the first of that month every
+      # publicly trusted code signing key — OV exactly as much as EV — has had
+      # to live on an HSM or a hardware token, so a certificate bought today
+      # cannot be handed to a hosted runner as a file at all. Signing with one
+      # needs a cloud-HSM service (Azure Artifact Signing, DigiCert KeyLocker,
+      # SSL.com eSigner) or a self-hosted runner with the token attached —
+      # replace this step with the provider's action and leave everything
+      # around it alone.
+      #
+      # Signing is the one thing that stops a Windows build being an anonymous
+      # executable, which is what SmartScreen warns about and what an antivirus
+      # machine-learning model scores worst. It is not instant: EV certificates
+      # stopped bypassing SmartScreen in 2024, and reputation now accrues to a
+      # signed file over time either way. The ways in, cheapest first:
+      #
+      #   - SignPath Foundation signs qualifying open-source projects for free.
+      #   - The Microsoft Store re-signs an MSIX package itself, at no cost and
+      #     with no SmartScreen prompt, for a program packaged that way.
+      #   - Azure Artifact Signing is around $10 a month, but sells to
+      #     individuals in the USA and Canada only.
+      #   - An OV certificate is $150-300 a year and sold worldwide, with the
+      #     HSM problem above.
       - name: Sign (Windows)
         if: matrix.goos == 'windows'
         env:

@@ -1,0 +1,30 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": "../web/public/icons/icon-512.png"
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "0.0.0.0",
+          "product_version": "0.0.0.0"
+        },
+        "info": {
+          "0409": {
+            "CompanyName": "LeaveSafe",
+            "ProductName": "LeaveSafe",
+            "InternalName": "leavesafe",
+            "OriginalFilename": "leavesafe-windows-amd64.exe",
+            "FileDescription": "LeaveSafe — device security monitor",
+            "LegalCopyright": "Apache License 2.0",
+            "Comments": "https://github.com/atakankizilyuce/LeaveSafe",
+            "FileVersion": "0.0.0.0",
+            "ProductVersion": "0.0.0.0"
+          }
+        }
+      }
+    }
+  }
+}

@@ -166,6 +166,11 @@ coverage*.info
 # running the suite the way CI does ends up with a copy they never meant to keep.
 coverage.out
 
+# The Windows version resource and icon, compiled from winres/winres.json. It
+# is generated during the build rather than committed, so the version it states
+# is the version being built instead of whatever was last checked in.
+*.syso
+
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
@@ -449,3 +454,9 @@ web/coverage/
 
 # and the same for the landing page's.
 site/coverage/
+
+# PowerShell keeps its module analysis cache under LOCALAPPDATA, and writes it
+# relative to wherever it was started when that variable is empty — which is
+# how a Microsoft\Windows\PowerShell tree appears in a Go repository. Anchored,
+# so it cannot swallow a directory that belongs to the project later.
+/Microsoft/
