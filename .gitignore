@@ -446,3 +446,6 @@ debug*/
 # vitest writes the phone interface's coverage here; the report is uploaded
 # as a CI artifact rather than kept in the tree.
 web/coverage/
+
+# and the same for the landing page's.
+site/coverage/

@@ -51,7 +51,7 @@
 
 <header class="nav">
   <a class="nav-brand" href="#top">LEAVE<span>SAFE</span></a>
-  <nav class="nav-links">
+  <nav class="nav-links" aria-label="Primary">
     <a href="#what">What it does</a>
     <a href="#get">Get it</a>
     <a href="https://github.com/atakankizilyuce/LeaveSafe">GitHub</a>
@@ -270,7 +270,7 @@
     <div class="foot-brand">LEAVE<span>SAFE</span></div>
     <p class="foot-by">Built by <a href="https://github.com/atakankizilyuce">Atakan Kızılyüce</a></p>
   </div>
-  <nav class="foot-links">
+  <nav class="foot-links" aria-label="Footer">
     <a href="https://github.com/atakankizilyuce/LeaveSafe">GitHub</a>
     <a href="https://github.com/atakankizilyuce/LeaveSafe/blob/main/docs/configuration.md">Configuration</a>
     <a href="https://github.com/atakankizilyuce/LeaveSafe/blob/main/docs/remote-access.md">Remote access</a>
@@ -281,6 +281,12 @@
 
 </main>
 
-<script src="demo.js"></script>
+<!-- A module, so the demonstration can be imported by a test as well as by a
+     browser. The page needs no other JavaScript, and there is no bundler
+     between this and what ships. -->
+<script type="module">
+  import { initDemo } from './demo.js';
+  initDemo();
+</script>
 </body>
 </html>

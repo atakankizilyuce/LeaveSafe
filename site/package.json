@@ -1,0 +1,16 @@
+{
+    "name": "leavesafe-site",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "description": "The landing page. Nothing here is built — this exists so the demonstration can be tested.",
+    "scripts": {
+        "test": "vitest run",
+        "coverage": "vitest run --coverage"
+    },
+    "devDependencies": {
+        "@vitest/coverage-v8": "^3.2.4",
+        "jsdom": "29.1.1",
+        "vitest": "^3.2.4"
+    }
+}

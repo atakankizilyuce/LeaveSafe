@@ -12,9 +12,7 @@
  * itself does it, because every colour on this page hangs off that attribute.
  */
 
-(() => {
-    'use strict';
-
+export function initDemo() {
     const root = document.documentElement;
     const $ = (id) => document.getElementById(id);
 
@@ -40,6 +38,19 @@
 
     const mini = (name) => miniIcons.find((i) => i.dataset.sensor === name);
 
+    /*
+     * Every `data-` flag on this page is read and written through these two.
+     * The DOM offers `hasAttribute`/`setAttribute` for the same job, but a
+     * `data-` attribute has `dataset` as its own front door and mixing the two
+     * is how one of them ends up spelled `data-tripped` in one place and
+     * `tripped` in another.
+     */
+    const flag = (el, name) => el.dataset[name] !== undefined;
+    const setFlag = (el, name, on) => {
+        if (on) el.dataset[name] = '';
+        else delete el.dataset[name];
+    };
+
     const MESSAGES = {
         power: 'Charger unplugged',
         lid: 'Lid closed',
@@ -61,7 +72,7 @@
 
     const after = (ms, fn) => timers.push(setTimeout(fn, ms));
 
-    const enabled = () => nodes.filter((n) => !n.hasAttribute('data-off'));
+    const enabled = () => nodes.filter((n) => !flag(n, 'off'));
 
     /*
      * The shield's row of icons is not decoration — it is the answer to "which
@@ -72,13 +83,13 @@
         nodes.forEach((node) => {
             const icon = mini(node.dataset.sensor);
             if (!icon) return;
-            icon.toggleAttribute('data-off', node.hasAttribute('data-off'));
-            icon.toggleAttribute('data-tripped', node.hasAttribute('data-tripped'));
+            setFlag(icon, 'off', flag(node, 'off'));
+            setFlag(icon, 'tripped', flag(node, 'tripped'));
         });
     };
 
     // The invitation is spent the moment it is taken.
-    const touched = () => phone.removeAttribute('data-untouched');
+    const touched = () => setFlag(phone, 'untouched', false);
 
     // ── the three rooms ───────────────────────────────────────────────────
 
@@ -205,11 +216,11 @@
         }, DISARM_MS);
     });
 
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach((evt) =>
+    for (const evt of ['pointerup', 'pointerleave', 'pointercancel']) {
         armBtn.addEventListener(evt, () => {
             if (holdTimer) releaseHold();
-        }),
-    );
+        });
+    }
 
     // ── the stations ──────────────────────────────────────────────────────
 
@@ -220,8 +231,8 @@
             if (root.dataset.state === 'armed') return;
 
             touched();
-            node.toggleAttribute('data-off');
-            node.removeAttribute('data-tripped');
+            setFlag(node, 'off', !flag(node, 'off'));
+            setFlag(node, 'tripped', false);
             subEl.textContent = `${enabled().length} sensors ready`;
             syncShield();
         });
@@ -229,15 +240,32 @@
 
     // ── the alarm ─────────────────────────────────────────────────────────
 
+    /*
+     * Which sensor fires goes round the ring in order rather than being picked
+     * at random. Two reasons, and the second is the one that decided it:
+     *
+     * A visitor who presses Trigger three times should see three different
+     * sensors, not the same one twice — the point of the button is that any of
+     * them can wake you, and a repeat argues the opposite.
+     *
+     * And there is no reason for a security tool's own page to be calling a
+     * random number generator at all. `Math.random()` is not fit for anything
+     * that has to be unpredictable, so every scanner that reads it has to stop
+     * and ask whether this is one of those places. Removing the call answers
+     * the question better than a comment claiming it is harmless would.
+     */
+    let nextToFire = 0;
+
     triggerBtn.addEventListener('click', () => {
         const candidates = enabled();
         if (!candidates.length) return;
 
-        const node = candidates[Math.floor(Math.random() * candidates.length)];
+        const node = candidates[nextToFire % candidates.length];
+        nextToFire++;
         const name = node.dataset.sensor;
 
-        nodes.forEach((n) => n.removeAttribute('data-tripped'));
-        node.setAttribute('data-tripped', '');
+        for (const n of nodes) setFlag(n, 'tripped', false);
+        setFlag(node, 'tripped', true);
         syncShield();
 
         alertSensor.textContent = name.toUpperCase();
@@ -286,4 +314,4 @@
     });
 
     toStandby();
-})();
+}
