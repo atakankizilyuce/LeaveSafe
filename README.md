@@ -357,6 +357,7 @@ All of these are configurable; the defaults are shown. Nothing is uploaded anywh
 | [Development](docs/development.md) | Building, the phone interface, the checks, and what CI actually proves |
 | [Manual verification](docs/manual-verification.md) | The hardware checklist no CI runner can cover |
 | [Releasing](docs/releasing.md) | The order to cut a release in |
+| [Code signing policy](docs/code-signing-policy.md) | Who can sign a release, what the signature proves, what leaves your machine, and how to remove it |
 
 <br/>
 
