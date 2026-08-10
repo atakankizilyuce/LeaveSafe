@@ -373,6 +373,8 @@ Two things CI will catch that are easy to forget: if you changed anything under 
 
 **Found a security flaw?** Do not open an issue. [`SECURITY.md`](SECURITY.md) has the private reporting route.
 
+Taking part here means keeping to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 <br/>
 
 <div align="center">
