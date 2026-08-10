@@ -39,10 +39,41 @@ func quoted(s string) string {
 // command that saves a setting cannot reach the config of whoever is running the
 // suite. Both variables are set because ConfigDir reads APPDATA on Windows and
 // the home directory everywhere else.
+// The directory is made here rather than by t.TempDir, whose cleanup removes it
+// exactly once and fails the test if the operating system refuses.
+//
+// A start's background loops are stopped by canceling a context, and nothing
+// waits for them to notice — safe.Go and safe.Supervise do not hand back
+// anything to join. So a loop can still be writing into the config directory
+// after shutdown has returned, and on Windows a file appearing while RemoveAll
+// walks the tree fails the whole removal with "The directory is not empty".
+// That is what made TestAnInteractiveStartDrawsTheDashboardAndTakesTheLog fail
+// on windows-latest while asserting nothing about the dashboard it had already
+// checked.
+//
+// The race is harmless in the product: there the process exits moments after
+// shutdown, and a loop still writing is writing to a directory nobody is trying
+// to delete. It only bites here, where the test outlives the program and then
+// deletes its scratch space. So the removal is retried for a short while and,
+// if the last writer still has not gone, the directory is left to the operating
+// system's own temporary-file cleanup rather than failing a test that proved
+// what it set out to prove.
 func tempConfigDir(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
+	dir, err := os.MkdirTemp("", "leavesafe-config-")
+	if err != nil {
+		t.Fatalf("create a temporary config directory: %v", err)
+	}
+	t.Cleanup(func() {
+		for range 20 {
+			if err := os.RemoveAll(dir); err == nil {
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+	})
+
 	t.Setenv("APPDATA", dir)
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
