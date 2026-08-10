@@ -83,6 +83,21 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # See the same step in ci.yml for why an anonymous executable is worth
+      # avoiding. The version is stripped of its leading v because a version
+      # resource holds numbers; a rehearsal passes a commit instead, which has
+      # no numbers to give, and the numeric fields stay at zero while the
+      # strings still say which build this is.
+      - name: Windows resources
+        if: matrix.goos == 'windows'
+        run: |
+          go tool go-winres make \
+            --in winres/winres.json \
+            --arch ${{ matrix.goarch }} \
+            --out cmd/leavesafe/rsrc \
+            --file-version "${VERSION#v}" \
+            --product-version "${VERSION#v}"
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}

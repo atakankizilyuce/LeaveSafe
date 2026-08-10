@@ -166,6 +166,11 @@ coverage*.info
 # running the suite the way CI does ends up with a copy they never meant to keep.
 coverage.out
 
+# The Windows version resource and icon, compiled from winres/winres.json. It
+# is generated during the build rather than committed, so the version it states
+# is the version being built instead of whatever was last checked in.
+*.syso
+
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
