@@ -1,0 +1,1075 @@
+/*
+ * The landing page for LeaveSafe.
+ *
+ * The palette, the type scale and the easing curves are the product's own,
+ * lifted from web/src/styles/tokens.css. They are copied rather than imported:
+ * this page needs about twenty of those values and none of panel.css's 1,433
+ * lines, and a page that pulled in the phone interface's stylesheet would
+ * inherit a set of rules written for a different problem.
+ *
+ * What is worth copying exactly is the rule underneath them. In the product,
+ * state is not a badge — state is the colour of the whole page, driven by one
+ * attribute on the root element. So when the demonstration in the hero is
+ * armed, the nav, the headline, the install commands and the footer travel to
+ * the armed room with it. That is six declarations, and it is the most
+ * memorable second on the page.
+ */
+
+/* ── standby: almost black, almost colourless ───────────────────────────── */
+:root {
+    --void: #050609;
+    --panel: #0a0c11;
+    --raised: #0f1218;
+    --edge: #1b2029;
+
+    --text: #c8ced8;
+    --quiet: #76808e;
+    --faint: #606a77;
+
+    --accent: #5c6572;
+    --ink: #040508;
+
+    /* Held constant across every state: this is "LeaveSafe", not "what
+       LeaveSafe is doing right now". */
+    --brand: #3d8fc4;
+    /* The alarm, and nothing but the alarm. */
+    --trip: #f04438;
+
+    --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+
+    --radius: 14px;
+    --radius-sm: 9px;
+
+    --swift: 160ms cubic-bezier(0.32, 0.72, 0, 1);
+    --settle: 320ms cubic-bezier(0.32, 0.72, 0, 1);
+    --state-shift: 620ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/*
+ * Arming, in three steps rather than one — a third of the way per second, so
+ * the colour *is* the countdown. By the time the number runs out the page has
+ * already arrived, and nothing visibly changes when the word does.
+ */
+:root[data-state='arming'] {
+    --void: #05090e;
+    --panel: #0a111b;
+    --raised: #0f1926;
+    --edge: #1b2a3b;
+    --text: #cfd8e3;
+    --quiet: #7f92a4;
+    --faint: #607284;
+    --accent: #3d8fc4;
+    --ink: #04070b;
+}
+
+:root[data-state='arming'][data-count='2'] {
+    --void: #050b14;
+    --panel: #0a1624;
+    --raised: #0f2033;
+    --edge: #1a334d;
+    --text: #d5e1ed;
+    --quiet: #87a3ba;
+    --faint: #5f7a90;
+    --ink: #04080f;
+}
+
+:root[data-state='arming'][data-count='1'],
+:root[data-state='armed'] {
+    --void: #050e19;
+    --panel: #0a1b2d;
+    --raised: #0f2740;
+    --edge: #1a3d5f;
+    --text: #dcebf7;
+    --quiet: #8fb4d0;
+    --faint: #5f829c;
+    --accent: #3d8fc4;
+    --ink: #040a12;
+}
+
+
+/* ── page ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    margin: 0;
+    background: var(--void);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    transition: background var(--state-shift), color var(--state-shift);
+}
+
+a { color: inherit; }
+
+/* `hidden` is how this page hides the alarm and the install tabs, and a `display`
+   rule further down would otherwise outrank it. Stated once here rather than
+   remembered at every element that grows one. */
+[hidden] { display: none !important; }
+
+:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+.ico {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* The GitHub mark is a solid glyph; stroking it turns it to mud. */
+.ico use[href='#i-github'] { fill: currentColor; stroke: none; }
+
+.ico-lg { width: 30px; height: 30px; }
+
+
+/* ── buttons ────────────────────────────────────────────────────────────── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 18px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--state-shift), color var(--state-shift),
+                border-color var(--state-shift), transform var(--swift);
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-fill {
+    background: var(--brand);
+    color: #04121d;
+}
+
+.btn-ghost {
+    border-color: var(--edge);
+    color: var(--text);
+}
+
+.btn-ghost:hover { border-color: var(--brand); color: var(--brand); }
+
+.btn-lg { padding: 13px 24px; font-size: 16px; }
+
+
+/* ── nav ────────────────────────────────────────────────────────────────── */
+.nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 14px clamp(18px, 5vw, 56px);
+    background: color-mix(in srgb, var(--void) 82%, transparent);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--edge);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.nav-brand,
+.foot-brand {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.22em;
+    text-decoration: none;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.nav-brand span,
+.foot-brand span { color: var(--brand); }
+
+.nav-links {
+    display: flex;
+    gap: 24px;
+    margin-left: auto;
+    font-size: 15px;
+}
+
+.nav-links a {
+    color: var(--quiet);
+    text-decoration: none;
+    transition: color var(--swift);
+}
+
+.nav-links a:hover { color: var(--text); }
+
+
+/* ── hero ───────────────────────────────────────────────────────────────── */
+.hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: clamp(32px, 6vw, 88px);
+    align-items: center;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(48px, 8vw, 96px) clamp(18px, 5vw, 56px) clamp(56px, 9vw, 110px);
+}
+
+.eyebrow {
+    margin: 0 0 18px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--brand);
+}
+
+.hero h1 {
+    margin: 0 0 22px;
+    font-size: clamp(38px, 6.2vw, 68px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.lede {
+    margin: 0 0 30px;
+    max-width: 33em;
+    font-size: clamp(16px, 1.5vw, 18px);
+    color: var(--quiet);
+    transition: color var(--state-shift);
+}
+
+.lede b { color: var(--text); font-weight: 600; }
+
+.cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.hero-meta {
+    margin: 26px 0 0;
+    max-width: 34em;
+    font-size: 14px;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+
+/* ── the phone ──────────────────────────────────────────────────────────── */
+.hero-demo { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+.phone {
+    width: 306px;
+    padding: 10px;
+    border: 1px solid var(--edge);
+    border-radius: 34px;
+    background: var(--panel);
+    box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.phone-screen {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 552px;
+    padding: 18px 16px 16px;
+    border-radius: 25px;
+    background: var(--void);
+    transition: background var(--state-shift);
+}
+
+.p-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.p-brand {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.p-brand span { color: var(--brand); }
+
+.p-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    transition: background var(--state-shift);
+}
+
+.p-state {
+    margin: 16px 0 0;
+    font-size: 40px;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    font-weight: 800;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.p-rule {
+    height: 1px;
+    margin: 12px 0 10px;
+    background: var(--edge);
+    transition: background var(--state-shift);
+}
+
+.p-sub {
+    margin: 0 0 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--quiet);
+    transition: color var(--state-shift);
+}
+
+.p-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    background: var(--panel);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.p-card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+
+/* ── the sensor ring ────────────────────────────────────────────────────── */
+.ring {
+    position: relative;
+    flex: 1;
+    margin-top: 6px;
+    min-height: 252px;
+}
+
+/*
+ * Six stations, each with its own berth. Positions are here rather than inline
+ * so the geometry lives in one place, and they are kept clear of the edges: a
+ * station is 60px across and half of it would hang out of the card at 0%.
+ */
+.node[data-sensor='power']   { left: 50%; top: 11%; }
+.node[data-sensor='lid']     { left: 87%; top: 35%; }
+.node[data-sensor='usb']     { left: 87%; top: 76%; }
+.node[data-sensor='screen']  { left: 50%; top: 90%; }
+.node[data-sensor='network'] { left: 13%; top: 76%; }
+.node[data-sensor='input']   { left: 13%; top: 35%; }
+
+.node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 60px;
+    height: 60px;
+    padding: 0;
+    border: 1px solid var(--edge);
+    border-radius: 50%;
+    background: var(--raised);
+    color: var(--quiet);
+    font: inherit;
+    cursor: pointer;
+    transition: background var(--state-shift), border-color var(--state-shift),
+                color var(--state-shift), opacity var(--settle),
+                transform var(--settle);
+}
+
+.node span {
+    font-family: var(--mono);
+    font-size: 7.5px;
+    letter-spacing: 0.08em;
+}
+
+.node .ico { width: 17px; height: 17px; }
+
+.node:hover { border-color: var(--brand); color: var(--brand); }
+
+/* Switched off: dashed, and out of the way. */
+.node[data-off] {
+    border-style: dashed;
+    opacity: 0.42;
+}
+
+/*
+ * The station that fired. Red appears in exactly two places on this page — here
+ * and on the alert — and its absence everywhere else is what makes it mean
+ * something when it arrives.
+ */
+.node[data-tripped] {
+    border-color: var(--trip);
+    color: var(--trip);
+    opacity: 1;
+}
+
+/*
+ * Armed: every station covering you travels to the middle and hands over to the
+ * shield. They fade as they go, so the ring is never both empty and claiming to
+ * be watching.
+ *
+ * All of them, including one that has fired — a station left standing out here
+ * would collide with the shield's edge, and while armed the sensors are inside
+ * it. The alarm lights the matching icon in the shield instead. The ring's own
+ * red is for after disarming, when the stations come back and the one that went
+ * off is still lit.
+ */
+:root[data-state='armed'] .node {
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -50%) scale(0.55);
+    left: 50%;
+    top: 50%;
+}
+
+
+/*
+ * The shield has to be big enough to hold every sensor it claims to be
+ * covering. An earlier version was drawn to fit the words and left the row of
+ * sensor icons riding its lower edge — a shield that does not contain the
+ * things inside it argues against the one idea the picture exists to carry.
+ *
+ * In standby there is no shield, and the reading sits dead centre of the six
+ * stations. Armed, the whole group lifts out of the shield's pointed lower
+ * third, which holds nothing. The padding is what lifts it, and it travels on
+ * the same beat as the shield fading in.
+ */
+.ring-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 196px;
+    height: 226px;
+    text-align: center;
+    pointer-events: none;
+    transition: padding-bottom var(--settle);
+}
+
+:root[data-state='armed'] .ring-core { padding-bottom: 62px; }
+
+.shield {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: var(--brand);
+    stroke-width: 3;
+    opacity: 0;
+    transform: scale(0.82);
+    transition: opacity var(--settle), transform var(--settle);
+}
+
+:root[data-state='armed'] .shield { opacity: 1; transform: scale(1); }
+
+.core-eye {
+    width: 26px;
+    height: 26px;
+    fill: none;
+    stroke: var(--quiet);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke var(--state-shift);
+}
+
+:root[data-state='armed'] .core-eye { stroke: var(--brand); }
+
+.core-word {
+    margin: 6px 0 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: var(--quiet);
+    transition: color var(--state-shift);
+}
+
+:root[data-state='armed'] .core-word { color: var(--brand); }
+
+.core-note {
+    margin: 2px 0 0;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    color: var(--brand);
+}
+
+/*
+ * Out of the flow entirely until it is armed, rather than merely faded:
+ * `opacity: 0` still occupies its height, and that invisible row was pushing
+ * the standby reading up off the centre of the ring — icons nobody can see
+ * deciding where the words that matter sit.
+ *
+ * `display: none` and not an absolute position at some percentage of the box.
+ * The percentage version put the row where the shield has already begun to
+ * taper, so the shield stopped containing it. In the flow the row simply sits
+ * under the word, and the group is lifted as one.
+ */
+.core-icons {
+    display: none;
+    gap: 4px;
+    margin-top: 9px;
+}
+
+:root[data-state='armed'] .core-icons {
+    display: flex;
+    animation: icons-in var(--settle) both;
+}
+
+@keyframes icons-in { from { opacity: 0; } }
+
+.core-icons .ico {
+    width: 16px;
+    height: 16px;
+    padding: 3px;
+    border-radius: 5px;
+    background: var(--raised);
+    color: var(--brand);
+    box-sizing: content-box;
+    transition: color var(--swift), background var(--swift);
+}
+
+/* A sensor switched off never entered the shield. */
+.core-icons .ico[data-off] { display: none; }
+
+/* And the one that fired lights here, where the sensors actually are while
+   armed — not out in the ring, which is empty by then. */
+.core-icons .ico[data-tripped] {
+    color: var(--trip);
+    background: color-mix(in srgb, var(--trip) 18%, transparent);
+}
+
+:root[data-state='armed'] .core-note { display: none; }
+
+
+/* ── the arm button ─────────────────────────────────────────────────────── */
+.p-arm {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    margin-top: 12px;
+    padding: 15px;
+    border: 1px solid var(--brand);
+    border-radius: var(--radius);
+    background: var(--brand);
+    color: #04121d;
+    font: inherit;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--state-shift), color var(--state-shift);
+}
+
+/* Armed, the control inverts: disarming is not the same shape of decision as
+   arming, and it should not look like the same button. */
+:root[data-state='armed'] .p-arm {
+    background: transparent;
+    color: var(--brand);
+}
+
+/*
+ * Named, not `.p-arm span`. That selector also matched the fill — which is a
+ * span — and `.p-arm span` outranks `.p-arm-fill`, so the fill lost its
+ * `position: absolute` and became a flex item in the flow. It then pushed the
+ * lock and the label leftwards as it grew, which is what "hold to disarm" did
+ * for as long as anyone held it.
+ */
+.p-arm .ico,
+.p-arm .p-arm-label { position: relative; z-index: 1; }
+
+/* Fills left to right across the second and a half that disarming asks for. */
+.p-arm-fill {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 0;
+    background: color-mix(in srgb, var(--brand) 26%, transparent);
+    transition: width 60ms linear;
+}
+
+
+/* ── the alarm ──────────────────────────────────────────────────────────── */
+.p-alert {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 26px;
+    text-align: center;
+    background: color-mix(in srgb, var(--trip) 17%, #0b0406);
+    color: #ffe9e7;
+    animation: alert-in var(--settle) both;
+}
+
+@keyframes alert-in { from { opacity: 0; transform: scale(1.04); } }
+
+.p-alert .ico { color: var(--trip); }
+
+.p-alert-sensor {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    color: var(--trip);
+}
+
+.p-alert-msg { margin: 0 0 8px; font-size: 15px; }
+
+.p-alert .btn-fill { background: var(--trip); color: #fff; }
+
+
+/* ── saying that it can be touched ──────────────────────────────────────── */
+.demo-hat {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 6px 15px;
+    border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--brand) 12%, transparent);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brand);
+}
+
+.demo-hat-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--brand);
+    animation: hat-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes hat-breathe { 50% { opacity: 0.25; } }
+
+/*
+ * Until it has been touched once, the arm button breathes. It is the only
+ * moving thing on the page at rest, so it is the thing a visitor's eye lands
+ * on — and landing on the one control that starts the demonstration is the
+ * whole point. It stops on the first tap and never comes back.
+ */
+.phone[data-untouched] .p-arm {
+    animation: arm-breathe 2.4s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+@keyframes arm-breathe {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 55%, transparent); }
+    60% { box-shadow: 0 0 0 12px color-mix(in srgb, var(--brand) 0%, transparent); }
+}
+
+
+/* ── demo controls ──────────────────────────────────────────────────────── */
+.demo-controls { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+.chip {
+    padding: 8px 16px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--quiet);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color var(--swift), color var(--swift), opacity var(--swift);
+}
+
+.chip:hover:not(:disabled) { border-color: var(--trip); color: var(--trip); }
+.chip:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.demo-note {
+    margin: 0;
+    max-width: 27em;
+    text-align: center;
+    font-size: 12px;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+.demo-note b { color: var(--quiet); font-weight: 600; }
+
+
+/* ── bands ──────────────────────────────────────────────────────────────── */
+.band {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: clamp(56px, 9vw, 104px) clamp(18px, 5vw, 56px);
+    border-top: 1px solid var(--edge);
+    transition: border-color var(--state-shift);
+}
+
+.sec-title {
+    margin: 0 0 40px;
+    font-size: clamp(26px, 3.4vw, 36px);
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.sec-title-sm { margin-top: 76px; font-size: clamp(21px, 2.6vw, 27px); }
+
+
+/* steps */
+.steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 26px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: none;
+}
+
+.steps li {
+    padding: 24px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    background: var(--panel);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.step-n {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--raised);
+    color: var(--brand);
+    font-family: var(--mono);
+    font-size: 13px;
+    transition: background var(--state-shift);
+}
+
+.steps h3 {
+    margin: 14px 0 8px;
+    font-size: 18px;
+    font-weight: 650;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.steps p {
+    margin: 0;
+    font-size: 15px;
+    color: var(--quiet);
+    transition: color var(--state-shift);
+}
+
+
+/* the terminal shot */
+.shot { margin: 40px 0 0; }
+
+.shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    transition: border-color var(--state-shift);
+}
+
+.shot figcaption {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+
+/* sensors */
+.sensors {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--edge);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+/* Aligned to the top rather than centred: the descriptions run to one line or
+   two, and centring each cell's contents left the names sitting at three
+   different heights across one row. */
+.sensors li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-content: start;
+    gap: 4px 14px;
+    padding: 20px;
+    background: var(--panel);
+    transition: background var(--state-shift);
+}
+
+.sensors .ico { grid-row: span 2; margin-top: 2px; color: var(--brand); }
+
+.sensors b {
+    font-size: 15px;
+    font-weight: 650;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.sensors span {
+    font-size: 14px;
+    color: var(--quiet);
+    transition: color var(--state-shift);
+}
+
+
+/* the caveat */
+.caveat {
+    margin: 34px 0 0;
+    padding: 20px 22px;
+    border-left: 2px solid var(--brand);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: var(--panel);
+    font-size: 15px;
+    color: var(--quiet);
+    transition: background var(--state-shift), color var(--state-shift);
+}
+
+.caveat b { color: var(--text); transition: color var(--state-shift); }
+
+
+/* ── install tabs ───────────────────────────────────────────────────────── */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+
+.tab {
+    padding: 9px 17px;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--quiet);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color var(--swift), color var(--swift), background var(--swift);
+}
+
+.tab:hover { color: var(--text); }
+
+.tab.is-on {
+    border-color: var(--brand);
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+    color: var(--brand);
+}
+
+.tab-lede {
+    margin: 0 0 16px;
+    font-size: 15px;
+    color: var(--quiet);
+    transition: color var(--state-shift);
+}
+
+.tab-lede code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--raised);
+    font-family: var(--mono);
+    font-size: 0.88em;
+    transition: background var(--state-shift);
+}
+
+.cmd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 14px 14px 14px 18px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.cmd code {
+    flex: 1;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    color: var(--text);
+    white-space: nowrap;
+    transition: color var(--state-shift);
+}
+
+.copy {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--quiet);
+    cursor: pointer;
+    transition: border-color var(--swift), color var(--swift);
+}
+
+.copy:hover { border-color: var(--brand); color: var(--brand); }
+.copy.is-done { border-color: var(--brand); color: var(--brand); }
+
+.files { margin: 0 0 18px; padding: 0; list-style: none; }
+
+.files li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+    padding: 14px 2px;
+    border-bottom: 1px solid var(--edge);
+    font-size: 15px;
+    transition: border-color var(--state-shift);
+}
+
+.files b { min-width: 76px; color: var(--text); transition: color var(--state-shift); }
+.files span { flex: 1; font-size: 13px; color: var(--faint); transition: color var(--state-shift); }
+
+.files a {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--brand);
+    text-decoration: none;
+}
+
+.files a:hover { text-decoration: underline; }
+
+
+/* ── footer ─────────────────────────────────────────────────────────────── */
+.foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 18px 32px;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 34px clamp(18px, 5vw, 56px) 56px;
+    border-top: 1px solid var(--edge);
+    transition: border-color var(--state-shift);
+}
+
+.foot-who { display: flex; flex-direction: column; gap: 6px; }
+
+.foot-by {
+    margin: 0;
+    font-size: 13px;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+.foot-by a {
+    color: var(--quiet);
+    text-decoration: none;
+    border-bottom: 1px solid var(--edge);
+    transition: color var(--swift), border-color var(--swift);
+}
+
+.foot-by a:hover { color: var(--brand); border-color: var(--brand); }
+
+.foot-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+    margin-left: auto;
+    font-size: 14px;
+}
+
+.foot-links a {
+    color: var(--faint);
+    text-decoration: none;
+    transition: color var(--swift);
+}
+
+.foot-links a:hover { color: var(--brand); }
+
+
+/* ── narrow ─────────────────────────────────────────────────────────────── */
+@media (max-width: 940px) {
+    .hero { grid-template-columns: 1fr; justify-items: start; }
+    .hero-demo { align-self: center; justify-self: center; }
+    .nav-links { display: none; }
+}
+
+@media (max-width: 380px) {
+    .phone { width: 100%; }
+    .nav { gap: 12px; }
+    .nav-cta { padding: 9px 14px; }
+}
+
+
+/*
+ * Asked not to animate, the page settles rather than travelling — the same
+ * 1ms the product's own tokens use, so the states still differ but nothing
+ * moves between them.
+ */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --swift: 1ms;
+        --settle: 1ms;
+        --state-shift: 1ms;
+    }
+
+    html { scroll-behavior: auto; }
+
+    /* The invitations stop moving, but do not disappear: the ring around the
+       arm button stays, held at the size the breath would have reached. */
+    .p-alert,
+    .core-icons,
+    .demo-hat-dot { animation: none; }
+
+    .phone[data-untouched] .p-arm {
+        animation: none;
+        box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 30%, transparent);
+    }
+}

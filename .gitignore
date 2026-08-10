@@ -452,6 +452,9 @@ debug*/
 # as a CI artifact rather than kept in the tree.
 web/coverage/
 
+# and the same for the landing page's.
+site/coverage/
+
 # PowerShell keeps its module analysis cache under LOCALAPPDATA, and writes it
 # relative to wherever it was started when that variable is empty — which is
 # how a Microsoft\Windows\PowerShell tree appears in a Go repository. Anchored,

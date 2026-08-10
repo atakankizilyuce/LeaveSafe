@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LeaveSafe — leave your laptop, stay safe</title>
+<meta name="description" content="A cross-platform device security monitor that turns your phone into a remote alarm for your laptop. No account, no server, no internet required.">
+<link rel="icon" href="assets/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+<meta property="og:title" content="LeaveSafe — leave your laptop, stay safe">
+<meta property="og:description" content="Run it, scan the QR code, tap Arm, and walk away. The moment anyone touches your machine, your phone goes off.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://atakankizilyuce.github.io/LeaveSafe/">
+<!-- A square mark rather than a banner: the hero and the flow diagram are SVG,
+     which no major link unfurler renders, and a stretched screenshot of a phone
+     is worse than an honest icon. -->
+<meta property="og:image" content="https://atakankizilyuce.github.io/LeaveSafe/assets/icon-512.png">
+<meta name="twitter:card" content="summary">
+
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<!--
+  One sprite for every icon on the page. The panel's own icons are redrawn here
+  rather than imported: this page needs eleven of them and none of the machinery
+  around them.
+-->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M8 8h8v3a4 4 0 0 1-4 4 4 4 0 0 1-4-4V8ZM12 15v6"/></symbol>
+    <symbol id="i-lid" viewBox="0 0 24 24"><rect x="5" y="6" width="14" height="10" rx="1.5"/><path d="M3 19h18"/></symbol>
+    <symbol id="i-usb" viewBox="0 0 24 24"><path d="M5 19 19 5M19 5h-5M19 5v5M8 11l3 3M13 6l3 3"/></symbol>
+    <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M9 21h6M12 17v4"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1"/></symbol>
+    <symbol id="i-input" viewBox="0 0 24 24"><path d="m5 3 6 17 2.5-6.5L20 11 5 3Z"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10 6c.65-.13 1.32-.2 2-.2 6.4 0 10 6.2 10 6.2s-1 1.75-2.8 3.4M6.6 7.9C3.7 9.7 2 12 2 12s3.6 6.5 10 6.5c1.5 0 2.8-.26 4-.7"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-1.9"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5.5 5.5L20 7"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3ZM12 9v5M12 17.5v.5"/></symbol>
+  </defs>
+</svg>
+
+
+<header class="nav">
+  <a class="nav-brand" href="#top">LEAVE<span>SAFE</span></a>
+  <nav class="nav-links" aria-label="Primary">
+    <a href="#what">What it does</a>
+    <a href="#get">Get it</a>
+    <a href="https://github.com/atakankizilyuce/LeaveSafe">GitHub</a>
+  </nav>
+  <a class="btn btn-fill nav-cta" href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">
+    <svg class="ico"><use href="#i-download"/></svg>Download
+  </a>
+</header>
+
+
+<main id="top">
+
+<!-- ─────────────────────────────  hero  ───────────────────────────── -->
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Open source · Apache-2.0</p>
+
+    <h1>Leave your laptop.<br>Stay safe.</h1>
+
+    <p class="lede">
+      LeaveSafe turns your phone into a remote alarm for your laptop. Run it,
+      scan the QR code, tap <b>Arm</b>, and walk away. The moment anyone touches
+      your machine, your phone goes off in your pocket — and the laptop starts
+      screaming too.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-fill btn-lg" href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">
+        <svg class="ico"><use href="#i-download"/></svg>Download
+      </a>
+      <a class="btn btn-ghost btn-lg" href="https://github.com/atakankizilyuce/LeaveSafe">
+        <svg class="ico"><use href="#i-github"/></svg>View source
+      </a>
+    </div>
+
+    <p class="hero-meta">
+      Windows · Linux · macOS &nbsp;—&nbsp; no account, no server, no internet needed.
+      Your phone talks straight to your laptop.
+    </p>
+  </div>
+
+  <!--
+    A demonstration, and it says so. Nothing here is connected to anything: the
+    countdown is three timeouts and the colours are the product's own
+    :root[data-state] rule, which is why arming repaints the whole page rather
+    than this box. The real thing is in the download.
+  -->
+  <div class="hero-demo">
+    <!--
+      Said before the panel rather than after it. The first version put the only
+      cue underneath — "a demonstration, nothing is connected" — which reads as
+      "do not bother touching this", and people did not touch it.
+    -->
+    <p class="demo-hat"><span class="demo-hat-dot" aria-hidden="true"></span>Try it — this panel is live</p>
+
+    <div class="phone" data-untouched>
+      <div class="phone-screen">
+
+        <div class="p-head">
+          <span class="p-brand">LEAVE<span>SAFE</span></span>
+          <span class="p-dot" aria-hidden="true"></span>
+        </div>
+
+        <h2 class="p-state" id="p-state">STANDBY</h2>
+        <div class="p-rule"></div>
+        <p class="p-sub" id="p-sub">6 sensors ready</p>
+
+        <div class="p-card">
+          <div class="p-card-head">
+            <span>SENSORS</span>
+            <span id="p-hint">TAP TO TURN ON OR OFF</span>
+          </div>
+
+          <div class="ring" id="ring">
+            <button class="node" data-sensor="power"   type="button"><svg class="ico"><use href="#i-power"/></svg><span>POWER</span></button>
+            <button class="node" data-sensor="lid"     type="button"><svg class="ico"><use href="#i-lid"/></svg><span>LID</span></button>
+            <button class="node" data-sensor="usb"     type="button"><svg class="ico"><use href="#i-usb"/></svg><span>USB</span></button>
+            <button class="node" data-sensor="screen"  type="button"><svg class="ico"><use href="#i-screen"/></svg><span>SCREEN</span></button>
+            <button class="node" data-sensor="network" type="button"><svg class="ico"><use href="#i-network"/></svg><span>NETWORK</span></button>
+            <button class="node" data-sensor="input"   type="button"><svg class="ico"><use href="#i-input"/></svg><span>INPUT</span></button>
+
+            <div class="ring-core">
+              <svg class="shield" viewBox="0 0 120 140" aria-hidden="true">
+                <path d="M60 4 112 24v52c0 34-30 52-52 60C38 128 8 110 8 76V24Z"/>
+              </svg>
+              <svg class="core-eye"><use href="#i-eye-off"/></svg>
+              <p class="core-word" id="core-word">NOT WATCHING</p>
+              <p class="core-note" id="core-note">TAP TO ARM</p>
+              <!-- The sensors, once they are inside the shield. These are the
+                   same six as the ring; which one is here and which one is not
+                   is what "watching" means. -->
+              <div class="core-icons" aria-hidden="true">
+                <svg class="ico" data-sensor="power"><use href="#i-power"/></svg>
+                <svg class="ico" data-sensor="lid"><use href="#i-lid"/></svg>
+                <svg class="ico" data-sensor="usb"><use href="#i-usb"/></svg>
+                <svg class="ico" data-sensor="screen"><use href="#i-screen"/></svg>
+                <svg class="ico" data-sensor="network"><use href="#i-network"/></svg>
+                <svg class="ico" data-sensor="input"><use href="#i-input"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button class="p-arm" id="p-arm" type="button">
+          <svg class="ico"><use href="#i-lock"/></svg><span class="p-arm-label" id="p-arm-label">Arm</span>
+          <span class="p-arm-fill" id="p-arm-fill"></span>
+        </button>
+
+        <!-- The alarm. Red lives here and on the station that fired, nowhere else. -->
+        <div class="p-alert" id="p-alert" hidden>
+          <svg class="ico ico-lg"><use href="#i-alert"/></svg>
+          <p class="p-alert-sensor" id="p-alert-sensor">INPUT</p>
+          <p class="p-alert-msg" id="p-alert-msg">Sustained mouse or keyboard activity detected</p>
+          <button class="btn btn-fill" id="p-dismiss" type="button">Dismiss</button>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="demo-controls">
+      <button class="chip" id="btn-trigger" type="button" disabled>Trigger a sensor</button>
+      <p class="demo-note">
+        Tap <b>Arm</b>, then set a sensor off. Everything here behaves the way the
+        app does — it just is not talking to a real laptop.
+      </p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─────────────────────────  what it does  ───────────────────────── -->
+<section class="band" id="what">
+  <h2 class="sec-title">Three steps, then you walk away</h2>
+
+  <ol class="steps">
+    <li>
+      <span class="step-n">1</span>
+      <h3>Run it</h3>
+      <p>One file, no installer, no dependencies. The dashboard takes over the terminal: a QR code on the left, live status on the right.</p>
+    </li>
+    <li>
+      <span class="step-n">2</span>
+      <h3>Scan it</h3>
+      <p>There is no app to install. The QR code opens a page served by your own laptop, with the pairing key already filled in.</p>
+    </li>
+    <li>
+      <span class="step-n">3</span>
+      <h3>Arm it</h3>
+      <p>Three seconds, the sensors gather into a shield, and your laptop is being watched. Hold to disarm when you get back.</p>
+    </li>
+  </ol>
+
+  <figure class="shot">
+    <img src="assets/tui-dashboard.png" width="1910" height="1440" loading="lazy" decoding="async"
+         alt="The LeaveSafe terminal dashboard: a QR code on the left, the pairing key and the URL on the right, the log along the bottom">
+    <figcaption>The dashboard on the laptop. Real output from a running binary, not a mock-up.</figcaption>
+  </figure>
+
+  <h2 class="sec-title sec-title-sm">Six things it watches</h2>
+
+  <ul class="sensors">
+    <li><svg class="ico"><use href="#i-power"/></svg><b>Power</b><span>The charger is unplugged or plugged in</span></li>
+    <li><svg class="ico"><use href="#i-lid"/></svg><b>Lid</b><span>The lid is closed or opened</span></li>
+    <li><svg class="ico"><use href="#i-usb"/></svg><b>USB</b><span>A USB device appears or disappears</span></li>
+    <li><svg class="ico"><use href="#i-screen"/></svg><b>Screen</b><span>The display turns off or comes back on</span></li>
+    <li><svg class="ico"><use href="#i-network"/></svg><b>Network</b><span>An interface or its IP address changes</span></li>
+    <li><svg class="ico"><use href="#i-input"/></svg><b>Input</b><span>Sustained keyboard or mouse activity</span></li>
+  </ul>
+
+  <p class="caveat">
+    <b>One honest limit.</b> The phone is the convenience, not the alarm. When its
+    screen locks, the operating system freezes the page, so an alert may not reach
+    it until you open it again. The laptop sounds regardless.
+  </p>
+</section>
+
+
+<!-- ────────────────────────────  get it  ──────────────────────────── -->
+<section class="band" id="get">
+  <h2 class="sec-title">Get it</h2>
+
+  <div class="tabs" role="tablist" aria-label="Installation method">
+    <button class="tab is-on" role="tab" aria-selected="true"  aria-controls="tab-brew" id="t-brew" type="button">macOS / Linux</button>
+    <button class="tab"       role="tab" aria-selected="false" aria-controls="tab-win"  id="t-win"  type="button">Windows</button>
+    <button class="tab"       role="tab" aria-selected="false" aria-controls="tab-bin"  id="t-bin"  type="button">Direct download</button>
+  </div>
+
+  <div class="tab-panel" id="tab-brew" role="tabpanel" aria-labelledby="t-brew">
+    <p class="tab-lede">Homebrew puts <code>leavesafe</code> on your <code>PATH</code> and makes upgrading one command.</p>
+    <div class="cmd"><code>brew tap atakankizilyuce/tap &amp;&amp; brew install leavesafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
+  </div>
+
+  <div class="tab-panel" id="tab-win" role="tabpanel" aria-labelledby="t-win" hidden>
+    <p class="tab-lede">WinGet ships with Windows. Scoop works too.</p>
+    <div class="cmd"><code>winget install LeaveSafe.LeaveSafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
+    <div class="cmd"><code>scoop bucket add atakankizilyuce https://github.com/atakankizilyuce/homebrew-tap &amp;&amp; scoop install leavesafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
+  </div>
+
+  <div class="tab-panel" id="tab-bin" role="tabpanel" aria-labelledby="t-bin" hidden>
+    <p class="tab-lede">One file, no installer, no dependencies. On Linux and macOS, <code>chmod +x</code> it before running.</p>
+    <ul class="files">
+      <li><b>Windows</b> <span>x64</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-windows-amd64.exe</a></li>
+      <li><b>Linux</b> <span>x64 · ARM64</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-linux-amd64</a></li>
+      <li><b>macOS</b> <span>Intel · Apple silicon</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-darwin-arm64</a></li>
+    </ul>
+    <p class="tab-lede">
+      Every artifact carries a signed attestation naming the workflow and commit that
+      built it — <a href="https://github.com/atakankizilyuce/LeaveSafe#installation">how to verify a download</a>.
+    </p>
+  </div>
+</section>
+
+
+<footer class="foot">
+  <div class="foot-who">
+    <div class="foot-brand">LEAVE<span>SAFE</span></div>
+    <p class="foot-by">Built by <a href="https://github.com/atakankizilyuce">Atakan Kızılyüce</a></p>
+  </div>
+  <nav class="foot-links" aria-label="Footer">
+    <a href="https://github.com/atakankizilyuce/LeaveSafe">GitHub</a>
+    <a href="https://github.com/atakankizilyuce/LeaveSafe/blob/main/docs/configuration.md">Configuration</a>
+    <a href="https://github.com/atakankizilyuce/LeaveSafe/blob/main/docs/remote-access.md">Remote access</a>
+    <a href="https://github.com/atakankizilyuce/LeaveSafe/blob/main/SECURITY.md">Security</a>
+    <a href="https://github.com/atakankizilyuce/LeaveSafe/blob/main/LICENSE">Apache-2.0</a>
+  </nav>
+</footer>
+
+</main>
+
+<!-- A module, so the demonstration can be imported by a test as well as by a
+     browser. The page needs no other JavaScript, and there is no bundler
+     between this and what ships. -->
+<script type="module">
+  import { initDemo } from './demo.js';
+  initDemo();
+</script>
+</body>
+</html>
