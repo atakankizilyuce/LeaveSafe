@@ -1,0 +1,74 @@
+name: Pages
+
+# The landing page at https://atakankizilyuce.github.io/LeaveSafe/.
+#
+# There is nothing to build. `site/` is three files — HTML, CSS and a little
+# vanilla JavaScript — so this workflow assembles a directory, copies in the few
+# images the page uses, and hands it to Pages. No Node, no bundler, no lockfile
+# to keep current for a page that renders the same either way.
+#
+# Every `uses:` is pinned to a commit SHA, with the version it was at in a
+# trailing comment, for the same reason ci.yml does it: a tag is a moving
+# pointer its owner can repoint, and the SHA is the code that was reviewed.
+# Dependabot reads the comment and bumps both together.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/assets/tui-dashboard.png'
+      - 'web/public/icons/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time, and a running one is left to finish: cancelling a
+# half-applied deploy is how a site ends up serving a mix of two versions.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      # The two this job actually needs: one to publish, one for the OIDC token
+      # the deploy step exchanges for its credentials.
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The page's images live where they are already used from — the terminal
+      # shot beside the README, the icons beside the phone interface. They are
+      # copied here at deploy time rather than committed a second time under
+      # site/, so there is one copy of each in the repository.
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/assets
+          cp site/index.html site/style.css site/demo.js _site/
+          cp docs/assets/tui-dashboard.png _site/assets/
+          cp web/public/icons/icon-192.png \
+             web/public/icons/icon-512.png \
+             web/public/icons/apple-touch-icon.png _site/assets/
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
