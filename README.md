@@ -136,6 +136,8 @@ However you install it, LeaveSafe tells you when a newer release exists and name
 
 This release was published without a signing certificate. Open **System Settings → Privacy & Security** and click **Open Anyway** next to the LeaveSafe entry.
 
+Installing with `brew` does not raise the prompt at all. Gatekeeper checks files carrying the quarantine attribute, which a browser attaches to a download and Homebrew's formula path does not. That is a difference in how the file reached you, not in how much it deserves your trust — so verify the provenance either way.
+
 Older instructions told you to run `xattr -d com.apple.quarantine`. Do not — and be wary of any security tool that tells you to. That command disarms exactly the check that would catch a tampered download. Verify the provenance instead.
 
 </details>
