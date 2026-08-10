@@ -141,6 +141,21 @@ Older instructions told you to run `xattr -d com.apple.quarantine`. Do not — a
 </details>
 
 <details>
+<summary><b>Windows warns about the file, or Defender takes it away</b></summary>
+
+<br/>
+
+This release was published without a signing certificate, so SmartScreen warns the first time it runs: **More info → Run anyway**.
+
+Defender may go further and quarantine the download, usually naming it `Trojan:Win32/Bearfoos.B!ml`. The `!ml` on the end is the part worth reading: it means a machine-learning model guessed, rather than a signature matching something known. Those models guess this way about executables that are unsigned, carry no publisher, and have been downloaded by almost nobody yet — whatever language they were written in. [A Go build tool](https://github.com/go-task/task/issues/210), [a Rust one](https://github.com/openai/codex/issues/3207) and [a Microsoft project](https://github.com/microsoft/apm/issues/487) have all been flagged by the same family.
+
+That explanation is not proof, and it is not meant to be taken on trust. Verify the provenance below instead: the attestation says which workflow, at which commit, produced the exact file on your disk — a narrower and more checkable claim than any antivirus verdict in either direction. If it does not verify, the file did not come from here, and no amount of explanation should persuade you to run it.
+
+If it does verify and Defender still objects, [Microsoft's submission portal](https://www.microsoft.com/en-us/wdsi/filesubmission) is where the false positive gets corrected. That is worth doing rather than adding an exclusion: a corrected model reaches everyone, while an exclusion is a hole in one machine's defences that outlives the reason it was made.
+
+</details>
+
+<details>
 <summary><b>Verifying a download</b></summary>
 
 <br/>
@@ -151,6 +166,8 @@ Every release artifact carries a signed attestation naming the workflow and the 
 gh attestation verify leavesafe-linux-amd64 --repo atakankizilyuce/LeaveSafe
 shasum -a 256 -c leavesafe-linux-amd64.sha256        # a .sha256 ships beside each file too
 ```
+
+On Windows the file is `leavesafe-windows-amd64.exe`, `gh attestation verify` takes the same form, and `Get-FileHash` stands in for `shasum`.
 
 A [CycloneDX SBOM](https://cyclonedx.org/) listing every dependency is attached to each release, so you can check what is inside the binary against a vulnerability database without building it yourself.
 
