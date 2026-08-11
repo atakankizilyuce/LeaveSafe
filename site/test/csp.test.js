@@ -41,6 +41,21 @@ describe('the content security policy', () => {
         expect(policy).toContain(`'sha256-${digest}'`);
     });
 
+    it('grants nothing unsafe', () => {
+        expect(policy).not.toMatch(/unsafe-(?:inline|eval|hashes)/);
+        // A wildcard source would make 'self' a decoration.
+        expect(policy).not.toMatch(/(?:^|\s)\*(?:$|\s|;)/);
+    });
+
+    it('is told the truth by the page: nothing carries an inline style', () => {
+        // The other half of holding 'unsafe-inline' out of the policy. A style
+        // attribute added later is refused by the browser and the element
+        // simply arrives unstyled, which is easy to miss and easier to "fix" by
+        // reopening the policy.
+        expect([...page.querySelectorAll('[style]')]).toHaveLength(0);
+        expect([...page.querySelectorAll('style')]).toHaveLength(0);
+    });
+
     it('is told the truth by the page: nothing is fetched from off-site', () => {
         const fetched = [...page.querySelectorAll('script[src], link[href], img[src]')].map(
             (element) => element.getAttribute('src') ?? element.getAttribute('href'),

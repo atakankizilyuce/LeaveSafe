@@ -197,6 +197,28 @@
     transition: background var(--state-shift);
 }
 
+/*
+ * Where each rail stands, how long its pulse is, how long that pulse takes to
+ * cross the screen, and how far into the crossing it starts. Five to the left
+ * of the column of content and five to the right, and the delays are negative
+ * so that none of them begins at the top on the first frame.
+ *
+ * Forty numbers about ten elements, which is the shape of thing a style
+ * attribute is for — except that a style attribute is inline style, and
+ * honouring one costs the page's policy 'unsafe-inline'. Kept here, the policy
+ * stays 'self' and nothing about the rails changes.
+ */
+.wires span:nth-child(1)  { --x: 2%;  --len: 24vh; --t: 8s;    --d: -2s; }
+.wires span:nth-child(2)  { --x: 5%;  --len: 15vh; --t: 11s;   --d: -7s; }
+.wires span:nth-child(3)  { --x: 8%;  --len: 30vh; --t: 6s;    --d: -4s; }
+.wires span:nth-child(4)  { --x: 11%; --len: 12vh; --t: 13s;   --d: -9s; }
+.wires span:nth-child(5)  { --x: 14%; --len: 20vh; --t: 9s;    --d: -1s; }
+.wires span:nth-child(6)  { --x: 86%; --len: 18vh; --t: 10s;   --d: -6s; }
+.wires span:nth-child(7)  { --x: 89%; --len: 28vh; --t: 7s;    --d: -3s; }
+.wires span:nth-child(8)  { --x: 92%; --len: 13vh; --t: 12s;   --d: -8s; }
+.wires span:nth-child(9)  { --x: 95%; --len: 26vh; --t: 8.5s;  --d: -5s; }
+.wires span:nth-child(10) { --x: 98%; --len: 16vh; --t: 11.5s; --d: -10s; }
+
 /* The signal. Clipped to the width of its own rail, which is what keeps it a
    signal on a wire rather than a glow in the margin. */
 .wires span::after {
@@ -261,6 +283,10 @@ a { color: inherit; }
     outline-offset: 3px;
     border-radius: 4px;
 }
+
+/* The sprite every icon is drawn from. A zero box already keeps it from taking
+   room; taking it out of the flow as well keeps it from taking a line. */
+.sprite { position: absolute; }
 
 .ico {
     width: 20px;

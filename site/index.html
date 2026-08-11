@@ -13,18 +13,24 @@
      directive that matters: it is what a script smuggled onto this page would
      need in order to send anything anywhere.
 
-     Two concessions. Styles allow 'unsafe-inline' because the ten rails behind
-     the content carry their own length and phase in a style attribute, and
-     moving twenty numbers into stylesheet rules to buy a directive that guards
-     against nothing here is a poor trade. And the module at the foot of the
-     page is named by hash rather than nonce, because a nonce has to be minted
-     per response and there is nothing here that responds. A stale hash fails
-     silently — the browser refuses the script and the page just sits there — so
-     test/csp.test.js recomputes it and fails if this does not match. -->
+     Nothing is inline, which is why nothing here says 'unsafe-inline'. The
+     rails behind the content used to carry their own length and phase in a
+     style attribute; those forty numbers are in style.css now, and the sprite
+     that was positioned in an attribute has a class. The one concession left is
+     that the module at the foot of the page is named by hash rather than nonce,
+     because a nonce has to be minted per response and there is nothing here
+     that responds. A stale hash fails silently — the browser refuses the script
+     and the page just sits there — so test/csp.test.js recomputes it and fails
+     if this does not match.
+
+     What the scripts do to style is untouched by this: writing through
+     `element.style` is a CSSOM write and no policy polices it, which is how the
+     intro keeps moving the gate and the canvas. `setAttribute('style', …)` is
+     the one form that would be refused, so it is not a form to reach for. -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
   script-src 'self' 'sha256-B7PTtt6s0VCcL2Ft0YJ4SbbaDyoBQ2C/uSZPqLJHD0w=';
-  style-src 'self' 'unsafe-inline';
+  style-src 'self';
   img-src 'self';
   font-src 'self';
   base-uri 'none';
@@ -64,16 +70,16 @@
   them; the script only decides when they are allowed to be seen at all.
 -->
 <div class="wires" aria-hidden="true">
-  <span style="--x: 2%;  --len: 24vh; --t: 8s;  --d: -2s"></span>
-  <span style="--x: 5%;  --len: 15vh; --t: 11s; --d: -7s"></span>
-  <span style="--x: 8%;  --len: 30vh; --t: 6s;  --d: -4s"></span>
-  <span style="--x: 11%; --len: 12vh; --t: 13s; --d: -9s"></span>
-  <span style="--x: 14%; --len: 20vh; --t: 9s;  --d: -1s"></span>
-  <span style="--x: 86%; --len: 18vh; --t: 10s; --d: -6s"></span>
-  <span style="--x: 89%; --len: 28vh; --t: 7s;  --d: -3s"></span>
-  <span style="--x: 92%; --len: 13vh; --t: 12s; --d: -8s"></span>
-  <span style="--x: 95%; --len: 26vh; --t: 8.5s; --d: -5s"></span>
-  <span style="--x: 98%; --len: 16vh; --t: 11.5s; --d: -10s"></span>
+  <span></span>
+  <span></span>
+  <span></span>
+  <span></span>
+  <span></span>
+  <span></span>
+  <span></span>
+  <span></span>
+  <span></span>
+  <span></span>
 </div>
 
 <!--
@@ -81,7 +87,7 @@
   rather than imported: this page needs eleven of them and none of the machinery
   around them.
 -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+<svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
   <defs>
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M8 8h8v3a4 4 0 0 1-4 4 4 4 0 0 1-4-4V8ZM12 15v6"/></symbol>
     <symbol id="i-lid" viewBox="0 0 24 24"><rect x="5" y="6" width="14" height="10" rx="1.5"/><path d="M3 19h18"/></symbol>
