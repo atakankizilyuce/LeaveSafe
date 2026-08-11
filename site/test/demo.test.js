@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initDemo } from '../demo.js';
+import { initDemo, preferredOs } from '../demo.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const page = readFileSync(join(here, '..', 'index.html'), 'utf8');
@@ -398,5 +398,186 @@ describe('copying a command', () => {
 
         expect(copyButton().classList.contains('is-done')).toBe(false);
         expect(copyButton().querySelector('use').getAttribute('href')).toBe('#i-copy');
+    });
+});
+
+/*
+ * The laptop.
+ *
+ * The demonstration was a phone on its own for as long as it existed, which
+ * taught the wrong thing — that LeaveSafe is a phone app. It is a program on
+ * the laptop, and the laptop is the end that makes the noise. These tests are
+ * mostly about that last sentence.
+ */
+const lapLines = () => Array.from($('lap-log').children).map((li) => li.textContent);
+
+describe('the laptop', () => {
+    it('starts not armed, counting the same sensors the phone counts', () => {
+        initDemo();
+
+        expect($('lap-state').textContent).toBe('NOT ARMED');
+        expect($('lap-sensors').textContent).toBe('6 ready');
+        expect($('lap-siren').hidden).toBe(true);
+    });
+
+    /*
+     * The page used to carry a badge reading "this is live". The disclosure is
+     * the window's own first line now, in the voice of the thing being
+     * demonstrated, plus a build tag in its title bar that never scrolls away.
+     */
+    it('opens by saying what it is, rather than claiming it was just disarmed', () => {
+        initDemo();
+
+        expect(lapLines()).toHaveLength(1);
+        expect(lapLines()[0]).toContain('demo build · not watching a real machine');
+        expect(document.querySelector('.lap-tag').textContent).toBe('demo');
+    });
+
+    it('counts down beside the phone and lands watching', () => {
+        initDemo();
+        $('p-arm').click();
+
+        vi.advanceTimersByTime(0);
+        expect($('lap-state').textContent).toBe('ARMING 3');
+
+        vi.advanceTimersByTime(3000);
+        expect($('lap-state').textContent).toBe('WATCHING');
+        expect(lapLines().at(-1)).toContain('armed · watching 6 sensors');
+    });
+
+    it('follows the sensors being switched off', () => {
+        initDemo();
+        node('usb').click();
+
+        expect($('lap-sensors').textContent).toBe('5 ready');
+    });
+
+    it('sounds when a sensor fires, and says the phone is sounding too', () => {
+        initDemo();
+        $('p-arm').click();
+        vi.advanceTimersByTime(3000);
+
+        $('btn-trigger').click();
+
+        expect($('lap-state').textContent).toBe('ALARM');
+        expect($('lap-siren').hidden).toBe(false);
+        expect(lapLines().at(-2)).toContain('POWER');
+        expect(lapLines().at(-1)).toContain('sounding here, and on the paired phone');
+        // And the other end says the same thing about this one.
+        expect($('p-alert').hidden).toBe(false);
+        expect(document.querySelector('.p-alert-both').textContent).toContain('laptop');
+    });
+
+    it('goes quiet when the alarm is dismissed, and keeps watching', () => {
+        initDemo();
+        $('p-arm').click();
+        vi.advanceTimersByTime(3000);
+        $('btn-trigger').click();
+
+        $('p-dismiss').click();
+
+        expect($('lap-siren').hidden).toBe(true);
+        expect($('lap-state').textContent).toBe('WATCHING');
+        expect(lapLines().at(-1)).toContain('still watching');
+    });
+
+    it('stops sounding when the phone disarms it', () => {
+        initDemo();
+        $('p-arm').click();
+        vi.advanceTimersByTime(3000);
+        $('btn-trigger').click();
+
+        press($('p-arm'));
+        vi.advanceTimersByTime(1500);
+
+        expect($('lap-state').textContent).toBe('NOT ARMED');
+        expect($('lap-siren').hidden).toBe(true);
+        expect(lapLines().at(-1)).toContain('disarmed from the phone');
+    });
+
+    /*
+     * A log that grows moves everything under it every time a line lands, and
+     * the rig walks about beneath the cursor of whoever is pressing its
+     * buttons.
+     */
+    it('keeps five lines and drops the oldest', () => {
+        initDemo();
+        $('p-arm').click();
+        vi.advanceTimersByTime(3000);
+        $('btn-trigger').click();
+        $('p-dismiss').click();
+        $('btn-trigger').click();
+
+        expect(lapLines()).toHaveLength(5);
+        expect(lapLines()[0]).not.toContain('demo build');
+    });
+});
+
+describe('which install tab opens', () => {
+    it('reads the platform out of the user agent', () => {
+        expect(preferredOs('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe('windows');
+        expect(preferredOs('Mozilla/5.0 (win32) jsdom/26')).toBe('windows');
+        expect(preferredOs('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')).toBe('mac');
+        expect(preferredOs('Mozilla/5.0 (X11; Linux x86_64)')).toBe('mac');
+        expect(preferredOs('Mozilla/5.0 (PlayStation 5)')).toBe('other');
+    });
+
+    it('does not fall over when there is no user agent to read', () => {
+        expect(preferredOs(undefined)).toBe('other');
+        expect(preferredOs('')).toBe('other');
+    });
+
+    it('opens the tab for the machine that asked for the page', () => {
+        vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' });
+        initDemo();
+
+        expect($('t-win').getAttribute('aria-selected')).toBe('true');
+        expect($('tab-win').hidden).toBe(false);
+        expect($('t-brew').getAttribute('aria-selected')).toBe('false');
+        expect($('tab-brew').hidden).toBe(true);
+    });
+
+    it('leaves the markup to choose for a platform it does not know', () => {
+        vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (PlayStation 5)' });
+        initDemo();
+
+        expect($('t-bin').getAttribute('aria-selected')).toBe('true');
+    });
+});
+
+describe('the control under the devices', () => {
+    /*
+     * It sits with the laptop and the phone rather than in the column of prose
+     * beside them, and its label is the instruction — there is no paragraph
+     * anywhere telling anyone to arm the panel first.
+     */
+    it('says what to do first, and cannot be pressed until it has been done', () => {
+        initDemo();
+
+        expect($('btn-trigger').disabled).toBe(true);
+        expect($('btn-trigger').textContent).toBe('Arm it first');
+    });
+
+    it('names the thing it simulates once there is something to simulate', () => {
+        initDemo();
+        $('p-arm').click();
+        vi.advanceTimersByTime(3000);
+
+        expect($('btn-trigger').disabled).toBe(false);
+        expect($('btn-trigger').textContent).toBe('Touch the laptop');
+    });
+
+    it('goes back to the instruction when the panel is disarmed', () => {
+        initDemo();
+        $('p-arm').click();
+        vi.advanceTimersByTime(3000);
+        press($('p-arm'));
+        vi.advanceTimersByTime(1500);
+
+        expect($('btn-trigger').textContent).toBe('Arm it first');
+    });
+
+    it('lives inside the rig, beside the devices it fires', () => {
+        expect(document.querySelector('.rig .demo-controls #btn-trigger')).not.toBeNull();
     });
 });

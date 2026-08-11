@@ -12,6 +12,25 @@
  * itself does it, because every colour on this page hangs off that attribute.
  */
 
+/*
+ * Which install tab to open on.
+ *
+ * Three tabs of which two are wrong for whoever is reading is a small puzzle
+ * with the answer already in the request. Linux and macOS share a tab because
+ * they share the commands. Anything else — a phone, a console, something new —
+ * gets the direct download, which works everywhere and needs no package
+ * manager to exist.
+ *
+ * Exported because it is the only part of the panel that is a decision rather
+ * than a wire, and the only part worth a test of its own.
+ */
+export function preferredOs(ua) {
+    const s = String(ua || '').toLowerCase();
+    if (s.includes('windows') || s.includes('win32') || s.includes('win64')) return 'windows';
+    if (s.includes('mac') || s.includes('linux') || s.includes('x11')) return 'mac';
+    return 'other';
+}
+
 export function initDemo() {
     const root = document.documentElement;
     const $ = (id) => document.getElementById(id);
@@ -29,12 +48,27 @@ export function initDemo() {
     const armFill = $('p-arm-fill');
     const armIcon = armBtn.querySelector('use');
     const triggerBtn = $('btn-trigger');
+
+    /*
+     * The button teaches the order rather than a paragraph beside it doing so.
+     * There is nothing to set off until the panel is armed, and while there is
+     * not, the button says what to do instead of being a dead grey word.
+     */
+    const TRIGGER_LOCKED = 'Arm it first';
+    const TRIGGER_READY = 'Touch the laptop';
     const alertBox = $('p-alert');
     const alertSensor = $('p-alert-sensor');
     const alertMsg = $('p-alert-msg');
     const nodes = Array.from(document.querySelectorAll('.node'));
     const miniIcons = Array.from(document.querySelectorAll('.core-icons .ico'));
     const phone = document.querySelector('.phone');
+
+    /* The laptop. Half the product, and until now not on the page at all. */
+    const lap = $('lap');
+    const lapState = $('lap-state');
+    const lapSensors = $('lap-sensors');
+    const lapLog = $('lap-log');
+    const lapSiren = $('lap-siren');
 
     const mini = (name) => miniIcons.find((i) => i.dataset.sensor === name);
 
@@ -91,10 +125,42 @@ export function initDemo() {
     // The invitation is spent the moment it is taken.
     const touched = () => setFlag(phone, 'untouched', false);
 
+    /*
+     * The laptop's log.
+     *
+     * Five lines, oldest dropped. A log that grows moves everything under it
+     * every time a line lands, and the rig walks about beneath the cursor of
+     * the person who is trying to press its buttons.
+     */
+    const LOG_LINES = 5;
+
+    function log(text, kind) {
+        const line = document.createElement('li');
+        if (kind) line.dataset.kind = kind;
+
+        const stamp = document.createElement('time');
+        stamp.textContent = new Date().toTimeString().slice(0, 8);
+
+        const said = document.createElement('span');
+        said.textContent = text;
+
+        line.append(stamp, said);
+        lapLog.append(line);
+        while (lapLog.children.length > LOG_LINES) lapLog.firstElementChild.remove();
+    }
+
+    const laptopSensors = () => {
+        lapSensors.textContent = `${enabled().length} ready`;
+    };
+
     // ── the three rooms ───────────────────────────────────────────────────
 
     function toStandby() {
         clearTimers();
+        /* Read before it is cleared: the first call is the page loading, and a
+           log line saying the visitor disarmed something they never armed is a
+           lie the panel tells itself. */
+        const wasRunning = Boolean(root.dataset.state);
         delete root.dataset.state;
         delete root.dataset.count;
 
@@ -109,7 +175,15 @@ export function initDemo() {
         armFill.style.transition = '';
         armFill.style.width = '0';
         triggerBtn.disabled = true;
+        triggerBtn.textContent = TRIGGER_LOCKED;
         syncShield();
+
+        lapState.textContent = 'NOT ARMED';
+        lapSiren.hidden = true;
+        setFlag(lap, 'alarm', false);
+        setFlag(root, 'alarm', false);
+        laptopSensors();
+        log(wasRunning ? 'disarmed from the phone' : 'demo build · not watching a real machine');
     }
 
     function toArming() {
@@ -129,9 +203,11 @@ export function initDemo() {
                 root.dataset.count = String(left);
                 stateEl.textContent = `ARMING ${left}`;
                 subEl.textContent = `${enabled().length} sensors · ${left}s`;
+                lapState.textContent = `ARMING ${left}`;
             });
         }
 
+        log(`arming · ${ARM_SECONDS}s to walk away`);
         after(ARM_SECONDS * 1000, toArmed);
     }
 
@@ -148,6 +224,10 @@ export function initDemo() {
         armLabel.textContent = 'Hold to disarm';
         armIcon.setAttribute('href', '#i-unlock');
         triggerBtn.disabled = false;
+        triggerBtn.textContent = TRIGGER_READY;
+
+        lapState.textContent = 'WATCHING';
+        log(`armed · watching ${enabled().length} sensors`, 'armed');
     }
 
     // ── the arm control ───────────────────────────────────────────────────
@@ -235,6 +315,7 @@ export function initDemo() {
             setFlag(node, 'tripped', false);
             subEl.textContent = `${enabled().length} sensors ready`;
             syncShield();
+            laptopSensors();
         });
     });
 
@@ -271,26 +352,52 @@ export function initDemo() {
         alertSensor.textContent = name.toUpperCase();
         alertMsg.textContent = MESSAGES[name];
         alertBox.hidden = false;
+
+        /* Both ends. The phone is the convenience; the laptop is the alarm, and
+           it goes off whether or not anyone is looking at a phone. */
+        lapState.textContent = 'ALARM';
+        lapSiren.hidden = false;
+        /* Red is the alarm and nothing else on this page, so it is switched on
+           here and switched off in the two places the alarm ends. */
+        setFlag(lap, 'alarm', true);
+        /* The alarm is not only in the panel that raised it: every colour on
+           the page hangs off the root, and so does the wiring behind it. */
+        setFlag(root, 'alarm', true);
+        log(`${name.toUpperCase()} · ${MESSAGES[name]}`, 'trip');
+        log('sounding here, and on the paired phone', 'trip');
     });
 
     $('p-dismiss').addEventListener('click', () => {
         alertBox.hidden = true;
+        lapSiren.hidden = true;
+        setFlag(lap, 'alarm', false);
+        setFlag(root, 'alarm', false);
+        lapState.textContent = 'WATCHING';
+        log('alarm silenced · still watching', 'armed');
     });
 
     // ── install tabs ──────────────────────────────────────────────────────
 
     const tabs = Array.from(document.querySelectorAll('.tab'));
 
-    tabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-            tabs.forEach((t) => {
-                const on = t === tab;
-                t.classList.toggle('is-on', on);
-                t.setAttribute('aria-selected', String(on));
-                document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
-            });
+    const selectTab = (tab) => {
+        tabs.forEach((t) => {
+            const on = t === tab;
+            t.classList.toggle('is-on', on);
+            t.setAttribute('aria-selected', String(on));
+            document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
         });
+    };
+
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => selectTab(tab));
     });
+
+    /* Open on the tab for the machine that asked for the page. Falls through to
+       whatever the markup already had selected if the platform is not one of
+       the three, so a visitor is never left with no tab open. */
+    const mine = tabs.find((t) => t.dataset.os === preferredOs(navigator.userAgent));
+    if (mine) selectTab(mine);
 
     // ── copy to clipboard ─────────────────────────────────────────────────
 

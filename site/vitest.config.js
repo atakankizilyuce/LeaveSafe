@@ -20,10 +20,16 @@ export default defineConfig({
             provider: 'v8',
             reporter: ['text', 'lcov'],
             reportsDirectory: 'coverage',
-            // The page's only script. index.html and style.css have no
-            // statements to cover, and asking for a number on them would only
-            // produce one that means nothing.
-            include: ['demo.js'],
+            // index.html and style.css have no statements to cover, and asking
+            // for a number on them would only produce one that means nothing.
+            //
+            // intro.js is left out for a different reason: it is a canvas and a
+            // scroll listener, and jsdom has neither a 2d context nor a
+            // viewport that scrolls. A test of it could only assert that
+            // nothing threw, and counting that as coverage would make the
+            // number worse than no number. Its arithmetic lives in
+            // ascii-mark.js, which is here and is tested.
+            include: ['demo.js', 'ascii-mark.js'],
         },
     },
 });
