@@ -2,6 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+
+<!-- Pages serves no headers of its own, so the policy travels in the document.
+     That costs one directive: `frame-ancestors` is ignored in a meta and cannot
+     be expressed here at all.
+
+     The page fetches nothing it does not ship — its script, its stylesheet, its
+     fonts and its icons all sit beside it — so the default is 'none' and every
+     source that survives is 'self'. Nothing may be connected to, which is the
+     directive that matters: it is what a script smuggled onto this page would
+     need in order to send anything anywhere.
+
+     Two concessions. Styles allow 'unsafe-inline' because the ten rails behind
+     the content carry their own length and phase in a style attribute, and
+     moving twenty numbers into stylesheet rules to buy a directive that guards
+     against nothing here is a poor trade. And the module at the foot of the
+     page is named by hash rather than nonce, because a nonce has to be minted
+     per response and there is nothing here that responds. A stale hash fails
+     silently — the browser refuses the script and the page just sits there — so
+     test/csp.test.js recomputes it and fails if this does not match. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'sha256-B7PTtt6s0VCcL2Ft0YJ4SbbaDyoBQ2C/uSZPqLJHD0w=';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self';
+  font-src 'self';
+  base-uri 'none';
+  form-action 'none'">
+
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LeaveSafe — leave your laptop, stay safe</title>
 <meta name="description" content="A cross-platform device security monitor that turns your phone into a remote alarm for your laptop. No account, no server, no internet required.">
