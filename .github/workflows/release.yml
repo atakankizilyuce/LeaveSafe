@@ -32,6 +32,12 @@ jobs:
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
+    # The gate's sonar job needs this, and a called workflow is given no
+    # secrets it is not passed. One name rather than `inherit`, so that the
+    # signing certificates this workflow reads below stay unreachable from the
+    # gate.
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   release:
     name: Release (${{ matrix.goos }}/${{ matrix.goarch }})

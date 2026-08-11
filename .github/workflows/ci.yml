@@ -13,6 +13,19 @@ on:
   workflow_dispatch:
   # Release tags run the exact same gate before anything is published.
   workflow_call:
+    secrets:
+      # A called workflow inherits nothing: without this, the sonar job below
+      # reads an empty SONAR_TOKEN and the scanner exits 3, which is what took
+      # the whole of the v1.2.0 release down. Named rather than inherited,
+      # because `secrets: inherit` would hand this workflow the tap dispatch
+      # token as well and, once they are configured, the macOS and Windows
+      # signing certificates — the three secrets nothing here has any business
+      # reading, on a workflow that runs on every pull request.
+      #
+      # Optional for the same reason the sonar job guards itself below: a
+      # caller with no token should still get the rest of the gate.
+      SONAR_TOKEN:
+        required: false
 
 # Least privilege by default; no job here needs write access. Every job below
 # then states its own permissions as well, which is what actually scopes the
