@@ -58,7 +58,12 @@ jobs:
       - name: Assemble the site
         run: |
           mkdir -p _site/assets
-          cp site/index.html site/style.css site/demo.js _site/
+          cp site/index.html site/style.css \
+             site/demo.js site/intro.js site/ascii-mark.js _site/
+          # The typefaces are the page's own — it makes no external requests,
+          # and a landing page for a tool that talks to nothing should not be
+          # asking a font CDN who is reading it.
+          cp -r site/fonts _site/fonts
           cp docs/assets/tui-dashboard.png _site/assets/
           cp web/public/icons/icon-192.png \
              web/public/icons/icon-512.png \
