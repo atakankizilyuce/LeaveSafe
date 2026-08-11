@@ -296,13 +296,105 @@ function createMark(canvas) {
     }
 
     /*
-     * t      seconds since the first frame
-     * intro  0..1, the opening reveal
-     * q      0..1, the handover — 1 means the mark has left
+     * Whether a cell is drawn at all, and how brightly. Null is "nothing here":
+     * outside the coverage, under the reveal, too dark to see, or animated down
+     * to nothing this instant.
      */
-    function draw(t, intro, q, moving) {
-        if (!cells) return;
+    function cellLight(i, x, y, intro, t, moving) {
+        const h = hash01(i);
+        if (h > P.coverage) return null;
 
+        const n = P.grid;
+        const ny = (y + 0.5) / n;
+        const veil = introVeil(intro, ny);
+        if (veil <= 0) return null;
+
+        const rest = tone(cells.lum[i], cells.edge[i], P.edgeEmphasis, P.contrast);
+        if (rest < 0.012) return null;
+
+        const cx = (x + 0.5) / n - 0.5;
+        const cy = ny - 0.5;
+        const v = moving
+            ? rest *
+              animMod(P.style, {
+                  i,
+                  t,
+                  speed: P.speed,
+                  amp: P.amp,
+                  d: Math.hypot(cx, cy - 0.02),
+                  nx: cx,
+                  ny: cy,
+                  phase: hash01(i + 7777) * TAU,
+                  h,
+              })
+            : rest;
+
+        const vv = clamp(v * veil, 0, 1.25);
+        if (vv < 0.015) return null;
+        return { vv, rest, cx, cy, rn: Math.hypot(cx, cy) * 2 };
+    }
+
+    /*
+     * Where the cell sits, how big it is and how much of it there is — including
+     * the throw outward once the handover has begun. Null once it has gone.
+     */
+    function cellPlace(i, x, y, light, q) {
+        let a = clamp(0.3 + light.vv * 0.7, 0, 1) * gridFalloff(light.rn, light.rest);
+        if (a < 0.01) return null;
+
+        let w = cell * clamp(0.22 + 0.84 * light.vv, 0, 1);
+        let px = pad + x * cell;
+        let py = pad + y * cell;
+
+        /* Leaving. Each cell is thrown outward from the centre with a turn of
+           its own, so the mark comes apart rather than sliding away in one
+           piece. */
+        if (q > 0) {
+            const e = dispersalLead(q, light.rn / Math.SQRT2);
+            if (e >= 1) return null;
+            const away = hash01(i + 313) * TAU;
+            const reach = e * S * 0.42;
+            const r = light.rn || 0.001;
+            px += ((light.cx / r) * 0.75 + Math.cos(away) * 0.45) * reach;
+            py += ((light.cy / r) * 0.75 + Math.sin(away) * 0.45) * reach - e * S * 0.1;
+            /* A cell holds its light most of the way out and then goes quickly,
+               with a lift as it breaks away. Faded in a straight line the mark
+               stops being a mark almost at once, and what is left is a grey
+               drizzle. */
+            a *= (1 - e ** 1.7) * (1 + 0.4 * Math.sin(Math.PI * e));
+            w *= 1 - e * 0.35;
+            if (a < 0.01) return null;
+        }
+
+        return { px, py, w, a };
+    }
+
+    /*
+     * The cell's colour. Its own to begin with, pulled towards its grey while
+     * the mark is still arriving as a silhouette, then tinted a channel at a
+     * time — per cell rather than as a wash over the canvas, which is what lets
+     * the canvas stay transparent and the page's own background show between.
+     */
+    function cellColour(i, vv, sil, tintAmt, a) {
+        const k = clamp(0.7 + 0.45 * vv, 0, 1.3);
+        let cr = (cells.r[i] * k) / 255;
+        let cg = (cells.g[i] * k) / 255;
+        let cb = (cells.b[i] * k * 1.06) / 255;
+
+        if (sil > 0) {
+            const grey = ((cr + cg + cb) / 3) * 0.55;
+            cr += (grey - cr) * sil;
+            cg += (grey - cg) * sil;
+            cb += (grey - cb) * sil;
+        }
+
+        cr = overlayMix(cr, TINT_RGB[0], tintAmt);
+        cg = overlayMix(cg, TINT_RGB[1], tintAmt);
+        cb = overlayMix(cb, TINT_RGB[2], tintAmt);
+        return `rgba(${Math.round(cr * 255)},${Math.round(cg * 255)},${Math.round(cb * 255)},${a.toFixed(3)})`;
+    }
+
+    function paintCells(t, intro, q, moving) {
         const sil = silhouette(intro);
         const tintAmt = P.tint * (1 - sil * 0.85);
         const n = P.grid;
@@ -312,91 +404,39 @@ function createMark(canvas) {
         for (let y = 0; y < n; y++) {
             for (let x = 0; x < n; x++) {
                 const i = y * n + x;
-                const h = hash01(i);
-                if (h > P.coverage) continue;
+                const light = cellLight(i, x, y, intro, t, moving);
+                if (!light) continue;
 
-                const ny = (y + 0.5) / n;
-                const veil = introVeil(intro, ny);
-                if (veil <= 0) continue;
+                const place = cellPlace(i, x, y, light, q);
+                if (!place) continue;
 
-                const rest = tone(cells.lum[i], cells.edge[i], P.edgeEmphasis, P.contrast);
-                if (rest < 0.012) continue;
-
-                const cx = (x + 0.5) / n - 0.5;
-                const cy = ny - 0.5;
-                const rn = Math.hypot(cx, cy) * 2;
-
-                let v = rest;
-                if (moving) {
-                    v *= animMod(P.style, {
-                        i,
-                        t,
-                        speed: P.speed,
-                        amp: P.amp,
-                        d: Math.hypot(cx, cy - 0.02),
-                        nx: cx,
-                        ny: cy,
-                        phase: hash01(i + 7777) * TAU,
-                        h,
-                    });
-                }
-
-                const vv = clamp(v * veil, 0, 1.25);
-                if (vv < 0.015) continue;
-
-                let a = clamp(0.3 + vv * 0.7, 0, 1) * gridFalloff(rn, rest);
-                if (a < 0.01) continue;
-
-                let w = cell * clamp(0.22 + 0.84 * vv, 0, 1);
-                let px = pad + x * cell;
-                let py = pad + y * cell;
-
-                /* Leaving. Each cell is thrown outward from the centre with a
-                   turn of its own, so the mark comes apart rather than sliding
-                   away in one piece. */
-                if (q > 0) {
-                    const e = dispersalLead(q, rn / Math.SQRT2);
-                    if (e >= 1) continue;
-                    const away = hash01(i + 313) * TAU;
-                    const reach = e * S * 0.42;
-                    const r = rn || 0.001;
-                    px += ((cx / r) * 0.75 + Math.cos(away) * 0.45) * reach;
-                    py += ((cy / r) * 0.75 + Math.sin(away) * 0.45) * reach - e * S * 0.1;
-                    /* A cell holds its light most of the way out and then goes
-                       quickly, with a lift as it breaks away. Faded in a
-                       straight line the mark stops being a mark almost at once,
-                       and what is left is a grey drizzle. */
-                    a *= (1 - e ** 1.7) * (1 + 0.4 * Math.sin(Math.PI * e));
-                    w *= 1 - e * 0.35;
-                    if (a < 0.01) continue;
-                }
-
-                const off = (cell - w) / 2;
-                const k = clamp(0.7 + 0.45 * vv, 0, 1.3);
-
-                let cr = (cells.r[i] * k) / 255;
-                let cg = (cells.g[i] * k) / 255;
-                let cb = (cells.b[i] * k * 1.06) / 255;
-
-                /* On the way in the cells are a shape, not a colour: each is
-                   pulled towards its own grey until the reveal is done. */
-                if (sil > 0) {
-                    const grey = ((cr + cg + cb) / 3) * 0.55;
-                    cr += (grey - cr) * sil;
-                    cg += (grey - cg) * sil;
-                    cb += (grey - cb) * sil;
-                }
-
-                cr = overlayMix(cr, TINT_RGB[0], tintAmt);
-                cg = overlayMix(cg, TINT_RGB[1], tintAmt);
-                cb = overlayMix(cb, TINT_RGB[2], tintAmt);
-
-                fxCtx.fillStyle = `rgba(${Math.round(cr * 255)},${Math.round(cg * 255)},${Math.round(cb * 255)},${a.toFixed(3)})`;
-                roundRectPath(fxCtx, px + off, py + off, w, w, Math.min(w * 0.34, cell * 0.2));
+                const off = (cell - place.w) / 2;
+                fxCtx.fillStyle = cellColour(i, light.vv, sil, tintAmt, place.a);
+                roundRectPath(
+                    fxCtx,
+                    place.px + off,
+                    place.py + off,
+                    place.w,
+                    place.w,
+                    Math.min(place.w * 0.34, cell * 0.2),
+                );
                 fxCtx.fill();
             }
         }
+    }
 
+    /* Grain sits on top of what is already there and never on the space around
+       it. Painted flat it would be noise across the page itself. */
+    function applyGrain(t) {
+        const tile = noise[Math.floor(t * 11) % noise.length];
+        out.globalCompositeOperation = 'source-atop';
+        out.globalAlpha = 0.13;
+        for (let gy = 0; gy < S; gy += 128) {
+            for (let gx = 0; gx < S; gx += 128) out.drawImage(tile, gx, gy);
+        }
+    }
+
+    function applyEffects(t) {
         out.clearRect(0, 0, S, S);
         out.save();
         out.drawImage(fx, 0, 0);
@@ -424,10 +464,8 @@ function createMark(canvas) {
             out.globalCompositeOperation = 'source-over';
         }
 
-        /* Both of the last two work on what is already there and never on the
-           space around it: scan lines take a bite out of the cells, and the
-           grain sits on top of them. Painted flat they would be lines and
-           noise across the page itself. */
+        /* Scan lines take a bite out of the cells rather than being drawn over
+           them, for the same reason. */
         if (P.scan) {
             out.globalCompositeOperation = 'destination-out';
             out.globalAlpha = 0.26;
@@ -435,16 +473,20 @@ function createMark(canvas) {
             out.fillRect(0, 0, S, S);
         }
 
-        if (P.grain) {
-            const tile = noise[Math.floor(t * 11) % noise.length];
-            out.globalCompositeOperation = 'source-atop';
-            out.globalAlpha = 0.13;
-            for (let gy = 0; gy < S; gy += 128) {
-                for (let gx = 0; gx < S; gx += 128) out.drawImage(tile, gx, gy);
-            }
-        }
+        if (P.grain) applyGrain(t);
 
         out.restore();
+    }
+
+    /*
+     * t      seconds since the first frame
+     * intro  0..1, the opening reveal
+     * q      0..1, the handover — 1 means the mark has left
+     */
+    function draw(t, intro, q, moving) {
+        if (!cells) return;
+        paintCells(t, intro, q, moving);
+        applyEffects(t);
     }
 
     return { resize, draw };
