@@ -1691,6 +1691,10 @@ a { color: inherit; }
     padding: 0 12px;
 }
 
+/* Present to assistive technology and absent from layout: the canvas stays the
+   flex item it was. */
+.mark-holder { display: contents; }
+
 /* The canvas is larger than the mark inside it — the cells need somewhere to go
    when they leave — so the gap under it is measured from the mark's edge, not
    the canvas's. `--mark-pad` is the difference, and the script knows it. */

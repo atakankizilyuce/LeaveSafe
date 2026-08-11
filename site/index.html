@@ -109,13 +109,18 @@
 <section class="gate" aria-labelledby="gate-word">
   <div class="gate-stage">
     <!--
-      Hidden from assistive technology rather than described to it. A canvas
-      given role="img" is an interactive element wearing a non-interactive role,
-      and the name it would carry is already on the page underneath it: the
-      section is labelled by the wordmark, which says the same thing in text
-      that this says in cells.
+      The mark is decorative. The section is named by the wordmark underneath
+      it, which says in text what this says in cells, so there is nothing here
+      for a screen reader that it is not already being told.
+
+      Hidden by the element around it rather than by itself: a canvas counts as
+      focusable, and hiding a focusable element from assistive technology leaves
+      something a keyboard can reach and a screen reader cannot describe. The
+      wrapper is not focusable, and it lays out as nothing at all.
     -->
-    <canvas id="gate-mark" width="460" height="460" aria-hidden="true"></canvas>
+    <div class="mark-holder" aria-hidden="true">
+      <canvas id="gate-mark" width="460" height="460"></canvas>
+    </div>
     <!-- Wrapped, so the scroll can fade the pair as a unit without fighting the
          entrance each of them animates in on. -->
     <div class="gate-text">
