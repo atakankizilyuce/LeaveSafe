@@ -108,9 +108,14 @@
 -->
 <section class="gate" aria-labelledby="gate-word">
   <div class="gate-stage">
-    <canvas id="gate-mark" width="460" height="460" role="img"
-            aria-label="The LeaveSafe shield: a shield with an open eye at its centre, built from a grid of cells"
-    >The LeaveSafe shield: a shield with an open eye at its centre.</canvas>
+    <!--
+      Hidden from assistive technology rather than described to it. A canvas
+      given role="img" is an interactive element wearing a non-interactive role,
+      and the name it would carry is already on the page underneath it: the
+      section is labelled by the wordmark, which says the same thing in text
+      that this says in cells.
+    -->
+    <canvas id="gate-mark" width="460" height="460" aria-hidden="true"></canvas>
     <!-- Wrapped, so the scroll can fade the pair as a unit without fighting the
          entrance each of them animates in on. -->
     <div class="gate-text">
