@@ -31,7 +31,7 @@ export const PIVOT = 0.3;
 
 export const TAU = Math.PI * 2;
 
-export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+export const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
 /*
  * A cell's own constant randomness, from its index. The coverage gaps and the
@@ -39,7 +39,10 @@ export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
  * they move each frame and the mark boils.
  */
 export function hash01(i) {
-    let h = (i + 0x9e3779b9) | 0;
+    /* Unsigned, deliberately. The golden-ratio constant is above 2^31, so `| 0`
+       reads it back as a negative number — the same thirty-two bits, but a
+       value the arithmetic around it does not claim to be working in. */
+    let h = (i + 0x9e3779b9) >>> 0;
     h = Math.imul(h ^ (h >>> 16), 0x21f0aaad);
     h = Math.imul(h ^ (h >>> 15), 0x735a2d97);
     return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
@@ -168,7 +171,9 @@ export function silhouette(progress) {
 
 /* Scroll position to a 0..1 reading of how far through the gate we are. */
 export function gateProgress(scrollY, runway) {
-    if (!(runway > 0)) return 0;
+    /* A gate shorter than the window has no runway to be partway through, and
+       a runway that is not a number would divide the whole handover into NaN. */
+    if (!Number.isFinite(runway) || runway <= 0) return 0;
     return clamp(scrollY / runway, 0, 1);
 }
 

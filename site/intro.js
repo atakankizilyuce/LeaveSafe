@@ -194,8 +194,16 @@ function sampleGrid(src, n) {
     return { r, g, b, lum, edge: sobel(lum, n, n) };
 }
 
-/* Grain generated per frame is grain generated 60 times a second. Four tiles,
-   cycled, are indistinguishable and free. */
+/*
+ * Grain generated per frame is grain generated 60 times a second. Four tiles,
+ * cycled, are indistinguishable and free.
+ *
+ * The values come from the same hash every cell position runs through rather
+ * than from `Math.random`. Nothing here needs to be unpredictable — it needs to
+ * look unrepeating, which a hash does — and a security tool's own page calling
+ * a random number generator is a question every scanner has to stop and ask.
+ * Not calling one answers it better than a comment claiming it is harmless.
+ */
 function noiseTiles() {
     const tiles = [];
     for (let k = 0; k < 4; k++) {
@@ -203,7 +211,7 @@ function noiseTiles() {
         const x = c.getContext('2d');
         const img = x.createImageData(128, 128);
         for (let i = 0; i < 128 * 128; i++) {
-            const v = 110 + Math.random() * 145;
+            const v = 110 + hash01(i * 3 + k * 65537) * 145;
             img.data[i * 4] = v;
             img.data[i * 4 + 1] = v;
             img.data[i * 4 + 2] = v;
@@ -448,7 +456,7 @@ function createMark(canvas) {
 export function initIntro() {
     const gate = document.querySelector('.gate');
     const canvas = document.getElementById('gate-mark');
-    if (!gate || !canvas || !canvas.getContext) return;
+    if (!gate || !canvas?.getContext) return;
 
     const mark = createMark(canvas);
     if (!mark) return;

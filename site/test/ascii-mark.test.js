@@ -235,6 +235,18 @@ describe('the handover', () => {
         expect(gateProgress(120, -5)).toBe(0);
     });
 
+    /*
+     * `offsetHeight` on an element that is not laid out yet, minus a window
+     * height that is not there either, is how a runway stops being a number.
+     * Divided by, it turns the whole handover into NaN and the mark never
+     * leaves.
+     */
+    it('survives a runway that is not a number at all', () => {
+        expect(gateProgress(120, Number.NaN)).toBe(0);
+        expect(gateProgress(120, Number.POSITIVE_INFINITY)).toBe(0);
+        expect(gateProgress(120, undefined)).toBe(0);
+    });
+
     it('holds the mark for a beat before letting it go', () => {
         expect(handover(0)).toBe(0);
         expect(handover(0.05)).toBe(0);

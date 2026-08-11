@@ -103,6 +103,11 @@
     --radius: 14px;
     --radius-sm: 9px;
 
+    /* The wiring behind the page reads the state like everything else does:
+       the rail it travels on, and the signal travelling. */
+    --wire-rail: color-mix(in srgb, var(--brand) 17%, transparent);
+    --wire-hot: color-mix(in srgb, var(--brand) 78%, transparent);
+
     --swift: 160ms cubic-bezier(0.32, 0.72, 0, 1);
     /* Long enough to read as one movement rather than a flick. */
     --sweep: 520ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -125,6 +130,8 @@
     --faint: #607284;
     --accent: #3d8fc4;
     --ink: #04070b;
+    --wire-rail: color-mix(in srgb, var(--brand) 22%, transparent);
+    --wire-hot: color-mix(in srgb, var(--brand) 90%, transparent);
 }
 
 :root[data-state='arming'][data-count='2'] {
@@ -149,6 +156,14 @@
     --faint: #5f829c;
     --accent: #3d8fc4;
     --ink: #040a12;
+    --wire-rail: color-mix(in srgb, var(--brand) 28%, transparent);
+    --wire-hot: var(--brand);
+}
+
+/* Red is the alarm, and it reaches the wiring too. */
+:root[data-alarm] {
+    --wire-rail: color-mix(in srgb, var(--trip) 26%, transparent);
+    --wire-hot: var(--trip);
 }
 
 
@@ -198,31 +213,6 @@
 @keyframes wire-run {
     from { transform: translateY(-40vh); }
     to { transform: translateY(140vh); }
-}
-
-/*
- * The state the page is in is the state of the wiring. Armed, the signals are
- * brighter and more frequent; when a sensor fires they are red and quick, and
- * the alarm is no longer only in the panel that raised it.
- */
-:root {
-    --wire-rail: color-mix(in srgb, var(--brand) 17%, transparent);
-    --wire-hot: color-mix(in srgb, var(--brand) 78%, transparent);
-}
-
-:root[data-state='arming'] {
-    --wire-rail: color-mix(in srgb, var(--brand) 22%, transparent);
-    --wire-hot: color-mix(in srgb, var(--brand) 90%, transparent);
-}
-
-:root[data-state='armed'] {
-    --wire-rail: color-mix(in srgb, var(--brand) 28%, transparent);
-    --wire-hot: var(--brand);
-}
-
-:root[data-alarm] {
-    --wire-rail: color-mix(in srgb, var(--trip) 26%, transparent);
-    --wire-hot: var(--trip);
 }
 
 /* Restarting the animation at a shorter duration is what a surge looks like. */
@@ -1187,15 +1177,13 @@ a { color: inherit; }
 
 .lap-facts {
     display: grid;
-    gap: 7px;
+    grid-template-columns: 66px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 7px 14px;
     margin: 0 0 16px;
 }
 
-.lap-facts div { display: flex; align-items: baseline; gap: 14px; }
-
 .lap-facts dt {
-    width: 66px;
-    flex: none;
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: var(--label-track);
