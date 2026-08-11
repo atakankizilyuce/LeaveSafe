@@ -15,6 +15,63 @@
  * memorable second on the page.
  */
 
+/* ── type ───────────────────────────────────────────────────────────────── */
+/*
+ * IBM Plex, served from beside the page.
+ *
+ * The page used to run on whatever the operating system offered, which meant
+ * it looked like a different page on every machine and like nothing in
+ * particular on any of them. Plex is a working typeface for technical writing
+ * — a real lowercase g, digits that do not blur, and a monospace cut from the
+ * same drawing, which matters on a page where half the text is a command.
+ *
+ * Served from here rather than from a font CDN. This is the landing page of a
+ * tool whose entire claim is that it talks to nothing: no account, no server,
+ * no internet. A page that opens a connection to Google to draw its own
+ * headline would be arguing against the product underneath it. Five files,
+ * ninety kilobytes, latin only.
+ */
+@font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('fonts/ibm-plex-sans-latin-700-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+}
+
+
 /* ── standby: almost black, almost colourless ───────────────────────────── */
 :root {
     --void: #050609;
@@ -35,13 +92,20 @@
     /* The alarm, and nothing but the alarm. */
     --trip: #f04438;
 
-    --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Tracking for the small uppercase labels. It used to be set per rule and
+       ran as wide as 0.22em, which is a display effect applied to text people
+       are expected to read. One value, and a smaller one. */
+    --label-track: 0.11em;
 
     --radius: 14px;
     --radius-sm: 9px;
 
     --swift: 160ms cubic-bezier(0.32, 0.72, 0, 1);
+    /* Long enough to read as one movement rather than a flick. */
+    --sweep: 520ms cubic-bezier(0.32, 0.72, 0, 1);
     --settle: 320ms cubic-bezier(0.32, 0.72, 0, 1);
     --state-shift: 620ms cubic-bezier(0.32, 0.72, 0, 1);
 }
@@ -91,6 +155,93 @@
 /* ── page ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
+/*
+ * Between the page's background and its content, which is the one place these
+ * can be: given a negative z-index they would fall behind the body's own
+ * background colour and never be seen at all.
+ */
+.wires {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    opacity: var(--wires-in, 1);
+    pointer-events: none;
+}
+
+/* The rail. A pulse needs a track to be travelling along, or it is a light
+   floating in the dark. */
+.wires span {
+    position: absolute;
+    top: 0;
+    left: var(--x);
+    width: 1px;
+    height: 100%;
+    overflow: hidden;
+    background: var(--wire-rail);
+    transition: background var(--state-shift);
+}
+
+/* The signal. Clipped to the width of its own rail, which is what keeps it a
+   signal on a wire rather than a glow in the margin. */
+.wires span::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: var(--len);
+    background: linear-gradient(to bottom, transparent, var(--wire-hot), transparent);
+    animation: wire-run var(--t) linear var(--d) infinite;
+    transition: background var(--state-shift);
+}
+
+@keyframes wire-run {
+    from { transform: translateY(-40vh); }
+    to { transform: translateY(140vh); }
+}
+
+/*
+ * The state the page is in is the state of the wiring. Armed, the signals are
+ * brighter and more frequent; when a sensor fires they are red and quick, and
+ * the alarm is no longer only in the panel that raised it.
+ */
+:root {
+    --wire-rail: color-mix(in srgb, var(--brand) 17%, transparent);
+    --wire-hot: color-mix(in srgb, var(--brand) 78%, transparent);
+}
+
+:root[data-state='arming'] {
+    --wire-rail: color-mix(in srgb, var(--brand) 22%, transparent);
+    --wire-hot: color-mix(in srgb, var(--brand) 90%, transparent);
+}
+
+:root[data-state='armed'] {
+    --wire-rail: color-mix(in srgb, var(--brand) 28%, transparent);
+    --wire-hot: var(--brand);
+}
+
+:root[data-alarm] {
+    --wire-rail: color-mix(in srgb, var(--trip) 26%, transparent);
+    --wire-hot: var(--trip);
+}
+
+/* Restarting the animation at a shorter duration is what a surge looks like. */
+:root[data-alarm] .wires span::after { animation-duration: calc(var(--t) / 3.5); }
+
+/* The rails are placed to fall either side of the column of content. Once the
+   column is the whole screen there is nowhere for them to be. */
+@media (max-width: 900px) {
+    .wires { display: none; }
+}
+
+
+.nav,
+main,
+.foot {
+    position: relative;
+    z-index: 1;
+}
+
 html { scroll-behavior: smooth; }
 
 body {
@@ -98,9 +249,13 @@ body {
     background: var(--void);
     color: var(--text);
     font-family: var(--sans);
-    font-size: 16px;
-    line-height: 1.55;
+    /* Plex sets a little smaller than the system faces this replaced, and light
+       text on a near-black ground needs more room between lines than the same
+       text the other way up. */
+    font-size: 17px;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
     transition: background var(--state-shift), color var(--state-shift);
 }
 
@@ -135,38 +290,106 @@ a { color: inherit; }
 
 
 /* ── buttons ────────────────────────────────────────────────────────────── */
+/*
+ * The hover is the page's own texture arriving.
+ *
+ * The first attempt grew a coloured cap out from behind the icon, which was a
+ * borrowed trick and read as one — a shape sliding about for its own sake. This
+ * is the same mosaic the mark is built from and the same field drifting behind
+ * the page: rest on a button and its surface turns into cells, rising a few
+ * pixels as they land. Nothing here appears that is not already somewhere else
+ * on the page.
+ */
 .btn {
+    position: relative;
+    isolation: isolate;
     display: inline-flex;
     align-items: center;
-    gap: 9px;
-    padding: 10px 18px;
+    gap: 10px;
+    padding: 11px 22px;
     border: 1px solid transparent;
     border-radius: 999px;
+    overflow: hidden;
     font: inherit;
     font-size: 15px;
     font-weight: 600;
     text-decoration: none;
     cursor: pointer;
     white-space: nowrap;
-    transition: background var(--state-shift), color var(--state-shift),
-                border-color var(--state-shift), transform var(--swift);
+    color: var(--text);
+    transition: color var(--settle), background var(--settle), border-color var(--settle),
+                box-shadow var(--settle), transform var(--swift);
 }
+
+.btn::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background-size: 8px 8px;
+    /* Cleared through the middle, so the surface resolves into cells from the
+       edges inward and the label is never asked to be read through them. */
+    mask-image: radial-gradient(84% 130% at 50% 50%, transparent 18%, #000 82%);
+    opacity: 0;
+    transform: translateY(5px);
+    transition: opacity var(--settle), transform var(--settle);
+}
+
+.btn:hover::before,
+.btn:focus-visible::before {
+    opacity: 1;
+    transform: none;
+}
+
+.btn .ico { transition: transform var(--settle); }
+
+.btn:hover .ico,
+.btn:focus-visible .ico { transform: translateX(2px); }
 
 .btn:active { transform: scale(0.97); }
 
+/* Filled: the cells are cut out of the brand rather than laid on it, so the
+   button reads as the same object with its surface resolved into pixels. */
 .btn-fill {
     background: var(--brand);
-    color: #04121d;
+    color: var(--ink);
 }
 
-.btn-ghost {
-    border-color: var(--edge);
-    color: var(--text);
+.btn-fill::before {
+    background-image: radial-gradient(rgba(4, 12, 22, 0.42) 1px, transparent 1.1px);
 }
 
-.btn-ghost:hover { border-color: var(--brand); color: var(--brand); }
+.btn-fill:hover,
+.btn-fill:focus-visible {
+    background: color-mix(in srgb, #fff 12%, var(--brand));
+    box-shadow: 0 8px 26px -12px var(--brand);
+    transform: translateY(-1px);
+}
 
-.btn-lg { padding: 13px 24px; font-size: 16px; }
+/* Outlined: the cells arrive in brand, and the border comes with them. */
+.btn-ghost { border-color: var(--edge); }
+
+.btn-ghost::before {
+    background-image: radial-gradient(color-mix(in srgb, var(--brand) 55%, transparent) 1px, transparent 1.1px);
+}
+
+.btn-ghost:hover,
+.btn-ghost:focus-visible {
+    border-color: color-mix(in srgb, var(--brand) 70%, transparent);
+    background: color-mix(in srgb, var(--brand) 8%, transparent);
+    transform: translateY(-1px);
+}
+
+.btn-lg { padding: 14px 28px; font-size: 16px; }
+
+/* Asked not to animate, the texture is simply there or not, and nothing lifts. */
+@media (prefers-reduced-motion: reduce) {
+    .btn::before { transition: opacity 1ms; transform: none; }
+    .btn:hover,
+    .btn:focus-visible { transform: none; }
+    .btn:hover .ico,
+    .btn:focus-visible .ico { transform: none; }
+}
 
 
 /* ── nav ────────────────────────────────────────────────────────────────── */
@@ -188,7 +411,7 @@ a { color: inherit; }
 .foot-brand {
     font-weight: 700;
     font-size: 15px;
-    letter-spacing: 0.22em;
+    letter-spacing: var(--label-track);
     text-decoration: none;
     color: var(--text);
     transition: color var(--state-shift);
@@ -214,12 +437,22 @@ a { color: inherit; }
 
 
 /* ── hero ───────────────────────────────────────────────────────────────── */
+/*
+ * The sentence and the thing it is asking for, side by side.
+ *
+ * The demonstration used to sit in the second column at the width a phone
+ * happens to be, which is what kept the laptop out of it for so long. It has a
+ * frame of its own now, and the space it left is where the install card goes —
+ * so the first screen after the mark both makes the case and answers it.
+ */
 .hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: clamp(32px, 6vw, 88px);
-    align-items: center;
-    max-width: 1180px;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+    gap: clamp(30px, 4vw, 56px);
+    align-items: start;
+    /* The same measure as every band below it. At 1180 it kept its own left
+       edge, eighty pixels adrift of every heading on the page. */
+    max-width: 1000px;
     margin: 0 auto;
     padding: clamp(48px, 8vw, 96px) clamp(18px, 5vw, 56px) clamp(56px, 9vw, 110px);
 }
@@ -228,15 +461,18 @@ a { color: inherit; }
     margin: 0 0 18px;
     font-family: var(--mono);
     font-size: 12px;
-    letter-spacing: 0.18em;
+    letter-spacing: var(--label-track);
     text-transform: uppercase;
     color: var(--brand);
 }
 
 .hero h1 {
     margin: 0 0 22px;
-    font-size: clamp(38px, 6.2vw, 68px);
-    line-height: 1.02;
+    /* The line break in the markup is the intended one, so the type has to be
+       small enough for "Leave your laptop." to hold a line beside the card. */
+    font-size: clamp(33px, 4.1vw, 48px);
+    line-height: 1.08;
+    text-wrap: balance;
     letter-spacing: -0.035em;
     font-weight: 800;
     color: var(--text);
@@ -245,8 +481,9 @@ a { color: inherit; }
 
 .lede {
     margin: 0 0 30px;
-    max-width: 33em;
-    font-size: clamp(16px, 1.5vw, 18px);
+    max-width: 34em;
+    font-size: clamp(17px, 1.6vw, 19px);
+    line-height: 1.6;
     color: var(--quiet);
     transition: color var(--state-shift);
 }
@@ -257,8 +494,8 @@ a { color: inherit; }
 
 .hero-meta {
     margin: 26px 0 0;
-    max-width: 34em;
-    font-size: 14px;
+    max-width: 36em;
+    font-size: 15px;
     color: var(--faint);
     transition: color var(--state-shift);
 }
@@ -268,7 +505,8 @@ a { color: inherit; }
 .hero-demo { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 
 .phone {
-    width: 306px;
+    width: 100%;
+    max-width: 306px;
     padding: 10px;
     border: 1px solid var(--edge);
     border-radius: 34px;
@@ -298,7 +536,7 @@ a { color: inherit; }
 .p-brand {
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.22em;
+    letter-spacing: var(--label-track);
     color: var(--text);
     transition: color var(--state-shift);
 }
@@ -357,7 +595,7 @@ a { color: inherit; }
     gap: 8px;
     font-family: var(--mono);
     font-size: 9px;
-    letter-spacing: 0.14em;
+    letter-spacing: var(--label-track);
     color: var(--faint);
     transition: color var(--state-shift);
 }
@@ -513,7 +751,7 @@ a { color: inherit; }
     margin: 6px 0 0;
     font-family: var(--mono);
     font-size: 10px;
-    letter-spacing: 0.14em;
+    letter-spacing: var(--label-track);
     color: var(--quiet);
     transition: color var(--state-shift);
 }
@@ -524,7 +762,7 @@ a { color: inherit; }
     margin: 2px 0 0;
     font-family: var(--mono);
     font-size: 9px;
-    letter-spacing: 0.14em;
+    letter-spacing: var(--label-track);
     color: var(--brand);
 }
 
@@ -654,37 +892,36 @@ a { color: inherit; }
     color: var(--trip);
 }
 
-.p-alert-msg { margin: 0 0 8px; font-size: 15px; }
+.p-alert-msg { margin: 0 0 6px; font-size: 15px; }
 
-.p-alert .btn-fill { background: var(--trip); color: #fff; }
+.p-alert-both {
+    margin: 0 0 14px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: var(--label-track);
+    text-transform: uppercase;
+    opacity: 0.85;
+}
+
+/* Red is the alarm and nothing else on this page, so the button in it does not
+   take the brand-coloured hover the rest of them share. */
+.p-alert .btn {
+    background: var(--trip);
+    color: #fff;
+}
+
+.p-alert .btn::before {
+    background-image: radial-gradient(rgba(60, 6, 4, 0.42) 1px, transparent 1.1px);
+}
+
+.p-alert .btn:hover,
+.p-alert .btn:focus-visible {
+    background: color-mix(in srgb, #fff 14%, var(--trip));
+    color: #fff;
+}
 
 
 /* ── saying that it can be touched ──────────────────────────────────────── */
-.demo-hat {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-    padding: 6px 15px;
-    border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--brand) 12%, transparent);
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--brand);
-}
-
-.demo-hat-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--brand);
-    animation: hat-breathe 2.4s ease-in-out infinite;
-}
-
-@keyframes hat-breathe { 50% { opacity: 0.25; } }
 
 /*
  * Until it has been touched once, the arm button breathes. It is the only
@@ -703,7 +940,7 @@ a { color: inherit; }
 
 
 /* ── demo controls ──────────────────────────────────────────────────────── */
-.demo-controls { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.demo-controls { display: flex; justify-content: center; margin-top: 18px; }
 
 .chip {
     padding: 8px 16px;
@@ -720,25 +957,352 @@ a { color: inherit; }
 .chip:hover:not(:disabled) { border-color: var(--trip); color: var(--trip); }
 .chip:disabled { opacity: 0.35; cursor: not-allowed; }
 
-.demo-note {
-    margin: 0;
-    max-width: 27em;
-    text-align: center;
-    font-size: 12px;
-    color: var(--faint);
-    transition: color var(--state-shift);
-}
-
-.demo-note b { color: var(--quiet); font-weight: 600; }
 
 
 /* ── bands ──────────────────────────────────────────────────────────────── */
 .band {
     max-width: 1000px;
     margin: 0 auto;
-    padding: clamp(56px, 9vw, 104px) clamp(18px, 5vw, 56px);
+    padding: clamp(40px, 6vw, 76px) clamp(18px, 5vw, 56px);
+}
+
+/* The demonstration needs two devices beside each other; the reading bands do
+   not. */
+/* The bar is pinned to the top, so an anchor that lands a heading at scroll
+   position zero lands it underneath the bar. */
+.band,
+.hero { scroll-margin-top: 92px; }
+
+/* The sentence under a section heading, at reading size. Every band had one
+   already, dressed as something else each time. */
+.band-lede {
+    margin: -22px 0 38px;
+    max-width: 40em;
+    font-size: 17px;
+    color: var(--quiet);
+    transition: color var(--state-shift);
+}
+
+.band-lede b { color: var(--text); font-weight: 600; }
+
+
+/* ── the install card ───────────────────────────────────────────────────── */
+.get {
+    padding: 20px 20px 6px;
+    background: color-mix(in srgb, var(--panel) 86%, transparent);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.get-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.get-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+.get-note {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: var(--label-track);
+    text-transform: uppercase;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+.get-facts {
+    display: grid;
+    gap: 0;
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.get-facts li {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 11px 0;
     border-top: 1px solid var(--edge);
     transition: border-color var(--state-shift);
+}
+
+.get-facts b {
+    flex: none;
+    width: 96px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: var(--label-track);
+    text-transform: uppercase;
+    color: var(--brand);
+}
+
+.get-facts span {
+    font-size: 14px;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+
+/* ── the rig: an explanation and the two devices it describes ───────────── */
+/*
+ * One frame around both. The words used to sit above the devices with a
+ * hairline between them and everything else, which is how a page ends up
+ * reading as a stack of unrelated slabs. Beside them, the three steps are a
+ * caption for something the visitor can see doing exactly that.
+ */
+.rig-frame {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    gap: clamp(28px, 4vw, 56px);
+    align-items: start;
+    padding: clamp(22px, 3vw, 38px);
+    background: color-mix(in srgb, var(--panel) 86%, transparent);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius);
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.rig-copy { min-width: 0; }
+.rig-copy .sec-title { margin-bottom: 16px; }
+.rig-copy .band-lede { margin: 0 0 26px; }
+
+/* The laptop above the phone, with the wire running down between them: the
+   alert travels that way, and stacked they fit a column beside the words. */
+.rig {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .rig-frame { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 860px) {
+    .hero { grid-template-columns: minmax(0, 1fr); }
+}
+
+.rig-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 0;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+.rig-link span {
+    width: 1px;
+    height: 22px;
+    background: currentColor;
+    opacity: 0.45;
+}
+
+.rig-link em {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-style: normal;
+    letter-spacing: var(--label-track);
+    text-transform: uppercase;
+}
+
+:root[data-state='armed'] .rig-link { color: var(--brand); }
+
+
+/* the laptop */
+.lap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.lap-screen {
+    width: 100%;
+    padding: 0;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius) var(--radius) 3px 3px;
+    overflow: hidden;
+    transition: background var(--state-shift), border-color var(--state-shift);
+}
+
+.lap-bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--edge);
+    transition: border-color var(--state-shift);
+}
+
+.lap-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--edge);
+    transition: background var(--state-shift);
+}
+
+.lap-tag {
+    margin-left: auto;
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent);
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: var(--label-track);
+    text-transform: uppercase;
+    color: var(--brand);
+    transition: border-color var(--state-shift), color var(--state-shift);
+}
+
+.lap-title {
+    margin-left: 6px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+.lap-body { padding: 18px 18px 16px; }
+
+.lap-facts {
+    display: grid;
+    gap: 7px;
+    margin: 0 0 16px;
+}
+
+.lap-facts div { display: flex; align-items: baseline; gap: 14px; }
+
+.lap-facts dt {
+    width: 66px;
+    flex: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: var(--label-track);
+    text-transform: uppercase;
+    color: var(--faint);
+    transition: color var(--state-shift);
+}
+
+.lap-facts dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    transition: color var(--state-shift);
+}
+
+#lap-state { color: var(--quiet); }
+:root[data-state='arming'] #lap-state,
+:root[data-state='armed'] #lap-state { color: var(--brand); }
+
+/* Red is the alarm on this page and nothing else, so it outranks the state
+   colour underneath it. */
+.lap[data-alarm] #lap-state { color: var(--trip); }
+.lap[data-alarm] .lap-dot:first-child { background: var(--trip); }
+
+/* A fixed height, because a log that grows pushes the page down every time a
+   line lands and the whole rig walks about under the cursor. */
+.lap-log {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 4px;
+    height: 104px;
+    margin: 0;
+    padding: 12px 13px;
+    overflow: hidden;
+    list-style: none;
+    background: var(--void);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-sm);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--quiet);
+    /* The line being pushed out of the top is cut in half by the box. Faded, it
+       reads as a log scrolling past; cut, it reads as a rendering fault. */
+    mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
+    transition: background var(--state-shift), border-color var(--state-shift), color var(--state-shift);
+}
+
+/* Wrapping rather than truncating: the sensor messages are written for people,
+   not for a column width, and a line cut off mid-word looks like a fault in the
+   thing being demonstrated. A wrapped line pushes the oldest one out of the box
+   instead, which is what a log does. */
+.lap-log li {
+    display: flex;
+    gap: 10px;
+    animation: log-in 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.lap-log time { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
+.lap-log li[data-kind='trip'] { color: var(--trip); }
+.lap-log li[data-kind='armed'] { color: var(--brand); }
+
+@keyframes log-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* The noise the laptop makes. This is the half of the product a phone-only
+   demonstration never showed. */
+.lap-siren {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 0 0;
+    padding: 11px 14px;
+    background: color-mix(in srgb, var(--trip) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--trip) 45%, transparent);
+    border-radius: var(--radius-sm);
+    color: var(--trip);
+}
+
+.lap-siren b {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: var(--label-track);
+}
+
+.lap-siren .ico { animation: siren 900ms ease-in-out infinite; }
+
+@keyframes siren {
+    0%, 100% { opacity: 0.45; transform: scale(0.92); }
+    50% { opacity: 1; transform: scale(1.06); }
+}
+
+/* The lid's front edge. Two pixels of trapezium is the whole illusion. */
+.lap-foot {
+    width: 74%;
+    height: 9px;
+    background: var(--raised);
+    border: 1px solid var(--edge);
+    border-top: 0;
+    border-radius: 0 0 7px 7px;
+    transition: background var(--state-shift), border-color var(--state-shift);
 }
 
 .sec-title {
@@ -755,23 +1319,30 @@ a { color: inherit; }
 
 
 /* steps */
+/*
+ * A column, not a row of cards. Three boxes side by side made the steps a
+ * third thing on the page competing with the devices they describe; stacked
+ * beside them, each one is a caption for something visible.
+ */
 .steps {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 26px;
+    gap: 0;
     margin: 0;
     padding: 0;
     list-style: none;
-    counter-reset: none;
 }
 
 .steps li {
-    padding: 24px;
-    border: 1px solid var(--edge);
-    border-radius: var(--radius);
-    background: var(--panel);
-    transition: background var(--state-shift), border-color var(--state-shift);
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    column-gap: 14px;
+    padding: 16px 0;
+    border-top: 1px solid var(--edge);
+    transition: border-color var(--state-shift);
 }
+
+.steps li:last-child { border-bottom: 1px solid var(--edge); }
+.steps .step-n { grid-row: span 2; }
 
 .step-n {
     display: inline-flex;
@@ -861,7 +1432,7 @@ a { color: inherit; }
 }
 
 .sensors span {
-    font-size: 14px;
+    font-size: 15.5px;
     color: var(--quiet);
     transition: color var(--state-shift);
 }
@@ -874,7 +1445,7 @@ a { color: inherit; }
     border-left: 2px solid var(--brand);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     background: var(--panel);
-    font-size: 15px;
+    font-size: 16px;
     color: var(--quiet);
     transition: background var(--state-shift), color var(--state-shift);
 }
@@ -933,13 +1504,22 @@ a { color: inherit; }
     transition: background var(--state-shift), border-color var(--state-shift);
 }
 
+/*
+ * Long commands wrap rather than scroll. The scoop line is a hundred and ten
+ * characters and used to sit behind a scrollbar inside the box, so the half of
+ * it that matters — what is actually being installed — was off the right-hand
+ * edge on every screen. Nobody types these out; the button beside it copies the
+ * real string whatever the wrapping does to it.
+ */
 .cmd code {
     flex: 1;
-    overflow-x: auto;
+    min-width: 0;
     font-family: var(--mono);
-    font-size: 13.5px;
+    font-size: 13px;
+    line-height: 1.65;
     color: var(--text);
-    white-space: nowrap;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     transition: color var(--state-shift);
 }
 
@@ -1048,6 +1628,186 @@ a { color: inherit; }
 }
 
 
+/* ── gate ───────────────────────────────────────────────────────────────── */
+/*
+ * The opening screen. Absent until intro.js has confirmed a canvas: with no
+ * script the page opens on the hero, the way it did before this existed. A
+ * first screen that can fail to appear must not be able to take the page with
+ * it.
+ */
+.gate { display: none; }
+
+:root[data-intro] .gate {
+    display: block;
+    position: relative;
+    /* One screen for the mark, and the rest as runway. The stage is stuck to
+       the top across it, so the mark comes apart where it stands instead of
+       sliding off. */
+    height: 175vh;
+    height: 175svh;
+}
+
+/*
+ * The hero is pulled up into the back half of the runway on purpose. Left where
+ * it falls, a sticky stage one screen tall hands over at exactly the moment it
+ * ends: the mark finishes leaving, then a screen of nothing, then the page.
+ * Overlapped, the page rises through the last of the cells, which is the only
+ * version of this that reads as one movement rather than two.
+ */
+:root[data-intro] .hero {
+    /* Far enough that the headline is on screen while the last cells are still
+       in the air. Pulled less than this and the mark finishes leaving before
+       the hero is anywhere near the middle, which puts a screen of black
+       between them — the thing the overlap exists to remove. It can be this far
+       because what makes the hero visible is the opacity below, not the scroll:
+       it is up there long before anyone can see it. */
+    margin-top: -68vh;
+    margin-top: -68svh;
+    position: relative;
+}
+
+/* Not a transition — these two follow the scroll wheel directly, because a
+   transition would lag behind a movement the visitor is driving by hand. */
+:root[data-intro='on'] .hero-copy {
+    opacity: var(--hero-in, 1);
+    transform: translateY(calc((1 - var(--hero-in, 1)) * 30px));
+}
+
+:root[data-intro='on'] .hero-demo {
+    opacity: var(--hero-in-late, 1);
+    transform: translateY(calc((1 - var(--hero-in-late, 1)) * 30px));
+}
+
+/*
+ * With the gate in front of it the bar has nothing to sit on top of, and
+ * `sticky` would still hold its own height at the top of the document — half a
+ * bar of empty space above a screen that is meant to hold one thing. Fixed for
+ * as long as the gate exists; identical everywhere else, since a bar pinned at
+ * the top is a bar pinned at the top.
+ */
+:root[data-intro] .nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+}
+
+.gate-stage {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    height: 100svh;
+    padding: 0 12px;
+}
+
+/* The canvas is larger than the mark inside it — the cells need somewhere to go
+   when they leave — so the gap under it is measured from the mark's edge, not
+   the canvas's. `--mark-pad` is the difference, and the script knows it. */
+#gate-mark {
+    display: block;
+    max-width: 100%;
+}
+
+.gate-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: calc(clamp(8px, 2vh, 22px) - var(--mark-pad, 0px));
+    opacity: var(--gate-text, 1);
+    transform: translateY(var(--gate-lift, 0px));
+    will-change: opacity, transform;
+}
+
+.gate-word {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: clamp(14px, 2.1vw, 20px);
+    font-weight: 700;
+    letter-spacing: 0.42em;
+    /* Letter-spacing pads the last glyph as well; the indent pulls the line
+       back onto the centre it is supposed to share with the mark. */
+    text-indent: 0.42em;
+    color: var(--text);
+}
+
+.gate-word span { color: var(--brand); }
+
+.gate-cue {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--faint);
+    transition: color var(--swift);
+}
+
+.gate-cue:hover { color: var(--brand); }
+.gate-cue .ico { width: 16px; height: 16px; }
+
+/* The name and the invitation wait for the mark. It takes about two seconds to
+   surface, and a caption that arrives first captions nothing. */
+:root[data-intro='on'] .gate-word,
+:root[data-intro='on'] .gate-cue {
+    opacity: 0;
+    animation: gate-in 900ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+:root[data-intro='on'] .gate-word { animation-delay: 1550ms; }
+:root[data-intro='on'] .gate-cue { animation-delay: 2150ms; }
+
+@keyframes gate-in {
+    from { opacity: 0; transform: translateY(9px); }
+    to { opacity: 1; transform: none; }
+}
+
+:root[data-intro='on'] .gate-cue .ico { animation: gate-bob 2.6s ease-in-out 3s infinite; }
+
+@keyframes gate-bob {
+    0%, 100% { transform: none; }
+    50% { transform: translateY(4px); }
+}
+
+/* While the mark holds the screen there is nothing to navigate. */
+:root[data-intro='on'] .nav {
+    opacity: 0;
+    transform: translateY(-101%);
+    pointer-events: none;
+    transition: opacity var(--state-shift), transform var(--state-shift);
+}
+
+:root[data-intro='on'][data-gate-passed='yes'] .nav {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+
+/* ── arrivals ───────────────────────────────────────────────────────────── */
+/*
+ * The sections below the gate come in the way the mark does: from underneath,
+ * once. Hidden only once the script has said it will be putting them back —
+ * `[data-reveals]` is that promise, and without it nothing here applies.
+ */
+[data-reveal] {
+    transition: opacity 620ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                transform 620ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+:root[data-reveals] [data-reveal='out'] {
+    opacity: 0;
+    transform: translateY(18px);
+}
+
+
 /*
  * Asked not to animate, the page settles rather than travelling — the same
  * 1ms the product's own tokens use, so the states still differ but nothing
@@ -1065,11 +1825,17 @@ a { color: inherit; }
     /* The invitations stop moving, but do not disappear: the ring around the
        arm button stays, held at the size the breath would have reached. */
     .p-alert,
-    .core-icons,
-    .demo-hat-dot { animation: none; }
+    .core-icons { animation: none; }
 
     .phone[data-untouched] .p-arm {
         animation: none;
         box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 30%, transparent);
     }
+
+    /* The mark is still drawn and still the first thing on the page; it simply
+       arrives already there. The sections below stop travelling in, and the
+       signals on the wires stop travelling at all — the rails stay, because
+       they are the only thing holding the margins. */
+    [data-reveal] { transition: none; }
+    .wires span::after { animation: none; opacity: 0.5; }
 }

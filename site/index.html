@@ -24,6 +24,31 @@
 <body>
 
 <!--
+  The wiring the page is laid over.
+
+  Not a picture of the product — the thing the product does. A sensor fires on
+  the laptop and a signal leaves for the phone; these are the lines it leaves
+  on. At rest the pulses are slow and far apart. Armed, they quicken. When a
+  sensor actually fires they turn red and race, so the alarm is not only in the
+  panel that raised it: it goes through the page.
+
+  Ten rails, placed to fall either side of the column of content. CSS moves
+  them; the script only decides when they are allowed to be seen at all.
+-->
+<div class="wires" aria-hidden="true">
+  <span style="--x: 2%;  --len: 24vh; --t: 8s;  --d: -2s"></span>
+  <span style="--x: 5%;  --len: 15vh; --t: 11s; --d: -7s"></span>
+  <span style="--x: 8%;  --len: 30vh; --t: 6s;  --d: -4s"></span>
+  <span style="--x: 11%; --len: 12vh; --t: 13s; --d: -9s"></span>
+  <span style="--x: 14%; --len: 20vh; --t: 9s;  --d: -1s"></span>
+  <span style="--x: 86%; --len: 18vh; --t: 10s; --d: -6s"></span>
+  <span style="--x: 89%; --len: 28vh; --t: 7s;  --d: -3s"></span>
+  <span style="--x: 92%; --len: 13vh; --t: 12s; --d: -8s"></span>
+  <span style="--x: 95%; --len: 26vh; --t: 8.5s; --d: -5s"></span>
+  <span style="--x: 98%; --len: 16vh; --t: 11.5s; --d: -10s"></span>
+</div>
+
+<!--
   One sprite for every icon on the page. The panel's own icons are redrawn here
   rather than imported: this page needs eleven of them and none of the machinery
   around them.
@@ -45,6 +70,8 @@
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5.5 5.5L20 7"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3ZM12 9v5M12 17.5v.5"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-siren" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
   </defs>
 </svg>
 
@@ -52,8 +79,9 @@
 <header class="nav">
   <a class="nav-brand" href="#top">LEAVE<span>SAFE</span></a>
   <nav class="nav-links" aria-label="Primary">
-    <a href="#what">What it does</a>
     <a href="#get">Get it</a>
+    <a href="#see">Watch it</a>
+    <a href="#what">What it does</a>
     <a href="https://github.com/atakankizilyuce/LeaveSafe">GitHub</a>
   </nav>
   <a class="btn btn-fill nav-cta" href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">
@@ -64,8 +92,39 @@
 
 <main id="top">
 
+<!-- ─────────────────────────────  gate  ─────────────────────────────
+  The page opens on the mark and nothing else.
+
+  The shield is not an image here. It is the same two paths the panel below
+  draws — the shield from the ring's core, the eye from the sensor sprite —
+  painted to a canvas, divided into sixty cells across, and rebuilt out of
+  those cells. It surfaces from the bottom as a silhouette and takes its
+  colour once it has finished arriving.
+
+  This section only exists once the script has confirmed a canvas: with
+  neither, `display: none` leaves the page as it always was, opening on the
+  hero. Nothing here is load-bearing, which is the point — the first thing a
+  visitor sees must not be the thing most likely to fail.
+-->
+<section class="gate" aria-labelledby="gate-word">
+  <div class="gate-stage">
+    <canvas id="gate-mark" width="460" height="460" role="img"
+            aria-label="The LeaveSafe shield: a shield with an open eye at its centre, built from a grid of cells"></canvas>
+    <!-- Wrapped, so the scroll can fade the pair as a unit without fighting the
+         entrance each of them animates in on. -->
+    <div class="gate-text">
+      <p class="gate-word" id="gate-word">LEAVE<span>SAFE</span></p>
+      <a class="gate-cue" href="#hero">
+        <span>Scroll</span>
+        <svg class="ico" aria-hidden="true"><use href="#i-chev-down"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+
 <!-- ─────────────────────────────  hero  ───────────────────────────── -->
-<section class="hero">
+<section class="hero" id="hero">
   <div class="hero-copy">
     <p class="eyebrow">Open source · Apache-2.0</p>
 
@@ -94,20 +153,138 @@
   </div>
 
   <!--
-    A demonstration, and it says so. Nothing here is connected to anything: the
-    countdown is three timeouts and the colours are the product's own
-    :root[data-state] rule, which is why arming repaints the whole page rather
-    than this box. The real thing is in the download.
-  -->
-  <div class="hero-demo">
-    <!--
-      Said before the panel rather than after it. The first version put the only
-      cue underneath — "a demonstration, nothing is connected" — which reads as
-      "do not bother touching this", and people did not touch it.
-    -->
-    <p class="demo-hat"><span class="demo-hat-dot" aria-hidden="true"></span>Try it — this panel is live</p>
+    The install card, beside the sentence that argues for it.
 
-    <div class="phone" data-untouched>
+    It has been a band of its own twice — once at the foot of the page, once
+    under the hero — and both times the page read as a stack of separate slabs
+    with a hairline between each. A landing page is one argument, so the thing
+    being asked for sits inside the paragraph doing the asking.
+  -->
+  <div class="get" id="get">
+    <div class="get-head">
+      <h2 class="get-title">Get it</h2>
+      <p class="get-note">One file · no installer · no account</p>
+    </div>
+
+  <div class="tabs" role="tablist" aria-label="Installation method">
+    <button class="tab is-on" role="tab" aria-selected="true"  aria-controls="tab-brew" id="t-brew" data-os="mac" type="button">macOS / Linux</button>
+    <button class="tab"       role="tab" aria-selected="false" aria-controls="tab-win"  id="t-win"  data-os="windows" type="button">Windows</button>
+    <button class="tab"       role="tab" aria-selected="false" aria-controls="tab-bin"  id="t-bin"  data-os="other" type="button">Direct download</button>
+  </div>
+
+  <div class="tab-panel" id="tab-brew" role="tabpanel" aria-labelledby="t-brew">
+    <p class="tab-lede">Homebrew puts <code>leavesafe</code> on your <code>PATH</code> and makes upgrading one command.</p>
+    <div class="cmd"><code>brew tap atakankizilyuce/tap &amp;&amp; brew install leavesafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
+  </div>
+
+  <div class="tab-panel" id="tab-win" role="tabpanel" aria-labelledby="t-win" hidden>
+    <p class="tab-lede">WinGet ships with Windows. Scoop works too.</p>
+    <div class="cmd"><code>winget install LeaveSafe.LeaveSafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
+    <div class="cmd"><code>scoop bucket add atakankizilyuce https://github.com/atakankizilyuce/homebrew-tap &amp;&amp; scoop install leavesafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
+  </div>
+
+  <div class="tab-panel" id="tab-bin" role="tabpanel" aria-labelledby="t-bin" hidden>
+    <p class="tab-lede">One file, no installer, no dependencies. On Linux and macOS, <code>chmod +x</code> it before running.</p>
+    <ul class="files">
+      <li><b>Windows</b> <span>x64</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-windows-amd64.exe</a></li>
+      <li><b>Linux</b> <span>x64 · ARM64</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-linux-amd64</a></li>
+      <li><b>macOS</b> <span>Intel · Apple silicon</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-darwin-arm64</a></li>
+    </ul>
+    <p class="tab-lede">
+      Every artifact carries a signed attestation naming the workflow and commit that
+      built it — <a href="https://github.com/atakankizilyuce/LeaveSafe#installation">how to verify a download</a>.
+    </p>
+  </div>
+
+  <ul class="get-facts">
+    <li><b>One binary</b><span>Nothing to uninstall — delete the file.</span></li>
+    <li><b>Everywhere</b><span>Windows, Linux and macOS. The same build, the same commands.</span></li>
+    <li><b>Apache-2.0</b><span>Read every line before you run it.</span></li>
+  </ul>
+  </div>
+</section>
+
+
+
+<!-- ────────────────────────────  watch it  ─────────────────────────── -->
+<!--
+  Both ends, side by side.
+
+  The demonstration used to be a phone on its own, which quietly taught the
+  wrong thing: that LeaveSafe is a phone app. It is a program on the laptop that
+  a phone happens to be a remote for — and when a sensor fires, the laptop is
+  the one that makes the noise. A visitor who never sees the laptop never learns
+  the half of the product that works when the phone is in another room.
+
+  Nothing here is connected to anything: the countdown is three timeouts, and
+  the colours are the product's own :root[data-state] rule, which is why arming
+  repaints the whole page rather than this box.
+-->
+<section class="band band-see" id="see">
+  <div class="rig-frame">
+
+    <div class="rig-copy">
+      <h2 class="sec-title">Watch it happen</h2>
+  <p class="band-lede">
+    The laptop watches and the phone is the remote. The moment anything happens,
+    <b>both ends sound</b> — the one in your pocket so you know, and the one you
+    walked away from so everybody in the room does.
+  </p>
+
+      <ol class="steps">
+        <li>
+          <span class="step-n">1</span>
+          <h3>Run it</h3>
+          <p>One file, no installer, no dependencies. The dashboard takes over the terminal: a QR code on the left, live status on the right.</p>
+        </li>
+        <li>
+          <span class="step-n">2</span>
+          <h3>Scan it</h3>
+          <p>There is no app to install. The QR code opens a page served by your own laptop, with the pairing key already filled in.</p>
+        </li>
+        <li>
+          <span class="step-n">3</span>
+          <h3>Arm it</h3>
+          <p>Three seconds, the sensors gather into a shield, and your laptop is being watched. Hold to disarm when you get back.</p>
+        </li>
+      </ol>
+    </div>
+
+    <div class="rig">
+
+    <!-- the laptop: what is actually running -->
+    <div class="lap" id="lap">
+      <div class="lap-screen">
+        <div class="lap-bar">
+          <span class="lap-dot" aria-hidden="true"></span>
+          <span class="lap-dot" aria-hidden="true"></span>
+          <span class="lap-dot" aria-hidden="true"></span>
+          <span class="lap-title">leavesafe — your laptop</span>
+          <span class="lap-tag">demo</span>
+        </div>
+
+        <div class="lap-body">
+          <dl class="lap-facts">
+            <div><dt>status</dt><dd id="lap-state">NOT ARMED</dd></div>
+            <div><dt>sensors</dt><dd id="lap-sensors">6 ready</dd></div>
+            <div><dt>paired</dt><dd>1 phone</dd></div>
+          </dl>
+
+          <ol class="lap-log" id="lap-log" aria-live="polite" aria-label="Laptop log"></ol>
+
+          <p class="lap-siren" id="lap-siren" hidden>
+            <svg class="ico" aria-hidden="true"><use href="#i-siren"/></svg>
+            <b>THE LAPTOP IS SOUNDING</b>
+          </p>
+        </div>
+      </div>
+      <div class="lap-foot" aria-hidden="true"></div>
+    </div>
+
+    <!-- the wire between them is the point: no server in the middle -->
+    <div class="rig-link" aria-hidden="true"><span></span><em>direct</em><span></span></div>
+
+<div class="phone" data-untouched>
       <div class="phone-screen">
 
         <div class="p-head">
@@ -165,52 +342,34 @@
           <svg class="ico ico-lg"><use href="#i-alert"/></svg>
           <p class="p-alert-sensor" id="p-alert-sensor">INPUT</p>
           <p class="p-alert-msg" id="p-alert-msg">Sustained mouse or keyboard activity detected</p>
+          <!-- Said on the phone because this is where it is read, and the other
+               end is across the room being the actual alarm. -->
+          <p class="p-alert-both">The laptop is screaming too</p>
           <button class="btn btn-fill" id="p-dismiss" type="button">Dismiss</button>
         </div>
 
       </div>
     </div>
 
+    <!--
+      The control belongs under the two things it acts on, not in the column of
+      prose beside them. Its label is the instruction: while the panel is not
+      armed there is nothing to set off, and the button says so rather than a
+      paragraph elsewhere saying it.
+    -->
     <div class="demo-controls">
-      <button class="chip" id="btn-trigger" type="button" disabled>Trigger a sensor</button>
-      <p class="demo-note">
-        Tap <b>Arm</b>, then set a sensor off. Everything here behaves the way the
-        app does — it just is not talking to a real laptop.
-      </p>
+      <button class="chip" id="btn-trigger" type="button" disabled>Arm it first</button>
     </div>
+
+  </div>
+
   </div>
 </section>
 
 
 <!-- ─────────────────────────  what it does  ───────────────────────── -->
 <section class="band" id="what">
-  <h2 class="sec-title">Three steps, then you walk away</h2>
-
-  <ol class="steps">
-    <li>
-      <span class="step-n">1</span>
-      <h3>Run it</h3>
-      <p>One file, no installer, no dependencies. The dashboard takes over the terminal: a QR code on the left, live status on the right.</p>
-    </li>
-    <li>
-      <span class="step-n">2</span>
-      <h3>Scan it</h3>
-      <p>There is no app to install. The QR code opens a page served by your own laptop, with the pairing key already filled in.</p>
-    </li>
-    <li>
-      <span class="step-n">3</span>
-      <h3>Arm it</h3>
-      <p>Three seconds, the sensors gather into a shield, and your laptop is being watched. Hold to disarm when you get back.</p>
-    </li>
-  </ol>
-
-  <figure class="shot">
-    <img src="assets/tui-dashboard.png" width="1910" height="1440" loading="lazy" decoding="async"
-         alt="The LeaveSafe terminal dashboard: a QR code on the left, the pairing key and the URL on the right, the log along the bottom">
-    <figcaption>The dashboard on the laptop. Real output from a running binary, not a mock-up.</figcaption>
-  </figure>
-
-  <h2 class="sec-title sec-title-sm">Six things it watches</h2>
+  <h2 class="sec-title">Six things it watches</h2>
 
   <ul class="sensors">
     <li><svg class="ico"><use href="#i-power"/></svg><b>Power</b><span>The charger is unplugged or plugged in</span></li>
@@ -221,6 +380,12 @@
     <li><svg class="ico"><use href="#i-input"/></svg><b>Input</b><span>Sustained keyboard or mouse activity</span></li>
   </ul>
 
+  <figure class="shot">
+    <img src="assets/tui-dashboard.png" width="1910" height="1440" loading="lazy" decoding="async"
+         alt="The LeaveSafe terminal dashboard: a QR code on the left, the pairing key and the URL on the right, the log along the bottom">
+    <figcaption>The dashboard on the laptop. Real output from a running binary, not a mock-up.</figcaption>
+  </figure>
+
   <p class="caveat">
     <b>One honest limit.</b> The phone is the convenience, not the alarm. When its
     screen locks, the operating system freezes the page, so an alert may not reach
@@ -229,40 +394,7 @@
 </section>
 
 
-<!-- ────────────────────────────  get it  ──────────────────────────── -->
-<section class="band" id="get">
-  <h2 class="sec-title">Get it</h2>
 
-  <div class="tabs" role="tablist" aria-label="Installation method">
-    <button class="tab is-on" role="tab" aria-selected="true"  aria-controls="tab-brew" id="t-brew" type="button">macOS / Linux</button>
-    <button class="tab"       role="tab" aria-selected="false" aria-controls="tab-win"  id="t-win"  type="button">Windows</button>
-    <button class="tab"       role="tab" aria-selected="false" aria-controls="tab-bin"  id="t-bin"  type="button">Direct download</button>
-  </div>
-
-  <div class="tab-panel" id="tab-brew" role="tabpanel" aria-labelledby="t-brew">
-    <p class="tab-lede">Homebrew puts <code>leavesafe</code> on your <code>PATH</code> and makes upgrading one command.</p>
-    <div class="cmd"><code>brew tap atakankizilyuce/tap &amp;&amp; brew install leavesafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
-  </div>
-
-  <div class="tab-panel" id="tab-win" role="tabpanel" aria-labelledby="t-win" hidden>
-    <p class="tab-lede">WinGet ships with Windows. Scoop works too.</p>
-    <div class="cmd"><code>winget install LeaveSafe.LeaveSafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
-    <div class="cmd"><code>scoop bucket add atakankizilyuce https://github.com/atakankizilyuce/homebrew-tap &amp;&amp; scoop install leavesafe</code><button class="copy" type="button" aria-label="Copy command"><svg class="ico"><use href="#i-copy"/></svg></button></div>
-  </div>
-
-  <div class="tab-panel" id="tab-bin" role="tabpanel" aria-labelledby="t-bin" hidden>
-    <p class="tab-lede">One file, no installer, no dependencies. On Linux and macOS, <code>chmod +x</code> it before running.</p>
-    <ul class="files">
-      <li><b>Windows</b> <span>x64</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-windows-amd64.exe</a></li>
-      <li><b>Linux</b> <span>x64 · ARM64</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-linux-amd64</a></li>
-      <li><b>macOS</b> <span>Intel · Apple silicon</span> <a href="https://github.com/atakankizilyuce/LeaveSafe/releases/latest">leavesafe-darwin-arm64</a></li>
-    </ul>
-    <p class="tab-lede">
-      Every artifact carries a signed attestation naming the workflow and commit that
-      built it — <a href="https://github.com/atakankizilyuce/LeaveSafe#installation">how to verify a download</a>.
-    </p>
-  </div>
-</section>
 
 
 <footer class="foot">
@@ -286,7 +418,11 @@
      between this and what ships. -->
 <script type="module">
   import { initDemo } from './demo.js';
+  import { initBackdrop, initIntro, initReveals } from './intro.js';
   initDemo();
+  initIntro();
+  initReveals();
+  initBackdrop();
 </script>
 </body>
 </html>
