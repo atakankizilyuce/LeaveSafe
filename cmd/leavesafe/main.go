@@ -1140,6 +1140,10 @@ func drawScanLabel(out io.Writer, l layout) {
 // inside the scrolling region the layout just pinned — so the screen ends up one
 // line out of step with what the program believes it drew.
 func drawFooter(out io.Writer, l layout) {
+	if !l.footerShown {
+		return
+	}
+
 	// The ones worth reaching for without being told, and then `help` for the
 	// rest. The full list came to a hundred and thirty-four columns, which is
 	// wider than the window most people run this in — so it wrapped, and a

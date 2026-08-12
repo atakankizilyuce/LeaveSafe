@@ -215,6 +215,12 @@ diff is small.
   did — they arrive as keystrokes now rather than as signals, so the program
   answers them itself. Input that is not a terminal is read as whole lines, as
   before.
+- **A small window keeps the address instead of the command list.** In a window
+  with no room for the QR code, the status grid was clipped where the log
+  started — but the command footer is drawn at fixed rows above the log, so it
+  was printed straight through the middle of the grid. Around 80×24 that meant a
+  list of commands across the address and the pairing key. The footer now gives
+  way instead: `help` says everything it says, and nothing else says the address.
 - **A PIN typed to disarm is no longer shown.** It was echoed in the clear onto
   the screen of the laptop somebody had just picked up, and left in the terminal
   scrollback afterwards. It is drawn as asterisks and never remembered in the
