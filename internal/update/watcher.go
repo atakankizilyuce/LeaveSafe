@@ -24,6 +24,23 @@ const failureRetry = time.Hour
 // script would query at the same moment. Sparkle and Omaha both do this.
 const jitterFraction = 10
 
+// DefaultStartupFloor is how recently a check must have run for the one at
+// startup to be skipped.
+//
+// The schedule proper is a day, and a day is right for a program that stays up
+// for weeks. It is wrong for the moment somebody starts the program: they are
+// sitting in front of it, a release they want may have been cut an hour ago,
+// and waiting out the rest of yesterday's interval means the one person looking
+// at the screen is the one person not told.
+//
+// So a start checks, and this is the only thing that stops it. It exists for the
+// case the daily interval was really protecting against: a copy in a crash loop,
+// restarted every few seconds by a service manager, which without a floor would
+// spend a rate limit in a minute. Fifteen minutes turns that back into four
+// requests an hour while leaving every ordinary start — a laptop opened, a
+// reboot, a restart to change a setting — free to look.
+const DefaultStartupFloor = 15 * time.Minute
+
 // jitterCap bounds that delay in absolute terms.
 //
 // A tenth of a daily interval is nearly two and a half hours, which would mean a
@@ -54,6 +71,10 @@ type Watcher struct {
 
 	// Check performs one check against the given channel.
 	Check func(ctx context.Context, channel string) (Result, error)
+
+	// StartupFloor is how recently a check must have run for the one at startup
+	// to be skipped. Zero means DefaultStartupFloor.
+	StartupFloor time.Duration
 
 	// Ledger persists the schedule. Required.
 	Ledger *Ledger
@@ -103,7 +124,10 @@ func (w Watcher) Run(ctx context.Context) {
 
 		wait := w.until(rec, interval)
 		if first {
-			wait += w.jitter(interval)
+			// A start looks now rather than waiting out the remainder of a
+			// daily interval. See DefaultStartupFloor for what still holds it
+			// back and why that is only the crash-loop case.
+			wait = w.until(rec, w.startupFloor()) + w.jitter(interval)
 			first = false
 		}
 		if !w.sleep(ctx, wait) {
@@ -178,6 +202,13 @@ func (w Watcher) until(rec Record, interval time.Duration) time.Duration {
 	default:
 		return interval - elapsed
 	}
+}
+
+func (w Watcher) startupFloor() time.Duration {
+	if w.StartupFloor <= 0 {
+		return DefaultStartupFloor
+	}
+	return w.StartupFloor
 }
 
 func (w Watcher) settings() (bool, string) {

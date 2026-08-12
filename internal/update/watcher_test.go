@@ -65,29 +65,70 @@ func TestWatcherChecksImmediatelyOnAFirstRun(t *testing.T) {
 	}
 }
 
-// A restart minutes after the last check must not query again: a copy in a crash
-// loop would otherwise burn through the rate limit.
-func TestWatcherWaitsOutTheIntervalAfterARestart(t *testing.T) {
+// Starting the program looks now, even though the daily interval has hours left
+// on it.
+//
+// The interval is right for a copy that stays up for weeks and wrong for the
+// moment somebody starts one: they are sitting in front of the screen, a release
+// they want may have been cut an hour ago, and waiting out the rest of
+// yesterday's interval means the one person looking is the one person not told.
+func TestAStartLooksWithoutWaitingOutTheInterval(t *testing.T) {
 	h := newHarness(t, 1)
 	ledger := NewLedger(t.TempDir())
 	if err := ledger.Save(Record{LastCheck: h.now.Add(-1 * time.Hour)}); err != nil {
 		t.Fatalf("seed ledger: %v", err)
 	}
 
+	var checks int
 	Watcher{
 		Interval: 24 * time.Hour,
 		Ledger:   ledger,
 		Now:      h.clock,
 		Sleep:    h.sleep,
 		Jitter:   func(time.Duration) time.Duration { return 0 },
-		Check:    func(context.Context, string) (Result, error) { return Result{}, nil },
+		Check: func(context.Context, string) (Result, error) {
+			checks++
+			return Result{}, nil
+		},
+	}.Run(context.Background())
+
+	if checks == 0 {
+		t.Fatal("a start an hour after the last check did not look")
+	}
+	if len(h.slept) == 0 {
+		t.Fatal("no wait was recorded")
+	}
+	if h.slept[0] != 0 {
+		t.Errorf("first wait = %v, want none", h.slept[0])
+	}
+}
+
+// The one thing that still holds a start back, and the case the daily interval
+// was really protecting against: a copy restarted every few seconds by a service
+// manager would spend a rate limit in a minute.
+func TestAStartInsideTheFloorWaitsRatherThanLooking(t *testing.T) {
+	h := newHarness(t, 1)
+	ledger := NewLedger(t.TempDir())
+	if err := ledger.Save(Record{LastCheck: h.now.Add(-1 * time.Minute)}); err != nil {
+		t.Fatalf("seed ledger: %v", err)
+	}
+
+	Watcher{
+		Interval:     24 * time.Hour,
+		StartupFloor: 15 * time.Minute,
+		Ledger:       ledger,
+		Now:          h.clock,
+		Sleep:        h.sleep,
+		Jitter:       func(time.Duration) time.Duration { return 0 },
+		Check:        func(context.Context, string) (Result, error) { return Result{}, nil },
 	}.Run(context.Background())
 
 	if len(h.slept) == 0 {
 		t.Fatal("no wait was recorded")
 	}
-	if want := 23 * time.Hour; h.slept[0] != want {
-		t.Errorf("first wait = %v, want %v", h.slept[0], want)
+	if want := 14 * time.Minute; h.slept[0] != want {
+		t.Errorf("first wait = %v, want %v — a crash loop would query on every restart",
+			h.slept[0], want)
 	}
 }
 
@@ -108,8 +149,11 @@ func TestWatcherHandlesAClockThatMovedBack(t *testing.T) {
 		Check:    func(context.Context, string) (Result, error) { return Result{}, nil },
 	}.Run(context.Background())
 
-	if want := 24 * time.Hour; h.slept[0] != want {
-		t.Errorf("first wait = %v, want one interval (%v)", h.slept[0], want)
+	// A start waits the floor at most, whatever the recorded time says. The
+	// thing being guarded against is a wait of weeks, and fifteen minutes is
+	// not it.
+	if floor := DefaultStartupFloor; h.slept[0] > floor {
+		t.Errorf("first wait = %v, want no more than the %v floor", h.slept[0], floor)
 	}
 }
 
@@ -292,7 +336,7 @@ func TestWatcherStopsOnContextCancel(t *testing.T) {
 }
 
 func TestWatcherDefaultsToADailyInterval(t *testing.T) {
-	h := newHarness(t, 1)
+	h := newHarness(t, 2)
 	ledger := NewLedger(t.TempDir())
 	if err := ledger.Save(Record{LastCheck: h.now}); err != nil {
 		t.Fatalf("seed ledger: %v", err)
@@ -306,8 +350,13 @@ func TestWatcherDefaultsToADailyInterval(t *testing.T) {
 		Check:  func(context.Context, string) (Result, error) { return Result{}, nil },
 	}.Run(context.Background())
 
-	if h.slept[0] != DefaultInterval {
-		t.Errorf("wait = %v, want %v", h.slept[0], DefaultInterval)
+	// The second wait, because the first one belongs to the start and is
+	// measured against the floor rather than the interval.
+	if len(h.slept) < 2 {
+		t.Fatalf("only %d waits were recorded", len(h.slept))
+	}
+	if h.slept[1] != DefaultInterval {
+		t.Errorf("wait = %v, want %v", h.slept[1], DefaultInterval)
 	}
 }
 

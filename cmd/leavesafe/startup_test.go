@@ -904,3 +904,67 @@ func TestQuitShutsTheProgramDownAndLeavesWithNothingToReport(t *testing.T) {
 		t.Errorf("the server was still running after quit: %v", err)
 	}
 }
+
+// ---- what a start says about a newer release -------------------------------
+
+// asRelease makes the test binary claim to be a released version. The default
+// is "dev", which is exactly the build that never checks — so without this every
+// test below would take that branch and prove nothing about the others.
+func asRelease(t *testing.T, v string) {
+	t.Helper()
+	real := version
+	version = v
+	t.Cleanup(func() { version = real })
+}
+
+// The complaint this answers: a release is cut, the program is restarted, and
+// the terminal says nothing. The check that found the release announced it once,
+// on a run that has since ended, into a log that has since scrolled — so the
+// silence reads exactly like there being nothing to say.
+func TestAStartRepeatsAReleaseItAlreadyFound(t *testing.T) {
+	a := startedApp(t, nil)
+	asRelease(t, "v1.2.0")
+	ledger := update.NewLedger(config.ConfigDir())
+	if err := ledger.Save(update.Record{LastSeenLatest: "v99.0.0"}); err != nil {
+		t.Fatalf("seed ledger: %v", err)
+	}
+
+	out := captureLog(t, func() { a.sayWhatIsAlreadyKnown(ledger, update.MethodUnknown) })
+
+	if !strings.Contains(out, "99.0.0") {
+		t.Errorf("a start said nothing about a release already found; output was:\n%s", out)
+	}
+}
+
+// And it stops saying it once that release is the one running, so upgrading is
+// what ends the notice rather than anybody having to clear anything.
+func TestAStartSaysNothingAboutAReleaseAlreadyInstalled(t *testing.T) {
+	a := startedApp(t, nil)
+	asRelease(t, "v1.2.0")
+	ledger := update.NewLedger(config.ConfigDir())
+	if err := ledger.Save(update.Record{LastSeenLatest: "v1.2.0"}); err != nil {
+		t.Fatalf("seed ledger: %v", err)
+	}
+
+	out := captureLog(t, func() { a.sayWhatIsAlreadyKnown(ledger, update.MethodUnknown) })
+
+	if strings.Contains(out, "is available") {
+		t.Errorf("a start offered the version it is already running; output was:\n%s", out)
+	}
+}
+
+// A development build never checks — Checker.Check returns before it reaches the
+// network — and saying nothing about that is what makes it look like a copy that
+// is up to date.
+func TestADevelopmentBuildSaysWhyItWillNeverCheck(t *testing.T) {
+	a := startedApp(t, nil)
+	asRelease(t, "dev")
+
+	out := captureLog(t, func() {
+		a.sayWhatIsAlreadyKnown(update.NewLedger(config.ConfigDir()), update.MethodUnknown)
+	})
+
+	if !strings.Contains(out, "development build") {
+		t.Errorf("a development build said nothing about not checking; output was:\n%s", out)
+	}
+}

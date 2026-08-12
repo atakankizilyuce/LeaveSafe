@@ -229,6 +229,24 @@ diff is small.
 
 ### Fixed
 
+- **Starting the program checks for a new release, and says so.** The check ran
+  on a daily schedule that survived restarts, so a release cut this afternoon
+  was not noticed until tomorrow — and restarting to see whether anything had
+  changed did nothing, because the schedule is deliberately not reset by a
+  restart. A start now looks straight away unless a check ran in the last
+  fifteen minutes, which is the only case the daily interval was really
+  protecting against: a copy restarted every few seconds by a service manager.
+
+  A start also repeats a release this installation has already found, without
+  asking the network anything. It used to be announced once, into a log that has
+  since scrolled, on a run that has since ended — and the silence afterwards read
+  exactly like there being nothing to say. It stops once that release is the one
+  running, so upgrading ends the notice rather than anybody having to clear it.
+
+  And a development build now says why it will never check. `Checker.Check`
+  returns before it reaches the network when the running version is not a
+  release, which is correct — there is nothing to compare against — but saying
+  nothing about it made a development build look like a copy that was up to date.
 - **Remote access says what it knows, not what it arranged.** A router accepting
   a port mapping was being reported as "ACTIVE", with the public address printed
   as the QR code to scan — and a port mapping is an agreement, not a delivered

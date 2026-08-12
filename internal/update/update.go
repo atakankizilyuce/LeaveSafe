@@ -236,6 +236,20 @@ func NormalizeChannel(c string) string {
 // Two different suffixes at the same numeric version compare equal. Ordering
 // -beta against -rc1 would need rules that nothing here exercises, and an
 // untested subtlety is worse than a stated limit.
+// IsNewer reports whether latest names a release above current.
+//
+// It exists for the question a start asks before it has asked the network
+// anything: the ledger remembers what was last found, and a copy that has just
+// been restarted should say so again rather than sit silent until the next
+// check comes round. A version that has since been installed answers false, so
+// upgrading is what stops the notice rather than anybody having to clear it.
+func IsNewer(latest, current string) bool {
+	if !IsRelease(latest) || !IsRelease(current) {
+		return false
+	}
+	return compareVersions(latest, current) > 0
+}
+
 func compareVersions(a, b string) int {
 	pa := versionParts(a)
 	pb := versionParts(b)
