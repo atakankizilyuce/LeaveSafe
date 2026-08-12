@@ -203,6 +203,22 @@ diff is small.
 
 ### Fixed
 
+- **Typing has a line of its own.** The terminal echoed what you typed wherever
+  the cursor happened to be, which was inside the scrolling log — so a sensor
+  reporting itself while you were half-way through `disarm` wrote its message
+  across the word, and the word stayed there with the log wrapped around it. On a
+  dashboard LeaveSafe now reads the keyboard a keystroke at a time and draws the
+  typing itself, on a row at the foot of the window that the log cannot reach. A
+  log line arriving mid-command is a repaint rather than a collision. Backspace,
+  Home, End, Delete, the cursor keys, Ctrl+U and Ctrl+W work on that line, ↑ and
+  ↓ walk through what was typed before, and Ctrl+C and Ctrl+Z do what they always
+  did — they arrive as keystrokes now rather than as signals, so the program
+  answers them itself. Input that is not a terminal is read as whole lines, as
+  before.
+- **A PIN typed to disarm is no longer shown.** It was echoed in the clear onto
+  the screen of the laptop somebody had just picked up, and left in the terminal
+  scrollback afterwards. It is drawn as asterisks and never remembered in the
+  command history.
 - **One status grid, not two.** The dashboard drew at absolute rows worked out
   once at startup, and three ordinary things moved those rows out from under it:
   remote access arriving a minute later and adding an address, so the grid grew;
