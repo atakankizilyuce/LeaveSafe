@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/monitor"
+	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/ws"
@@ -65,9 +67,27 @@ func TestRemoteStatusLineNamesWhatHappened(t *testing.T) {
 			remote.State{},
 			"",
 		},
+		// ACTIVE is a claim about the outside world, so it is only made about an
+		// address something was seen to answer on.
 		"working": {
-			remote.State{Enabled: true, PublicURL: "https://198.51.100.4:9443", UPnP: remote.UPnPOK},
+			remote.State{Enabled: true, PublicURL: "https://198.51.100.4:9443",
+				UPnP: remote.UPnPOK, Reach: remote.ReachVerified},
 			"ACTIVE — 198.51.100.4:9443",
+		},
+		// The same setup with nothing established about it. It may well work —
+		// most routers refuse this check from inside — so the address is still
+		// shown, but not as a fact.
+		"mapped but never confirmed": {
+			remote.State{Enabled: true, PublicURL: "https://198.51.100.4:9443",
+				UPnP: remote.UPnPOK, Reach: remote.ReachUnproven},
+			"ON — 198.51.100.4:9443 (unconfirmed)",
+		},
+		// A second router in front of the one holding the mapping. Unlike
+		// carrier NAT this one has a fix, and the fix is on the other box.
+		"blocked one hop short": {
+			remote.State{Enabled: true, PublicURL: "https://198.51.100.4:9443",
+				UPnP: remote.UPnPOK, Reach: remote.ReachBlocked, ManualPort: 9443},
+			"ON — blocked before the internet, forward TCP 9443 on the outer router",
 		},
 		// The listener is up and the router has not answered yet. Saying
 		// anything definite here would be a wrong answer rather than an early
@@ -137,6 +157,7 @@ func TestReachableURLsPutsThePublicAddressFirstWithoutDroppingTheLocalOnes(t *te
 	withPublic := reachableURLs(srv, remote.State{
 		Enabled:   true,
 		UPnP:      remote.UPnPOK,
+		Reach:     remote.ReachVerified,
 		PublicURL: "https://198.51.100.4:9443",
 	})
 
@@ -192,5 +213,21 @@ func TestReachableURLsDoesNotOfferAnUnmappedPublicAddressFirst(t *testing.T) {
 				t.Errorf("the public address was dropped rather than moved: %v", got)
 			}
 		})
+	}
+}
+
+// The hint is shown to somebody whose remote access is not working, on the
+// platform they are on. It is a string this program never runs: opening a hole
+// in a firewall outlives the process that made it and needs privileges
+// LeaveSafe does not otherwise ask for, so the user is told what to run and
+// decides.
+func TestTheFirewallHintIsForThisPlatform(t *testing.T) {
+	got := firewallHint(9443)
+
+	if got == "" {
+		t.Fatal("no firewall hint at all")
+	}
+	if got != network.FirewallCommand(runtime.GOOS, 9443) {
+		t.Errorf("firewallHint = %q, want the command for %s", got, runtime.GOOS)
 	}
 }

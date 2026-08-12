@@ -215,11 +215,40 @@ it('does not call an address reachable when nothing will carry a connection to i
     expect(host.textContent).not.toContain('Reachable at');
 });
 
-it('calls it reachable once the mapping is in place', () => {
-    remoteState({ enabled: true, upnp: 'ok', public_url: 'https://1.2.3.4:9444' });
+it('calls it reachable once something has been seen to reach it', () => {
+    remoteState({ enabled: true, upnp: 'ok', reach: 'verified', public_url: 'https://1.2.3.4:9444' });
 
     expect(host.textContent).toContain('Reachable at');
     expect(host.textContent).toContain('https://1.2.3.4:9444');
+});
+
+// A mapping the router accepted is an agreement, not a delivered packet: the
+// laptop's own firewall can still drop the connection. This used to read
+// "Reachable at" on the strength of the agreement alone.
+it('will not call it reachable on the strength of a port mapping alone', () => {
+    remoteState({ enabled: true, upnp: 'ok', reach: 'unproven', public_url: 'https://1.2.3.4:9444' });
+
+    expect(host.textContent).toContain('Possibly reachable at');
+    expect(host.textContent).toContain('nothing could be confirmed to reach the laptop');
+    // Still offered, because it may well work — the check is the thing that
+    // failed, not necessarily the address.
+    expect(host.textContent).toContain('https://1.2.3.4:9444');
+});
+
+// A second router in front of the one holding the mapping. Unlike carrier-grade
+// NAT this is the user's to fix, so it says which box to go and fix it on.
+it('names the outer router when the mapping stops one hop short', () => {
+    remoteState({
+        enabled: true,
+        upnp: 'ok',
+        reach: 'blocked',
+        manual_port: 9444,
+        public_url: 'https://1.2.3.4:9444',
+    });
+
+    expect(host.textContent).toContain('itself behind another router');
+    expect(host.textContent).toContain('9444');
+    expect(host.textContent).not.toContain('Reachable at');
 });
 
 it('says nothing about a public address when there is none', () => {

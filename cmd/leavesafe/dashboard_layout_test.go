@@ -120,11 +120,14 @@ func TestDashboardCarriesTheCertificateIntoTheStatusBar(t *testing.T) {
 }
 
 // Remote access adds a public address, and the dashboard has to offer it — it is
-// the only one a phone on another network can use.
+// the only one a phone on another network can use. Verified, because that is
+// what earns it the front of the list now: an address that has been seen to
+// work rather than one that was merely arranged for.
 func TestDashboardOffersThePublicAddressWhenThereIsOne(t *testing.T) {
 	sb, _ := drawnDashboard(t, remote.State{
 		Enabled:   true,
 		UPnP:      remote.UPnPOK,
+		Reach:     remote.ReachVerified,
 		PublicURL: "https://198.51.100.4:9443",
 	})
 

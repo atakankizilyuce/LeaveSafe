@@ -2,8 +2,16 @@ package remote
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
+	"fmt"
+	"math/big"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,6 +56,12 @@ type fakeMapping struct {
 	mu         sync.Mutex
 	externalIP string
 	ipErr      error
+	// wanAddress is what the router says about itself, which is a different
+	// question from externalIP and has a different answer whenever there is
+	// anything between this router and the internet. Empty means "the same as
+	// the public address", which is the ordinary case of a router at the edge.
+	wanAddress string
+	wanErr     error
 	closed     int
 }
 
@@ -55,6 +69,12 @@ func (m *fakeMapping) ExternalIP() (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.externalIP, m.ipErr
+}
+
+func (m *fakeMapping) WANAddress() (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.wanAddress, m.wanErr
 }
 
 func (m *fakeMapping) Close() error {
@@ -72,21 +92,57 @@ func (m *fakeMapping) closeCount() int {
 	return m.closed
 }
 
-// testFingerprint stands in for a real certificate's SHA-256. Generating one
-// would mean importing internal/server, which imports internal/ws, which
-// imports this package — and producing a certificate is that package's
-// concern, tested there. What this package owes is that whatever fingerprint
-// it is handed reaches State.
+// testFingerprint stands in for a real certificate's SHA-256. What this
+// package owes is that whatever fingerprint it is handed reaches State;
+// deriving one is internal/server's concern and is tested there.
 const testFingerprint = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
 
+// aCertificate is a real one, because the reachability check is handed the
+// parsed certificate to pin a connection to and a fake with no bytes in it
+// would let that path go untested — which is how the nil guard in parseLeaf
+// came to be written in the first place.
+func aCertificate(t *testing.T) tls.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate a key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "leavesafe-test"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		DNSNames:     []string{"localhost"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create a certificate: %v", err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
 // workingDeps is the everything-succeeds case; each test bends one part of it.
-func workingDeps(mapping *fakeMapping, publicIP string) Deps {
+//
+// "Succeeds" now includes the router being at the edge of the network and the
+// reachability check completing, because those are what the ordinary working
+// case looks like — and a fake that skipped them would let every test pass
+// through the path this change exists to add.
+func workingDeps(t *testing.T, mapping *fakeMapping, publicIP string) Deps {
+	t.Helper()
+
+	if mapping != nil && mapping.wanAddress == "" && mapping.wanErr == nil {
+		mapping.wanAddress = publicIP
+	}
+	cert := aCertificate(t)
 	return Deps{
 		Cert: func(string) (tls.Certificate, string, error) {
-			return tls.Certificate{}, testFingerprint, nil
+			return cert, testFingerprint, nil
 		},
-		OpenPort: func(int) (PortMapping, error) { return mapping, nil },
-		PublicIP: func() (string, error) { return publicIP, nil },
+		OpenPort:     func(int) (PortMapping, error) { return mapping, nil },
+		PublicIP:     func() (string, error) { return publicIP, nil },
+		Verify:       func(string, *x509.Certificate) error { return nil },
+		FirewallHint: func(int) string { return "allow the port" },
 	}
 }
 
@@ -124,7 +180,7 @@ func enableAndWait(t *testing.T, c *Controller) State {
 
 func TestEnableReportsThePublicURL(t *testing.T) {
 	ln := &fakeListener{}
-	c := NewController(ln, t.TempDir(), 9443, workingDeps(&fakeMapping{}, "198.51.100.4"))
+	c := NewController(ln, t.TempDir(), 9443, workingDeps(t, &fakeMapping{}, "198.51.100.4"))
 
 	got := enableAndWait(t, c)
 
@@ -152,7 +208,7 @@ func TestEnableReportsThePublicURL(t *testing.T) {
 func TestEnableReturnsBeforeTheNetworkHasAnswered(t *testing.T) {
 	ln := &fakeListener{}
 	release := make(chan struct{})
-	deps := workingDeps(&fakeMapping{}, "198.51.100.4")
+	deps := workingDeps(t, &fakeMapping{}, "198.51.100.4")
 	deps.OpenPort = func(int) (PortMapping, error) {
 		<-release
 		return &fakeMapping{}, nil
@@ -183,7 +239,7 @@ func TestEnableReturnsBeforeTheNetworkHasAnswered(t *testing.T) {
 // none of them coordinates with the others.
 func TestEnableTwiceStartsOneListener(t *testing.T) {
 	ln := &fakeListener{}
-	c := NewController(ln, t.TempDir(), 9443, workingDeps(&fakeMapping{}, "198.51.100.4"))
+	c := NewController(ln, t.TempDir(), 9443, workingDeps(t, &fakeMapping{}, "198.51.100.4"))
 
 	enableAndWait(t, c)
 	c.Enable(context.Background())
@@ -196,7 +252,7 @@ func TestEnableTwiceStartsOneListener(t *testing.T) {
 func TestDisableTwiceStopsOnce(t *testing.T) {
 	ln := &fakeListener{}
 	mapping := &fakeMapping{}
-	c := NewController(ln, t.TempDir(), 9443, workingDeps(mapping, "198.51.100.4"))
+	c := NewController(ln, t.TempDir(), 9443, workingDeps(t, mapping, "198.51.100.4"))
 
 	enableAndWait(t, c)
 	c.Disable()
@@ -221,7 +277,7 @@ func TestAProbeThatOutlivesItsListenerPublishesNothing(t *testing.T) {
 	ln := &fakeListener{}
 	mapping := &fakeMapping{}
 	release := make(chan struct{})
-	deps := workingDeps(mapping, "198.51.100.4")
+	deps := workingDeps(t, mapping, "198.51.100.4")
 	deps.OpenPort = func(int) (PortMapping, error) {
 		<-release
 		return mapping, nil
@@ -262,7 +318,7 @@ func TestAProbeThatOutlivesItsListenerPublishesNothing(t *testing.T) {
 // key on the wire in cleartext. The listener must not come up at all.
 func TestACertificateFailureLeavesRemoteAccessOff(t *testing.T) {
 	ln := &fakeListener{}
-	deps := workingDeps(&fakeMapping{}, "198.51.100.4")
+	deps := workingDeps(t, &fakeMapping{}, "198.51.100.4")
 	deps.Cert = func(string) (tls.Certificate, string, error) {
 		return tls.Certificate{}, "", errors.New("disk is full")
 	}
@@ -285,7 +341,7 @@ func TestACertificateFailureLeavesRemoteAccessOff(t *testing.T) {
 // port by hand, and the listener has to be up for that to be worth doing.
 func TestUPnPFailureKeepsTheListenerUpAndNamesThePort(t *testing.T) {
 	ln := &fakeListener{}
-	deps := workingDeps(&fakeMapping{}, "198.51.100.4")
+	deps := workingDeps(t, &fakeMapping{}, "198.51.100.4")
 	deps.OpenPort = func(int) (PortMapping, error) { return nil, errors.New("no IGD found") }
 	c := NewController(ln, t.TempDir(), 9443, deps)
 
@@ -312,7 +368,7 @@ func TestUPnPFailureKeepsTheListenerUpAndNamesThePort(t *testing.T) {
 // listener up would be telling the user to keep trying.
 func TestCarrierNATStopsTheListenerAndSaysWhy(t *testing.T) {
 	ln := &fakeListener{}
-	c := NewController(ln, t.TempDir(), 9443, workingDeps(&fakeMapping{}, "100.100.50.7"))
+	c := NewController(ln, t.TempDir(), 9443, workingDeps(t, &fakeMapping{}, "100.100.50.7"))
 
 	got := enableAndWait(t, c)
 
@@ -337,7 +393,7 @@ func TestCarrierNATStopsTheListenerAndSaysWhy(t *testing.T) {
 // no outbound STUN can still reach it by an address they know.
 func TestAnUnknownPublicAddressLeavesTheListenerUp(t *testing.T) {
 	ln := &fakeListener{}
-	deps := workingDeps(&fakeMapping{ipErr: errors.New("no answer")}, "")
+	deps := workingDeps(t, &fakeMapping{ipErr: errors.New("no answer")}, "")
 	deps.PublicIP = func() (string, error) { return "", errors.New("STUN timed out") }
 	c := NewController(ln, t.TempDir(), 9443, deps)
 
@@ -360,7 +416,7 @@ func TestAnUnknownPublicAddressLeavesTheListenerUp(t *testing.T) {
 func TestTheRouterIsAskedOnlyWhenTheInternetDoesNotAnswer(t *testing.T) {
 	ln := &fakeListener{}
 	mapping := &fakeMapping{externalIP: "203.0.113.9"}
-	deps := workingDeps(mapping, "")
+	deps := workingDeps(t, mapping, "")
 	deps.PublicIP = func() (string, error) { return "", errors.New("STUN timed out") }
 	c := NewController(ln, t.TempDir(), 9443, deps)
 
@@ -374,7 +430,7 @@ func TestTheRouterIsAskedOnlyWhenTheInternetDoesNotAnswer(t *testing.T) {
 // A listener that will not bind is not a state to report as working.
 func TestAListenerThatWillNotBindLeavesRemoteAccessOff(t *testing.T) {
 	ln := &fakeListener{err: errors.New("address already in use")}
-	c := NewController(ln, t.TempDir(), 9443, workingDeps(&fakeMapping{}, "198.51.100.4"))
+	c := NewController(ln, t.TempDir(), 9443, workingDeps(t, &fakeMapping{}, "198.51.100.4"))
 
 	got := c.Enable(context.Background())
 
@@ -383,5 +439,303 @@ func TestAListenerThatWillNotBindLeavesRemoteAccessOff(t *testing.T) {
 	}
 	if got.Reason == "" {
 		t.Error("no reason given for the bind failure")
+	}
+}
+
+// ---- what is known, as opposed to what was arranged ------------------------
+
+// The bug this whole change is about, in one test.
+//
+// Behind carrier-grade NAT the address the internet reports is the ISP's own
+// routable one — an ordinary public address that passes every check. The 100.64
+// address is the one the router holds, and nothing was asking the router. So
+// this used to end with Enabled, a public URL, and the dashboard drawing it as
+// the QR code to scan; a phone on mobile data then sat on a spinner forever
+// with nothing said. Nothing about the old inputs changes here: the public
+// address still looks perfectly ordinary. Only the question does.
+func TestCarrierNATIsCaughtEvenWhenThePublicAddressLooksOrdinary(t *testing.T) {
+	ln := &fakeListener{}
+	mapping := &fakeMapping{wanAddress: "100.72.19.4"}
+	c := NewController(ln, t.TempDir(), 9443, workingDeps(t, mapping, "85.105.20.30"))
+
+	got := enableAndWait(t, c)
+
+	if got.Enabled {
+		t.Error("remote access stayed on behind carrier-grade NAT")
+	}
+	if got.PublicURL != "" {
+		t.Errorf("PublicURL = %q, want none — nothing outside can reach it", got.PublicURL)
+	}
+	if got.UPnP != UPnPCarrierNAT {
+		t.Errorf("UPnP = %q, want %q", got.UPnP, UPnPCarrierNAT)
+	}
+	if got.Reach != ReachBlocked {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachBlocked)
+	}
+	if _, stopped := ln.counts(); stopped != 1 {
+		t.Errorf("listener stopped %d times, want 1", stopped)
+	}
+}
+
+// A second router in front is the user's to fix if they can reach it, so unlike
+// carrier NAT the listener stays up and the address stays listed: the moment
+// they forward the port on the outer box it starts working.
+func TestASecondRouterInFrontIsReportedWithoutGivingUp(t *testing.T) {
+	ln := &fakeListener{}
+	mapping := &fakeMapping{wanAddress: "192.168.100.2"}
+	deps := workingDeps(t, mapping, "85.105.20.30")
+	// The check fails, which is what being behind a second router looks like
+	// from in here.
+	deps.Verify = func(string, *x509.Certificate) error { return errors.New("i/o timeout") }
+	c := NewController(ln, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off for something the user can fix")
+	}
+	if got.Reach != ReachBlocked {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachBlocked)
+	}
+	if got.PublicURL == "" {
+		t.Error("the public address was dropped, so there is nothing to scan once the outer router is set")
+	}
+	if !strings.Contains(got.Reason, "outer router") {
+		t.Errorf("Reason = %q, want it to say which router to forward on", got.Reason)
+	}
+	if _, stopped := ln.counts(); stopped != 0 {
+		t.Errorf("listener stopped %d times, want 0", stopped)
+	}
+}
+
+// The only evidence in this package that remote access works: something opened
+// a connection to the public address and this machine's certificate answered.
+func TestAnAnsweredCheckIsRecordedAsVerified(t *testing.T) {
+	var asked struct {
+		addr string
+		cert *x509.Certificate
+	}
+	deps := workingDeps(t, &fakeMapping{}, "85.105.20.30")
+	deps.Verify = func(addr string, cert *x509.Certificate) error {
+		asked.addr, asked.cert = addr, cert
+		return nil
+	}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachVerified)
+	}
+	if asked.addr != "85.105.20.30:9443" {
+		t.Errorf("the check was aimed at %q, want the public address and the bound port", asked.addr)
+	}
+	if asked.cert == nil {
+		t.Error("the check was given no certificate, so it could not have pinned anything")
+	}
+}
+
+// A check that does not complete is not a failure and must not read as one.
+// Plenty of routers refuse to let a machine inside reach its own public
+// address, and the phone arriving from mobile data never takes that path — so
+// the address stays, and what is said about it is that nothing was established.
+func TestAnUnansweredCheckIsUnprovenRatherThanBroken(t *testing.T) {
+	deps := workingDeps(t, &fakeMapping{}, "85.105.20.30")
+	deps.Verify = func(string, *x509.Certificate) error { return errors.New("i/o timeout") }
+	deps.FirewallHint = func(port int) string {
+		return fmt.Sprintf("run the thing that opens %d", port)
+	}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off over a check that proved nothing")
+	}
+	if got.Reach != ReachUnproven {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachUnproven)
+	}
+	if got.PublicURL != "https://85.105.20.30:9443" {
+		t.Errorf("PublicURL = %q, want it kept — it may well work from mobile data", got.PublicURL)
+	}
+	// The host firewall is the likeliest thing silently dropping the
+	// connection, and the only likely cause that is on this machine.
+	if !strings.Contains(got.Reason, "run the thing that opens 9443") {
+		t.Errorf("Reason = %q, want it to carry this platform's firewall command", got.Reason)
+	}
+}
+
+// With no way to check, nothing is claimed either way — least of all success.
+func TestWithNoWayToCheckNothingIsClaimed(t *testing.T) {
+	deps := workingDeps(t, &fakeMapping{}, "85.105.20.30")
+	deps.Verify = nil
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachUnknown {
+		t.Errorf("Reach = %q, want %q — the question was never asked", got.Reach, ReachUnknown)
+	}
+	if got.PublicURL == "" {
+		t.Error("the public address was dropped for want of a check that was never configured")
+	}
+}
+
+// A router that will not say where it sits is not evidence of anything, so the
+// probe carries on and the check has the last word.
+func TestARouterThatWillNotSayWhereItIsDoesNotStopTheProbe(t *testing.T) {
+	mapping := &fakeMapping{wanErr: errors.New("the gateway hung up")}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, workingDeps(t, mapping, "85.105.20.30"))
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off because a router would not answer a question")
+	}
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want the check to have decided it", got.Reach)
+	}
+}
+
+// Without a mapping there is nothing on the path whatever the router would have
+// said, and the state already tells the user to forward the port by hand. The
+// check is still worth running: a port forwarded by hand earlier is exactly the
+// case where it succeeds.
+func TestNoMappingStillLeavesTheUserSomethingToDo(t *testing.T) {
+	deps := workingDeps(t, nil, "85.105.20.30")
+	deps.OpenPort = func(int) (PortMapping, error) { return nil, errors.New("no gateway here") }
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.UPnP != UPnPFailed {
+		t.Errorf("UPnP = %q, want %q", got.UPnP, UPnPFailed)
+	}
+	if got.ManualPort != 9443 {
+		t.Errorf("ManualPort = %d, want the port to forward", got.ManualPort)
+	}
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want the check to still have run", got.Reach)
+	}
+}
+
+// Having watched a connection arrive beats having worked out that one could
+// not. A router that looks like it is behind another one, but whose port has
+// been forwarded on the outer box already, is reachable — and telling its owner
+// to go and fix that would be telling them to fix something that works.
+func TestSeeingItWorkBeatsWorkingOutThatItCannot(t *testing.T) {
+	mapping := &fakeMapping{wanAddress: "192.168.100.2"}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, workingDeps(t, mapping, "85.105.20.30"))
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want %q — the connection was watched arriving", got.Reach, ReachVerified)
+	}
+	if got.Reason != "" {
+		t.Errorf("Reason = %q, want none — it names a problem that demonstrably is not one", got.Reason)
+	}
+}
+
+// With no platform hint configured there is still a sentence to finish. An
+// empty one would leave the dashboard reading "the likeliest cause is this
+// machine's own firewall blocking TCP port 9443:" and then stopping.
+func TestTheAdviceIsAWholeSentenceWithoutAPlatformHint(t *testing.T) {
+	deps := workingDeps(t, &fakeMapping{}, "85.105.20.30")
+	deps.Verify = func(string, *x509.Certificate) error { return errors.New("i/o timeout") }
+	deps.FirewallHint = nil
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachUnproven {
+		t.Fatalf("Reach = %q, want %q", got.Reach, ReachUnproven)
+	}
+	if strings.HasSuffix(strings.TrimSpace(got.Reason), ":") {
+		t.Errorf("Reason = %q, which stops mid-sentence", got.Reason)
+	}
+	if !strings.Contains(got.Reason, "firewall") {
+		t.Errorf("Reason = %q, want it to still name the firewall", got.Reason)
+	}
+}
+
+// A certificate that will not parse is not a reason to refuse to serve: the
+// listener is up and the phone on the local network neither knows nor cares. It
+// only means there is nothing for the reachability check to pin to.
+func TestACertificateThatWillNotParseStillLeavesTheListenerUp(t *testing.T) {
+	deps := workingDeps(t, &fakeMapping{}, "85.105.20.30")
+	deps.Cert = func(string) (tls.Certificate, string, error) {
+		return tls.Certificate{Certificate: [][]byte{[]byte("not a certificate")}}, testFingerprint, nil
+	}
+	var handed *x509.Certificate
+	deps.Verify = func(_ string, cert *x509.Certificate) error {
+		handed = cert
+		return errors.New("nothing to pin to")
+	}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off over a certificate the listener is already serving")
+	}
+	if handed != nil {
+		t.Error("an unparsable certificate was handed to the check as if it were one")
+	}
+	if got.Reach != ReachUnproven {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachUnproven)
+	}
+}
+
+// A certificate with no bytes in it. This is the guard that stopped Enable
+// panicking on the way to the reachability check — reaching for the first
+// element of a certificate that has none — and it is worth a test of its own
+// because the crash it prevents would land in the one program whose job is to
+// still be running after somebody walks off with the laptop.
+func TestACertificateWithNothingInItStillLeavesTheListenerUp(t *testing.T) {
+	deps := workingDeps(t, &fakeMapping{}, "85.105.20.30")
+	deps.Cert = func(string) (tls.Certificate, string, error) {
+		return tls.Certificate{}, testFingerprint, nil
+	}
+	handed := make(chan *x509.Certificate, 1)
+	deps.Verify = func(_ string, cert *x509.Certificate) error {
+		handed <- cert
+		return errors.New("nothing to pin to")
+	}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off over a certificate the listener is already serving")
+	}
+	if <-handed != nil {
+		t.Error("an empty certificate was handed to the check as if it were one")
+	}
+}
+
+// Neither the internet nor the router could say where this network is. There is
+// no URL to offer and nothing to check, but the listener stays up: somebody who
+// knows an address can still reach it, and the local network never depended on
+// any of this.
+func TestNoAddressFromEitherSourceLeavesTheListenerUp(t *testing.T) {
+	deps := workingDeps(t, nil, "")
+	deps.OpenPort = func(int) (PortMapping, error) { return nil, errors.New("no gateway here") }
+	deps.PublicIP = func() (string, error) { return "", errors.New("STUN timed out") }
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off for want of an address")
+	}
+	if got.PublicURL != "" {
+		t.Errorf("PublicURL = %q, want none — no address was found", got.PublicURL)
+	}
+	if got.Reach != ReachUnknown {
+		t.Errorf("Reach = %q, want %q — there was nothing to check", got.Reach, ReachUnknown)
+	}
+	if !strings.Contains(got.Reason, "No public address") {
+		t.Errorf("Reason = %q, want it to say no address was found", got.Reason)
 	}
 }

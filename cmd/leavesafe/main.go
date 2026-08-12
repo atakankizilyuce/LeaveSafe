@@ -37,8 +37,13 @@ var version = "dev"
 // repoURL is where the project lives; the CLI points at it for bug reports and
 // release downloads rather than repeating the address in several places.
 const (
-	repoURL   = "https://github.com/atakankizilyuce/LeaveSafe"
-	issuesURL = repoURL + "/issues"
+	repoURL = "https://github.com/atakankizilyuce/LeaveSafe"
+
+	// httpsScheme marks the addresses that carry a certificate, which is what
+	// decides whether a fingerprint belongs in the URL and what the dashboard
+	// trims off before showing one.
+	httpsScheme = "https://"
+	issuesURL   = repoURL + "/issues"
 )
 
 // eventLogFileName is the security event history kept in the config directory.
@@ -710,7 +715,7 @@ func pairingURL(base, rawKey, certFP string) string {
 	// modules square to forty-nine the moment remote access came on. A window
 	// with room for the local code was then told it had none, which is what
 	// "the QR code stops working when I turn on mobile data" was.
-	if certFP != "" && strings.HasPrefix(base, "https://") {
+	if certFP != "" && strings.HasPrefix(base, httpsScheme) {
 		fragment += "&fp=" + strings.ToLower(strings.ReplaceAll(certFP, ":", ""))
 	}
 	return base + "/#" + fragment
@@ -734,7 +739,14 @@ func reachableURLs(srv *server.Server, st remote.State) []string {
 	if st.PublicURL == "" {
 		return urls
 	}
-	if st.UPnP != remote.UPnPOK {
+	// Promoted on evidence now, not on the router having agreed to something.
+	// A mapping the router accepted says nothing about whether a connection
+	// completes the journey, and the address under carrier-grade NAT looks
+	// entirely ordinary while belonging to the ISP — so this used to put a URL
+	// nobody could reach at the front of the list, which is the one the
+	// dashboard draws as a QR code. Scanning it left the phone on a spinner
+	// with nothing said.
+	if st.UPnP != remote.UPnPOK || st.Reach != remote.ReachVerified {
 		return append(urls, st.PublicURL)
 	}
 	return append([]string{st.PublicURL}, urls...)
@@ -770,10 +782,18 @@ func remoteStatusLine(st remote.State) string {
 		return "ON — checking whether it can be reached…"
 	case st.UPnP == remote.UPnPFailed:
 		return fmt.Sprintf("ON — not reachable yet, forward TCP %d by hand", st.ManualPort)
+	case st.Reach == remote.ReachBlocked:
+		return fmt.Sprintf("ON — blocked before the internet, forward TCP %d on the outer router",
+			st.ManualPort)
 	case st.PublicURL == "":
 		return "ACTIVE — public address unknown"
+	case st.Reach == remote.ReachUnproven:
+		// Named as unconfirmed rather than active, because the two used to read
+		// the same and only one of them had been checked. It may well work; it
+		// has not been seen to.
+		return "ON — " + strings.TrimPrefix(st.PublicURL, httpsScheme) + " (unconfirmed)"
 	default:
-		return "ACTIVE — " + strings.TrimPrefix(st.PublicURL, "https://")
+		return "ACTIVE — " + strings.TrimPrefix(st.PublicURL, httpsScheme)
 	}
 }
 

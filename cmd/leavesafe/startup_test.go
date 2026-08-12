@@ -799,6 +799,7 @@ func TestAReachabilityAnswerReachesTheDashboard(t *testing.T) {
 	a.publishRemoteState(remote.State{
 		Enabled:   true,
 		UPnP:      remote.UPnPOK,
+		Reach:     remote.ReachVerified,
 		CertFP:    "AA:BB:CC",
 		PublicURL: "https://198.51.100.4:9443",
 	})

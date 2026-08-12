@@ -203,6 +203,37 @@ diff is small.
 
 ### Fixed
 
+- **Remote access says what it knows, not what it arranged.** A router accepting
+  a port mapping was being reported as "ACTIVE", with the public address printed
+  as the QR code to scan — and a port mapping is an agreement, not a delivered
+  packet. LeaveSafe now opens a connection to that address and checks that its
+  own certificate answers. Only an address something has been seen to answer on
+  is called reachable and put in front of the QR code; one that could not be
+  confirmed is still offered, but as "unconfirmed" rather than as a fact,
+  because plenty of routers refuse that check from inside the network while a
+  phone on mobile data arrives perfectly well. The certificate is checked as
+  well as the connection: a router serving its own admin page on the forwarded
+  port answers just as happily, and would otherwise have been recorded as
+  success — with a QR code drawn around it and the pairing key in the fragment.
+
+  **Carrier-grade NAT was being looked for in the wrong place.** The check asked
+  whether the address the internet reports is in the ISP's shared range — but
+  under carrier NAT the internet reports the ISP's own routable address, which
+  is an ordinary public address that passes every test. The 100.64 address is
+  the one the *router* holds, and nothing was asking the router. So a
+  connection behind carrier NAT mapped a port, was handed a public URL, and
+  could not be reached by anybody; the symptom was a phone on a spinner with
+  nothing said. LeaveSafe now asks the router where it sits and compares the two
+  answers. The same comparison catches a second router in front of the first —
+  a modem in router mode, a landlord's box, a phone's hotspot — which unlike
+  carrier NAT is fixable, so it says which box to forward the port on rather
+  than giving up.
+
+  When nothing can be confirmed, the message names this machine's own firewall
+  and gives the exact command for the platform — `netsh` on Windows, `ufw` or
+  `firewall-cmd` on Linux, the application firewall on macOS. LeaveSafe does not
+  run it: opening a hole in a firewall outlives the process that made it and
+  needs privileges LeaveSafe does not otherwise ask for, so the user decides.
 - **The laptop makes the noise now, on all three.** The alarm on the machine being
   carried away was `kernel32.Beep` — a single square tone, silent between one
   call and the next. The phone shrieked and the laptop chirped, which is
