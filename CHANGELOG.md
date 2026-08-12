@@ -201,6 +201,32 @@ diff is small.
 - **Response headers**: HSTS is sent when serving HTTPS, and a
   `Permissions-Policy` denies every capability the UI does not use.
 
+### Added
+
+- **The alarm reaches your phone even when nothing can connect to the laptop.**
+  Every alert used to travel over an open WebSocket, so the one alarm that
+  matters most — the laptop is being carried out of the building, you are
+  somewhere else — was the one your phone could not be told about: behind
+  carrier-grade NAT or a hotspot there is no address for it to connect to. The
+  laptop shrieked in the room it was in and said nothing to anybody else.
+  LeaveSafe now takes a web push subscription when a phone pairs, and delivers
+  the alarm through the phone's own browser push service over an outbound
+  request that works from behind any NAT that lets anything out at all.
+
+  No relay of ours, no tunnel, no account, and nothing new to trust. The payload
+  is encrypted to a key only the subscribing phone holds (RFC 8291), so what the
+  push service carries and stores is ciphertext it has no key for. What it does
+  learn is that a message was sent and when — unavoidable when somebody else
+  carries the message, and why the payload says an alarm fired rather than what
+  tripped it or where the laptop is. The encryption is checked against the
+  specification's own worked example, byte for byte.
+
+  It is an addition rather than a replacement: a connected phone is still told
+  over its connection, immediately. Subscribing needs notification permission,
+  which is asked for once, after pairing, and never again if refused. On iPhone
+  the web app has to be added to the home screen before iOS will allow push at
+  all — that is Apple's rule, not this program's.
+
 ### Fixed
 
 - **Remote access says what it knows, not what it arranged.** A router accepting

@@ -11,6 +11,7 @@ import { StateHeader } from './components/StateHeader';
 import { checkFingerprint, normalizeFingerprint } from './lib/fingerprint';
 import { captureAnchor } from './lib/geo';
 import { type SensorState, type ServerMessage, SYSTEM_NOTICE } from './lib/protocol';
+import { offerPushSubscription } from './lib/pushalerts';
 import { clearSession, loadSession, saveSession } from './lib/session';
 import { startSiren, stopSiren, warnDisconnected } from './lib/siren';
 import {
@@ -248,6 +249,9 @@ function onAuthOk(msg: ServerMessage) {
     screen.value = 'panel';
     link.value = 'live';
     afterPairing();
+    // Offered after everything else, because it is the one step that can put a
+    // permission prompt on screen and nothing above it should wait behind one.
+    void offerPushSubscription(msg.push_key);
 }
 
 function onAuthFail(msg: ServerMessage) {

@@ -38,6 +38,23 @@ const defaultAuthDeadline = 20 * time.Second
 // grow without leaving the size of an unpaired peer's frame up to them.
 const maxMessageBytes = 16 << 10
 
+// PushNotifier is somewhere to send an alert when there is no connection to
+// send it over.
+//
+// It is an interface, and the hub holds it rather than the other way round,
+// because this package has no business knowing what a VAPID key is: what it
+// knows is that an alert has to reach phones, and that some of them are not
+// here. internal/push is the implementation; a test uses one that remembers.
+type PushNotifier interface {
+	// PublicKey is what a phone needs before it can subscribe.
+	PublicKey() string
+	// Subscribe remembers somewhere to reach a phone, or says why it cannot.
+	Subscribe(endpoint, key, auth string) error
+	// Notify tells every subscribed phone. It is called on a goroutine of its
+	// own and must not be relied on to return quickly.
+	Notify(message string)
+}
+
 // Hub manages all WebSocket connections and dispatches alerts.
 type Hub struct {
 	mu          sync.RWMutex
@@ -59,9 +76,12 @@ type Hub struct {
 	pinEnabled        bool
 	pinHash           string
 	alertChan         chan ServerMessage
-	eventLog          *eventlog.Logger
-	stateStore        *state.Store
-	certFP            string
+	// push is where alerts go for phones that are not connected. Nil until
+	// something registers one, which is the whole of its off switch.
+	push       PushNotifier
+	eventLog   *eventlog.Logger
+	stateStore *state.Store
+	certFP     string
 
 	heartbeatInterval     time.Duration
 	disconnectGracePeriod time.Duration
@@ -627,7 +647,29 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 	}
 }
 
-// PushAlert sends an alert to all connected authenticated clients.
+// SetPushNotifier registers where alerts go for phones that are not connected.
+//
+// Optional: without one, this hub behaves exactly as it did before, and every
+// phone that is not connected hears nothing.
+func (h *Hub) SetPushNotifier(n PushNotifier) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.push = n
+}
+
+func (h *Hub) pushNotifier() PushNotifier {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.push
+}
+
+// PushAlert sends an alert to every phone: the ones connected, over their own
+// connection, and the ones that are not, through their browser's push service.
+//
+// The second half is the point of it. A phone that is not connected is the
+// normal case for the alarm that matters — the laptop is being carried out of
+// the building, and the owner is somewhere else with their phone in a pocket —
+// and until now that phone was told nothing at all.
 func (h *Hub) PushAlert(alert ServerMessage) {
 	// Collect targets under the lock, then send with it released. A blocking
 	// write to one slow client must not stall arm/disarm or delay the alarm
@@ -643,6 +685,19 @@ func (h *Hub) PushAlert(alert ServerMessage) {
 
 	for _, client := range targets {
 		client.send(alert)
+	}
+
+	// Only what an alert says, and only when it says something. A status
+	// change is not worth waking somebody's phone for.
+	if alert.Alert == nil || alert.Alert.Message == "" {
+		return
+	}
+	if notifier := h.pushNotifier(); notifier != nil {
+		message := alert.Alert.Message
+		// Handed off rather than waited for: this returns to the alarm, and an
+		// outbound request to a push service on the other side of the world
+		// must not sit between a sensor firing and the siren starting.
+		safe.Go("push-alert", func() { notifier.Notify(message) })
 	}
 }
 
@@ -1031,7 +1086,28 @@ func (h *Hub) handlePairedMessage(client *Client, msg ClientMessage) {
 		h.pauseAlarmSensor(msg)
 	case MsgTypeDismissAlarmDisable:
 		h.disableAlarmSensor()
+	case MsgTypePushSubscribe:
+		h.handlePushSubscribe(msg)
 	}
+}
+
+// handlePushSubscribe remembers somewhere to reach this phone when it is not
+// connected.
+//
+// A refusal is logged and nothing more. The phone is connected right now — it
+// is how this message arrived — so there is nothing broken to report to it, and
+// the one thing that must not happen is a bad subscription taking down the
+// connection that is currently working.
+func (h *Hub) handlePushSubscribe(msg ClientMessage) {
+	notifier := h.pushNotifier()
+	if notifier == nil || msg.Push == nil {
+		return
+	}
+	if err := notifier.Subscribe(msg.Push.Endpoint, msg.Push.Key, msg.Push.Auth); err != nil {
+		log.Warnf("A phone offered a push subscription that cannot be used: %v", err)
+		return
+	}
+	log.Info("A phone can now be told about an alarm while it is away")
 }
 
 // handleDisarm switches the watch off, unless a PIN stands in the way.
@@ -1251,7 +1327,11 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	}
 
 	infos := h.GetSensorInfos()
-	client.send(NewAuthOK(token, infos, h.version, h.IsArmed(), h.ArmedAt()))
+	authOK := NewAuthOK(token, infos, h.version, h.IsArmed(), h.ArmedAt())
+	if notifier := h.pushNotifier(); notifier != nil {
+		authOK.PushKey = notifier.PublicKey()
+	}
+	client.send(authOK)
 
 	// An alarm already sounding is the first thing this phone needs, before the
 	// update notice and before anything else. A phone reconnects every time its

@@ -132,6 +132,13 @@ export interface RemoteState {
     reason?: string;
 }
 
+/** Somewhere the laptop can reach this phone while it is not connected. */
+export interface PushSub {
+    endpoint: string;
+    key: string;
+    auth: string;
+}
+
 export interface AppConfig {
     port: number;
     max_sessions: number;
@@ -171,6 +178,15 @@ export interface ServerMessage {
     update?: UpdatePayload;
     /** SHA-256 fingerprint of the server's TLS certificate, sent with `hello`. */
     cert_fp?: string;
+    /**
+     * The public half of the key the laptop signs push messages with, sent with
+     * `auth_ok`. Without it this phone cannot subscribe to anything.
+     *
+     * It arrives with the successful pairing rather than with the greeting: it
+     * is not a secret, but there is no reason to answer it to a connection that
+     * has not proved it holds the pairing key.
+     */
+    push_key?: string;
 }
 
 export interface ClientMessage {
@@ -183,6 +199,7 @@ export interface ClientMessage {
     duration?: number;
     config?: Partial<AppConfig>;
     location?: LocationFix;
+    push?: PushSub;
 }
 
 /** Descriptions shown when a sensor tile is expanded. */

@@ -30,6 +30,38 @@ self.addEventListener('message', function (e) {
     }
 });
 
+// An alarm that arrived while nothing was open.
+//
+// The message came from the laptop over its browser's push service, encrypted
+// on the way, and the browser has already decrypted it by the time it gets
+// here: this is the one path that works when the page is closed, the phone is
+// on mobile data and the laptop is behind a NAT nothing can reach. Showing a
+// notification is not optional on it — the subscription was made with
+// userVisibleOnly, and a browser that sees pushes arrive without one eventually
+// takes the subscription away.
+self.addEventListener('push', function (e) {
+    let message = 'Security alarm triggered!';
+    try {
+        const text = e.data?.text();
+        if (text) message = text;
+    } catch {
+        // Whatever arrived was not text. Something still has to be shown, and
+        // "the alarm went off" is the part that matters.
+    }
+
+    e.waitUntil(
+        self.registration.showNotification('LeaveSafe ALERT', {
+            body: message,
+            tag: 'leavesafe-alarm',
+            requireInteraction: true,
+            renotify: true,
+            vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500],
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-192.png',
+        }),
+    );
+});
+
 self.addEventListener('notificationclick', function (e) {
     e.notification.close();
     e.waitUntil(
