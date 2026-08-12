@@ -203,6 +203,25 @@ diff is small.
 
 ### Fixed
 
+- **The laptop makes the noise now, on Windows.** The alarm on the machine being
+  carried away was `kernel32.Beep` — a single square tone, silent between one
+  call and the next. The phone shrieked and the laptop chirped, which is
+  backwards: the laptop is the thing in the room somebody needs to look at.
+  LeaveSafe now generates a siren sample by sample and plays it through the
+  machine's own audio output: two dissonant pairs of notes slamming back and
+  forth five times a second, roughened by an amplitude wobble fast enough to be
+  heard as harshness, and driven into a soft clipper so it carries through a
+  closed door. Deliberately not a sweep — a tone gliding up and down is what
+  every emergency vehicle does, and a laptop making that sound reads as an
+  ambulance outside rather than as this machine, in this room, now. Dismissing it
+  stops the sound within a twentieth of a second. Where there is no audio
+  device — no sound card, a driver that will not open, headphones pulled out
+  mid-alarm — it falls back to the beeps, because silence is the one outcome that
+  helps nobody.
+
+  **macOS and Linux still beep.** Each wants a backend of its own and they are
+  the next change; until then those two fall back exactly as before. That is a
+  stated gap rather than a hidden one.
 - **Typing has a line of its own.** The terminal echoed what you typed wherever
   the cursor happened to be, which was inside the scrolling log — so a sensor
   reporting itself while you were half-way through `disarm` wrote its message

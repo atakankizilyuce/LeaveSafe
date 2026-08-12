@@ -6,6 +6,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/leavesafe/leavesafe/internal/audio"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/safe"
 )
@@ -28,6 +29,7 @@ var (
 	setVolumeFn     = setVolume
 	restoreVolumeFn = restoreVolume
 	beepToneFn      = beepTone
+	playSirenFn     = audio.PlaySiren
 )
 
 // clampLevel keeps a volume scalar inside the 0..1 range every platform's audio
@@ -280,7 +282,29 @@ func (a *Alarm) IsPlaying() bool {
 	return a.playing
 }
 
+// sirenLoop makes the noise, by the best means this machine offers.
+//
+// The siren proper is generated sample by sample and played through the audio
+// device, which is what makes it a sound somebody in the next room turns
+// towards. Where there is no device to play it through — no sound card, a
+// driver that will not open, or a platform this build has no backend for — it
+// falls back to the beeps, which are thin and are better than nothing.
+//
+// Falling back rather than reporting and stopping is the whole point. This runs
+// while a laptop is being carried away; silence is the one outcome that helps
+// nobody, and the machine that cannot open its sound card is exactly the
+// machine whose owner is not there to be told why.
 func (a *Alarm) sirenLoop(stop chan struct{}) {
+	if err := playSirenFn(stop); err != nil {
+		log.Warnf("Siren: %v — falling back to the console beep", err)
+		a.beepLoop(stop)
+	}
+}
+
+// beepLoop alternates two tones through whatever the operating system will beep
+// with. It is what there was before there was a siren, and it is what is left
+// when the siren cannot be played.
+func (a *Alarm) beepLoop(stop chan struct{}) {
 	high := true
 	for {
 		select {

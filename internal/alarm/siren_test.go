@@ -25,6 +25,12 @@ type audioSpy struct {
 	maxErr     error
 	setErr     error
 	restoreErr error
+
+	// sirenErr is what the audio output says when the siren asks to be played.
+	// A machine with no sound card answers like this, and the alarm has to fall
+	// back to beeping rather than going quiet.
+	sirenErr  error
+	sirenPlay int
 }
 
 func newAudioSpy() *audioSpy {
@@ -36,9 +42,30 @@ func (s *audioSpy) install(t *testing.T) {
 	t.Helper()
 
 	realMax, realSet, realRestore, realBeep := maxVolumeFn, setVolumeFn, restoreVolumeFn, beepToneFn
+	realSiren := playSirenFn
 	t.Cleanup(func() {
 		maxVolumeFn, setVolumeFn, restoreVolumeFn, beepToneFn = realMax, realSet, realRestore, realBeep
+		playSirenFn = realSiren
 	})
+
+	// Replaced before anything can start an alarm. The real one opens the
+	// machine's audio device and plays a siren at full volume through it, which
+	// is not a thing a test suite may do to whoever is running it.
+	playSirenFn = func(stop <-chan struct{}) error {
+		s.mu.Lock()
+		s.sirenPlay++
+		err := s.sirenErr
+		s.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		select {
+		case s.beeped <- struct{}{}:
+		default:
+		}
+		<-stop
+		return nil
+	}
 
 	maxVolumeFn = func() (float64, error) {
 		s.mu.Lock()
@@ -83,6 +110,15 @@ func (s *audioSpy) install(t *testing.T) {
 		// a pause the goroutine spins a core flat for the length of the test.
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// sirenSnapshot is snapshot with the number of times the siren was played
+// through the audio output alongside it.
+func (s *audioSpy) sirenSnapshot() (played int, sets, restores []float64, freqs []int) {
+	_, sets, restores, freqs = s.snapshot()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sirenPlay, sets, restores, freqs
 }
 
 // waitForBeep blocks until the siren has sounded at least once.
@@ -133,10 +169,35 @@ func TestStartSoundsTheSirenAndTakesTheVolume(t *testing.T) {
 	}
 }
 
-// The siren alternates between two tones; a single pitch is easy to mistake for
-// a notification chime.
-func TestSirenAlternatesBetweenTwoTones(t *testing.T) {
+// The siren proper is a waveform played through the machine's audio output.
+// That is the whole point of it: the beeps it replaced are a thin single tone
+// through whatever the operating system uses for a chime, and the alarm has to
+// be the loudest thing in the room rather than the politest.
+func TestTheSirenIsPlayedThroughTheAudioOutput(t *testing.T) {
 	spy := newAudioSpy()
+	spy.install(t)
+
+	a := New(config.AlarmConfig{})
+	a.Start()
+	defer a.Stop()
+
+	spy.waitForBeep(t)
+
+	played, _, _, freqs := spy.sirenSnapshot()
+	if played != 1 {
+		t.Errorf("the siren was played %d times, want once", played)
+	}
+	if len(freqs) != 0 {
+		t.Errorf("the machine beeped %d times as well as playing the siren", len(freqs))
+	}
+}
+
+// A machine with no sound card still has to make a noise. The beeps are what is
+// left, and they alternate between two tones because a single pitch is easy to
+// mistake for a notification chime.
+func TestTheFallbackBeepAlternatesBetweenTwoTones(t *testing.T) {
+	spy := newAudioSpy()
+	spy.sirenErr = errors.New("no audio device in a test")
 	spy.install(t)
 
 	a := New(config.AlarmConfig{})
@@ -483,6 +544,9 @@ func TestEscalationWithNoLevelsStillSoundsTheSiren(t *testing.T) {
 // the siren was still reading them.
 func TestStopDoesNotReturnWhileTheSirenIsStillSounding(t *testing.T) {
 	spy := newAudioSpy()
+	// No audio device, so the alarm falls back to beeping — which is the path
+	// with a tone in flight to be caught mid-way.
+	spy.sirenErr = errors.New("no audio device in a test")
 	spy.install(t)
 
 	// Park the siren inside a tone, the way a real 400ms beep does.
