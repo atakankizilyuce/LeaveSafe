@@ -88,16 +88,14 @@ type statusBar struct {
 	// this nil, which is the same answer terminalSize gives for one.
 	term *os.File
 
-	gridRow   int
-	gridCol   int
-	gridWidth int
+	// layout is where the last full draw put everything. Every repaint checks
+	// it still describes the screen before painting a piece of it — see
+	// layoutHolds.
+	layout layout
 
-	// QR geometry. The box is sized to the largest QR of any candidate URL so
-	// that switching between them with `qr <n>` never overflows the layout.
-	qrRow    int
-	qrCol    int
-	qrBoxW   int
-	qrBoxH   int
+	// qrCodes holds one rendered code per address, and qrURLIdx which of them
+	// the box is showing. The box is sized to the largest of them so that
+	// switching between them with `qr <n>` never overflows the layout.
 	qrCodes  [][]string
 	qrURLIdx int
 
@@ -239,13 +237,49 @@ func visLen(s string) int {
 	return n
 }
 
+// gridBoxWidth is how wide the status grid is drawn, never narrower than a box
+// can be drawn at all.
+//
+// The floor is what keeps a grid asked for before any layout has been worked
+// out — a test building a status bar by hand, a repaint that lost a race with
+// the first draw — from being a box of width zero, which is not a narrow box
+// but a crash.
+func (sb *statusBar) gridBoxWidth() int {
+	return max(sb.layout.gridWidth, floorGridWidth)
+}
+
 func (sb *statusBar) boxLine(content string) string {
-	inner := sb.gridWidth - 2
+	inner := sb.gridBoxWidth() - 2
+	// Cut rather than allowed to overflow. A line wider than the box wraps onto
+	// the next row, which pushes every row below it down while the layout still
+	// believes they are where it put them — and the remote-access line is
+	// exactly the kind that outgrows a narrow box without warning.
+	content = truncateVisible(content, inner)
+
 	pad := inner - visLen(content)
 	if pad < 0 {
 		pad = 0
 	}
 	return "│" + content + strings.Repeat(" ", pad) + "│"
+}
+
+// gridHeight is how many rows the status grid takes.
+//
+// Answered by counting what is on offer rather than by drawing the grid and
+// measuring it, because the layout asks this before every repaint — including
+// the one behind every log line. Drawing it means asking each sensor whether it
+// is available, and one of those answers by starting PowerShell.
+func (sb *statusBar) gridHeight() int {
+	// Border, title, separator, state, clients, sensors; then a separator, the
+	// key, an address apiece and the bottom border.
+	rows := 6 + 2 + len(sb.urls) + 1
+	if sb.remoteStatus != "" {
+		rows++
+	}
+	if sb.certFP != "" {
+		rows++
+	}
+	return rows
 }
 
 func (sb *statusBar) gridLines() []string {
@@ -273,7 +307,7 @@ func (sb *statusBar) gridLines() []string {
 		}
 	}
 
-	w := sb.gridWidth
+	w := sb.gridBoxWidth()
 	top := "┌" + strings.Repeat("─", w-2) + "┐"
 	midSep := "├" + strings.Repeat("─", w-2) + "┤"
 	bottom := "└" + strings.Repeat("─", w-2) + "┘"
@@ -303,12 +337,9 @@ func (sb *statusBar) gridLines() []string {
 
 	maxURLVis := w - 2 - visLen("  ●  URL      ")
 	for _, url := range sb.urls {
-		if utf8.RuneCountInString(url) > maxURLVis {
-			runes := []rune(url)
-			url = string(runes[:maxURLVis-3]) + "..."
-		}
 		lines = append(lines, sb.boxLine(
-			fmt.Sprintf("  %s●%s  URL      %s%s%s", cGreen, cReset, cGreen, url, cReset),
+			fmt.Sprintf("  %s●%s  URL      %s%s%s", cGreen, cReset, cGreen,
+				ellipsize(url, maxURLVis), cReset),
 		))
 	}
 
@@ -329,22 +360,62 @@ func shortFingerprint(fp string) string {
 // drawQR repaints the reserved QR box with the currently selected code. The
 // box is cleared first because codes for different URLs differ in size.
 func (sb *statusBar) drawQR() {
-	if sb.headless || sb.qrBoxH == 0 {
+	l := sb.layout
+	if sb.headless || l.qrBoxH == 0 {
 		return
 	}
-	blank := strings.Repeat(" ", sb.qrBoxW)
-	for i := 0; i < sb.qrBoxH; i++ {
-		fmt.Fprintf(sb.out, "\033[%d;%dH%s", sb.qrRow+i, sb.qrCol, blank)
+	blank := strings.Repeat(" ", l.qrBoxW)
+	for i := range l.qrBoxH {
+		fmt.Fprintf(sb.out, "\033[%d;%dH%s", l.qrRow+i, l.qrCol, blank)
 	}
 	if sb.qrURLIdx < 0 || sb.qrURLIdx >= len(sb.qrCodes) {
 		return
 	}
 	for i, line := range sb.qrCodes[sb.qrURLIdx] {
-		if i >= sb.qrBoxH {
+		if i >= l.qrBoxH {
 			break
 		}
-		fmt.Fprintf(sb.out, "\033[%d;%dH%s", sb.qrRow+i, sb.qrCol, line)
+		fmt.Fprintf(sb.out, "\033[%d;%dH%s", l.qrRow+i, l.qrCol, line)
 	}
+}
+
+// drawGrid repaints the status grid where the layout puts it, and no further
+// down than the layout gave it room for.
+func (sb *statusBar) drawGrid() {
+	if sb.headless {
+		return
+	}
+	for i, line := range sb.gridLines() {
+		if i >= sb.layout.gridRows {
+			break
+		}
+		fmt.Fprintf(sb.out, "\033[%d;%dH%s", sb.layout.gridRow+i, sb.layout.gridCol, line)
+	}
+}
+
+// repaint puts one piece of the dashboard back on screen, or the whole thing
+// when the layout it would be drawn against no longer describes the screen.
+//
+// Every partial repaint goes through here. Painting a piece at the row it used
+// to be on, after something moved that row, is the whole of the duplicate
+// status grid — and every caller below is a place where something could have
+// moved: a phone connecting, an address arriving, the key being rotated, the
+// window being resized under all of it.
+func (sb *statusBar) repaint(piece func()) {
+	if sb.headless {
+		return
+	}
+	if !sb.layoutHolds() {
+		sb.doPaint()
+		return
+	}
+
+	// The cursor is in the log, part-way through a line the user may be typing.
+	// It is put back where it was rather than left wherever the last absolute
+	// move landed.
+	fmt.Fprint(sb.out, "\033[s")
+	piece()
+	fmt.Fprint(sb.out, "\033[u")
 }
 
 // showQR switches the displayed QR code to the URL at index i (1-based, as the
@@ -356,9 +427,7 @@ func (sb *statusBar) showQR(i int) string {
 		return ""
 	}
 	sb.qrURLIdx = i - 1
-	fmt.Fprintf(sb.out, "\033[s")
-	sb.drawQR()
-	fmt.Fprintf(sb.out, "\033[u")
+	sb.repaint(sb.drawQR)
 	return sb.urls[sb.qrURLIdx]
 }
 
@@ -377,21 +446,11 @@ func (sb *statusBar) rekeyQR(rawKey string) {
 		}
 		sb.qrCodes[i] = lines
 	}
-	fmt.Fprintf(sb.out, "\033[s")
-	sb.drawQR()
-	fmt.Fprintf(sb.out, "\033[u")
+	sb.repaint(sb.drawQR)
 }
 
 func (sb *statusBar) doRedrawGrid() {
-	if sb.headless {
-		return
-	}
-	lines := sb.gridLines()
-	fmt.Fprintf(sb.out, "\033[s")
-	for i, line := range lines {
-		fmt.Fprintf(sb.out, "\033[%d;%dH%s", sb.gridRow+i, sb.gridCol, line)
-	}
-	fmt.Fprintf(sb.out, "\033[u")
+	sb.repaint(sb.drawGrid)
 }
 
 func (sb *statusBar) refresh() {
@@ -770,13 +829,6 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 	hub.RestoreArmed(prev.ChangedAt)
 }
 
-// qrIndent is how far from the left edge the QR box starts, and gap is the space
-// between it and the status grid beside it.
-const (
-	qrIndent = 2
-	gap      = 3
-)
-
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State,
 ) *statusBar {
@@ -787,7 +839,6 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 		term:         out,
 		hub:          hub,
 		sensorMgr:    sensorMgr,
-		qrCol:        qrIndent + 1,
 		qrCodes:      renderQRCodes(urls, authMgr.RawPairingKey(), remoteState.CertFP),
 		key:          authMgr.PairingKey(),
 		rawKey:       authMgr.RawPairingKey(),
@@ -827,45 +878,59 @@ func (sb *statusBar) doPaint() {
 	}
 
 	out := sb.out
-	termW, termH := terminalSize(sb.term)
-	sep := "  " + strings.Repeat("─", termW-4)
+	l := sb.wantedLayout()
+	sb.layout = l
 
 	fmt.Fprintf(out, "\033[2J\033[H")
-	row := drawHeader(out, sep)
-
-	qrW, qrH := qrBoxSize(sb.qrCodes)
-	statusCol, statusW := statusColumn(termW, qrW)
-	sb.qrBoxW, sb.qrBoxH = qrW, qrH
-	sb.gridCol, sb.gridWidth = statusCol, statusW
-
-	fmt.Fprintf(out, "  %sScan to connect:%s\n", cDim, cReset)
-	row++
-	qrStartRow := row
-
-	row = qrStartRow + drawCodeAndStatus(out, sb, qrStartRow, statusCol)
-	row = drawFooter(out, sep, row)
+	drawHeader(out, l)
+	drawScanLabel(out, l)
+	sb.drawQR()
+	sb.drawGrid()
+	drawFooter(out, l)
 
 	// Everything above is drawn once and must stay put, so the scrolling region
 	// starts below it. Without this the log would scroll over the QR code the
 	// user is trying to scan.
-	headerRows := min(row-1, termH-3)
-	fmt.Fprintf(out, "\033[%d;%dr", headerRows+1, termH)
-	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)
+	fmt.Fprintf(out, "\033[%d;%dr", l.logRow, l.termH)
+	fmt.Fprintf(out, "\033[%d;1H", l.logRow)
 }
 
-// terminalSize is the size of the terminal, or a shape the dashboard fits in
-// when it cannot be asked.
+// wantedLayout is where everything would go if the dashboard were drawn now,
+// against the window as it is now and the state as it is now.
+func (sb *statusBar) wantedLayout() layout {
+	termW, termH := terminalSize(sb.term)
+	qrW, qrH := qrBoxSize(sb.qrCodes)
+	return computeLayout(termW, termH, qrW, qrH, sb.gridHeight())
+}
+
+// layoutHolds reports whether the screen still looks the way the last full draw
+// left it.
 //
-// A window too small is treated the same as no answer at all. The layout below
-// assumes it has room, and drawing it into eighty by twenty produces a QR code
-// cut in half — which is worse than a layout that runs off the edge of a window
-// the user can resize.
+// This is the check that stops a repaint drawing a second copy of something.
+// The pieces below paint at absolute rows, and three things move those rows out
+// from under them: the window being resized, remote access adding an address so
+// the grid grows a row, and a longer address producing a bigger QR code. Every
+// one of those used to leave the old drawing on screen with the new one painted
+// somewhere else — which is what the two status grids were.
+func (sb *statusBar) layoutHolds() bool {
+	return sb.wantedLayout() == sb.layout
+}
+
+// terminalSize is the size of the terminal, or a shape to lay out for when
+// there is no terminal to ask.
+//
+// Nothing to ask means a test drawing into a buffer or a headless start, and a
+// size has to come from somewhere. A real window is taken at its word however
+// small it is: the layout adapts, and inventing a larger one for it is what put
+// the log's scrolling region over the top of the status grid — every line
+// written then scrolled the grid away and the next repaint drew it again lower
+// down, two grids on one screen.
 func terminalSize(out *os.File) (width, height int) {
 	if out == nil {
 		return 120, 40
 	}
 	w, h, err := termSizeFn(int(out.Fd()))
-	if err != nil || w < 80 || h < 20 {
+	if err != nil || w < 1 || h < 1 {
 		return 120, 40
 	}
 	return w, h
@@ -877,29 +942,39 @@ func terminalSize(out *os.File) (width, height int) {
 // program reassigns it.
 var termSizeFn = term.GetSize
 
-// drawHeader writes the banner, the version and the rule under them, and returns
-// the row the next thing goes on.
-func drawHeader(out io.Writer, sep string) int {
-	banner := []string{
-		"  ██╗     ███████╗ █████╗ ██╗   ██╗███████╗███████╗ █████╗ ███████╗███████╗",
-		"  ██║     ██╔════╝██╔══██╗██║   ██║██╔════╝██╔════╝██╔══██╗██╔════╝██╔════╝",
-		"  ██║     █████╗  ███████║██║   ██║█████╗  ███████╗███████║█████╗  █████╗  ",
-		"  ██║     ██╔══╝  ██╔══██║╚██╗ ██╔╝██╔══╝  ╚════██║██╔══██║██╔══╝  ██╔══╝  ",
-		"  ███████╗███████╗██║  ██║ ╚████╔╝ ███████╗███████║██║  ██║██║     ███████╗",
-		"  ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝",
-	}
+// bannerLines is the name in block letters, which is bannerWidth columns wide
+// and does not shrink.
+var bannerLines = []string{
+	"  ██╗     ███████╗ █████╗ ██╗   ██╗███████╗███████╗ █████╗ ███████╗███████╗",
+	"  ██║     ██╔════╝██╔══██╗██║   ██║██╔════╝██╔════╝██╔══██╗██╔════╝██╔════╝",
+	"  ██║     █████╗  ███████║██║   ██║█████╗  ███████╗███████║█████╗  █████╗  ",
+	"  ██║     ██╔══╝  ██╔══██║╚██╗ ██╔╝██╔══╝  ╚════██║██╔══██║██╔══╝  ██╔══╝  ",
+	"  ███████╗███████╗██║  ██║ ╚████╔╝ ███████╗███████║██║  ██║██║     ███████╗",
+	"  ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝",
+}
 
+// drawHeader writes the banner, the version and the rule under them, in the
+// number of rows the layout set aside for it.
+//
+// It does not decide that for itself, and the two things that make it give way
+// are different in kind: a window too narrow for the block letters cannot have
+// them at all, and a window too short for everything gives them up so the QR
+// code can stay. The second is only knowable once the code has been placed, so
+// the layout owns the answer — and a header that drew more rows than the layout
+// allowed put its own banner underneath whatever was placed below it.
+func drawHeader(out io.Writer, l layout) {
 	row := 1
-	for _, line := range banner {
-		fmt.Fprintf(out, "%s%s%s\n", cCyan, line, cReset)
-		row++
+	if l.headRows >= bannerRows {
+		for _, line := range bannerLines {
+			fmt.Fprintf(out, "\033[%d;1H%s%s%s", row, cCyan, line, cReset)
+			row++
+		}
 	}
-	fmt.Fprintf(out, "  %s%s%s  %sDevice Security Monitor%s\n", cBold, version, cReset, cDim, cReset)
+	fmt.Fprintf(out, "\033[%d;1H%s", row,
+		truncateVisible(fmt.Sprintf("  %s%s%s  %sDevice Security Monitor%s",
+			cBold, version, cReset, cDim, cReset), l.termW))
 	row++
-	fmt.Fprintf(out, "%s%s%s\n", cDim, sep, cReset)
-	row++
-	fmt.Fprintf(out, "\n")
-	return row + 1
+	fmt.Fprintf(out, "\033[%d;1H%s%s%s", row, cDim, rule(l.termW), cReset)
 }
 
 // renderQRCodes builds a QR code for every address the laptop can be reached at,
@@ -936,53 +1011,45 @@ func qrBoxSize(codes [][]string) (width, height int) {
 	return width, height
 }
 
-// statusColumn places the status grid to the right of the QR box and gives it a
-// width it can be read at: wide enough for the longest line it holds, narrow
-// enough not to sprawl across a maximized window.
-func statusColumn(termW, qrW int) (col, width int) {
-	col = qrIndent + qrW + gap + 1
-	width = min(max(termW-col-1, 30), 50)
-	return col, width
+// drawScanLabel writes the line above the QR box.
+//
+// With no room for a code it says so rather than leaving a gap. A QR code
+// cannot be made smaller, so a window this narrow simply has none — and a user
+// looking for something to scan deserves to be told that, and told what to do
+// about it, instead of hunting for a code that was never drawn. The addresses
+// are still listed in the grid.
+func drawScanLabel(out io.Writer, l layout) {
+	label := fmt.Sprintf("  %sScan to connect:%s", cDim, cReset)
+	if l.qrBoxH == 0 {
+		label = fmt.Sprintf("  %sNo room for a QR code — widen the window, "+
+			"or open an address below.%s", cYellow, cReset)
+	}
+	fmt.Fprintf(out, "\033[%d;1H%s", l.labelRow, truncateVisible(label, l.termW))
 }
 
-// drawCodeAndStatus draws the QR box and the status grid side by side, each
-// centered against the taller of the two, and returns how many rows that took.
-func drawCodeAndStatus(out io.Writer, sb *statusBar, qrStartRow, statusCol int) int {
-	statusLines := sb.gridLines()
-	statusH := len(statusLines)
-	totalRows := max(sb.qrBoxH, statusH)
+// drawFooter writes the command list and the rule under it, in the two rows
+// above where the log begins.
+//
+// The command list is cut to the window rather than allowed to wrap. A wrapped
+// footer pushes the first log line down a row, and the row it pushes it onto is
+// inside the scrolling region the layout just pinned — so the screen ends up one
+// line out of step with what the program believes it drew.
+func drawFooter(out io.Writer, l layout) {
+	// The ones worth reaching for without being told, and then `help` for the
+	// rest. The full list came to a hundred and thirty-four columns, which is
+	// wider than the window most people run this in — so it wrapped, and a
+	// wrapped footer is a row of the log that the layout does not know it lost.
+	commands := fmt.Sprintf("  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, "+
+		"qr <n>, urls, help  %s│%s  %sCtrl+C to quit%s",
+		cDim, cReset, cDim, cReset, cDim, cReset)
 
-	qrVOff, statusVOff := 0, 0
-	if sb.qrBoxH < totalRows {
-		qrVOff = (totalRows - sb.qrBoxH) / 2
-	}
-	if statusH < totalRows {
-		statusVOff = (totalRows - statusH) / 2
-	}
-	sb.gridRow = qrStartRow + statusVOff
-	sb.qrRow = qrStartRow + qrVOff
-
-	for i := range totalRows {
-		si := i - statusVOff
-		if si >= 0 && si < len(statusLines) {
-			fmt.Fprintf(out, "\033[%d;%dH%s", qrStartRow+i, statusCol, statusLines[si])
-		}
-	}
-	sb.drawQR()
-
-	return totalRows
+	fmt.Fprintf(out, "\033[%d;1H%s", l.logRow-2, truncateVisible(commands, l.termW))
+	fmt.Fprintf(out, "\033[%d;1H%s%s%s", l.logRow-1, cDim, rule(l.termW), cReset)
 }
 
-// drawFooter writes the command list and the rule under it, and returns the row
-// after them.
-func drawFooter(out io.Writer, sep string, row int) int {
-	fmt.Fprintf(out, "\033[%d;1H\n", row)
-	row++
-	fmt.Fprintf(out, "\033[%d;1H  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, rotate-key, help  %s│%s  %sCtrl+C to quit%s\n",
-		row, cDim, cReset, cDim, cReset, cDim, cReset)
-	row++
-	fmt.Fprintf(out, "\033[%d;1H%s%s%s\n", row, cDim, sep, cReset)
-	return row + 1
+// rule is the horizontal line under the banner and above the log.
+func rule(termW int) string {
+	return "  " + strings.Repeat("─", max(termW-4, 1))
 }
 
 // connectionModeName names a connection mode for a log line.
@@ -1356,6 +1423,8 @@ func consoleLang(_ context.Context, c *console) {
 }
 
 func consoleHelp(_ context.Context, c *console) {
+	// Every one of them, because this is the list the footer's shorter one
+	// points at.
 	c.sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, update, rotate-key, help")
 }
 
