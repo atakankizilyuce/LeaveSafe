@@ -466,8 +466,9 @@ function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
             {/* Carrier-grade NAT returned above, so a block here is the other kind. */}
             {state.reach === 'blocked' && (
                 <p class="group-note">
-                    The router that took the port mapping is itself behind another router, so the mapping stops
-                    one hop short of the internet. Forward TCP port {state.manual_port} on the outer router too.
+                    The router that took the port mapping is itself behind another router, so the mapping
+                    stops one hop short of the internet. Forward TCP port {state.manual_port} on the outer
+                    router too.
                 </p>
             )}
             {state.reach === 'unproven' && (
