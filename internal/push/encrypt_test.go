@@ -121,10 +121,7 @@ func TestNoTwoMessagesShareTheirKeyMaterial(t *testing.T) {
 func sealTwice(t *testing.T, sub Subscription) (first, second []byte) {
 	t.Helper()
 	for _, out := range []*[]byte{&first, &second} {
-		salt, err := newSalt()
-		if err != nil {
-			t.Fatalf("salt: %v", err)
-		}
+		salt := newSalt()
 		sender, err := ecdh.P256().GenerateKey(cryptorand.Reader)
 		if err != nil {
 			t.Fatalf("sender key: %v", err)
@@ -169,10 +166,7 @@ func TestThePhoneCanReadWhatWasSentToIt(t *testing.T) {
 	}
 	sub := Subscription{Key: phone.PublicKey().Bytes(), Auth: auth}
 
-	salt, err := newSalt()
-	if err != nil {
-		t.Fatalf("salt: %v", err)
-	}
+	salt := newSalt()
 	sender, err := ecdh.P256().GenerateKey(cryptorand.Reader)
 	if err != nil {
 		t.Fatalf("sender key: %v", err)

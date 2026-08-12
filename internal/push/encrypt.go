@@ -127,10 +127,14 @@ func header(salt, senderPublic []byte) []byte {
 }
 
 // newSalt is the per-message salt, drawn fresh every time.
-func newSalt() ([]byte, error) {
+//
+// No error to return: since Go 1.24 crypto/rand.Read always fills what it is
+// given, and a machine whose randomness has failed takes the process down
+// rather than handing back something weak. Carrying an error here would be a
+// branch that cannot be reached and cannot be tested, on the one code path
+// where a reader most wants to know what happens if it fails.
+func newSalt() []byte {
 	salt := make([]byte, saltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return nil, fmt.Errorf("draw a salt: %w", err)
-	}
-	return salt, nil
+	rand.Read(salt) //nolint:errcheck // documented never to fail; it fatals instead
+	return salt
 }

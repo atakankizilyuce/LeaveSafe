@@ -65,12 +65,7 @@ func (s *Sender) Send(ctx context.Context, sub Subscription, message []byte) err
 	if err != nil {
 		return fmt.Errorf("generate a sending key: %w", err)
 	}
-	salt, err := newSalt()
-	if err != nil {
-		return err
-	}
-
-	body, err := encrypt(message, sub, salt, sender)
+	body, err := encrypt(message, sub, newSalt(), sender)
 	if err != nil {
 		return err
 	}

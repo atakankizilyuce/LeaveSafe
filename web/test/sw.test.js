@@ -174,3 +174,55 @@ it('opens a page when none is open', async () => {
 
     expect(opened).toEqual(['/']);
 });
+
+// ── The alarm that arrives with nothing open ────────────────────────────────
+
+// The one path that works when the page is closed, the phone is on mobile data
+// and the laptop is behind a NAT nothing can reach. Every other notification in
+// this file needs a page that is running to post it a message; this one does
+// not, and it is the case the alarm exists for.
+it('shows the alarm that arrived over push, with no page open', async () => {
+    const { listeners, notifications } = await loadWorker();
+    const waited = [];
+
+    listeners.push({
+        data: { text: () => 'A door opened while the laptop was armed.' },
+        waitUntil: (p) => waited.push(p),
+    });
+
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].title).toBe('LeaveSafe ALERT');
+    expect(notifications[0].options.body).toBe('A door opened while the laptop was armed.');
+    expect(notifications[0].options.requireInteraction).toBe(true);
+    // Held open until the notification is up: a worker the browser stops early
+    // shows nothing.
+    expect(waited).toHaveLength(1);
+});
+
+// A push that carries nothing readable still has to produce a notification. The
+// subscription was made with userVisibleOnly, and a browser that sees pushes
+// arrive without one eventually takes the subscription away — which would lose
+// every future alarm, not just this one.
+it('still shows something when the push carries nothing it can read', async () => {
+    const { listeners, notifications } = await loadWorker();
+
+    listeners.push({
+        data: {
+            text() {
+                throw new Error('not text');
+            },
+        },
+        waitUntil: () => {},
+    });
+
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].options.body).toBeTruthy();
+});
+
+it('shows something for a push with no payload at all', async () => {
+    const { listeners, notifications } = await loadWorker();
+
+    listeners.push({ data: null, waitUntil: () => {} });
+
+    expect(notifications).toHaveLength(1);
+});

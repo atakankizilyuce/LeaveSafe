@@ -21,6 +21,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/network"
+	"github.com/leavesafe/leavesafe/internal/push"
 	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/server"
@@ -98,6 +99,16 @@ func startApp(opts appOptions) (*app, error) {
 		time.Duration(cfg.HeartbeatSeconds)*time.Second,
 		time.Duration(cfg.DisconnectGraceSeconds)*time.Second,
 	)
+
+	// Somewhere to reach a phone that is not connected. A failure here costs
+	// the push alerts and nothing else: the siren, the local network and every
+	// connected phone are unaffected, and the alternative — refusing to start
+	// the alarm system because a key file could not be written — helps nobody.
+	if notifier, err := push.Open(config.ConfigDir()); err != nil {
+		log.Warnf("Push alerts are unavailable: %v", err)
+	} else {
+		hub.SetPushNotifier(notifier)
+	}
 
 	a := &app{hub: hub, sensors: sensorMgr}
 	a.openEventLog()

@@ -24,6 +24,9 @@ const (
 	MsgTypeResetConfig         = "reset_config"
 	MsgTypeLocationAnchor      = "location_anchor"
 	MsgTypeGetLocation         = "get_location"
+	// MsgTypePushSubscribe hands over somewhere to reach this phone when it is
+	// not connected, which is the one time it cannot be told anything.
+	MsgTypePushSubscribe = "push_subscribe"
 )
 
 const (
@@ -64,6 +67,21 @@ type ClientMessage struct {
 	Duration int             `json:"duration,omitempty"`
 	Config   *ConfigPayload  `json:"config,omitempty"`
 	Location *LocationFix    `json:"location,omitempty"`
+	Push     *PushSub        `json:"push,omitempty"`
+}
+
+// PushSub is what a browser's PushManager produced, on its way to being
+// somewhere this laptop can reach the phone from behind any NAT.
+//
+// The three parts are the browser's own: a URL at its push service, the public
+// half of a key pair whose private half never leaves the phone, and a secret
+// the phone generated for this subscription. The laptop keeps all three and can
+// read none of what it later sends with them — the encryption is to the phone,
+// not to the service carrying it.
+type PushSub struct {
+	Endpoint string `json:"endpoint"`
+	Key      string `json:"key"`
+	Auth     string `json:"auth"`
 }
 
 // LocationFix is one position estimate as it crosses the wire.
@@ -128,6 +146,14 @@ type ServerMessage struct {
 	// CertFP is the SHA-256 fingerprint of this server's TLS certificate,
 	// empty on the plain-HTTP local path where there is no certificate.
 	CertFP string `json:"cert_fp,omitempty"`
+	// PushKey is the public half of the key this laptop signs push messages
+	// with, which the phone needs before it can subscribe to anything.
+	//
+	// It travels with the successful pairing rather than with the greeting. It
+	// is not a secret — it is meant to be handed out, and a browser writes it
+	// into the subscription for anyone to read — but there is no reason to
+	// answer it to a connection that has not proved it holds the pairing key.
+	PushKey string `json:"push_key,omitempty"`
 }
 
 // UpdatePayload tells the phone that a newer release exists.
