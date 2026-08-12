@@ -680,7 +680,7 @@ func TestACertificateThatWillNotParseStillLeavesTheListenerUp(t *testing.T) {
 		t.Error("remote access was switched off over a certificate the listener is already serving")
 	}
 	if handed != nil {
-		t.Error("an unparseable certificate was handed to the check as if it were one")
+		t.Error("an unparsable certificate was handed to the check as if it were one")
 	}
 	if got.Reach != ReachUnproven {
 		t.Errorf("Reach = %q, want %q", got.Reach, ReachUnproven)
