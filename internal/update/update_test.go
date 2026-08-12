@@ -391,3 +391,27 @@ func TestNumericComparisonNotLexicographic(t *testing.T) {
 		t.Error("v1.9.0 was offered as an update to v1.10.0")
 	}
 }
+
+// A restart should repeat a release this installation already found, and stop
+// repeating it once that release is what is running. Upgrading is what ends the
+// notice; nobody has to clear it.
+func TestOnlyAReleaseAboveTheRunningOneIsNewer(t *testing.T) {
+	cases := map[string]struct {
+		latest, current string
+		want            bool
+	}{
+		"a newer release":                 {"v1.3.0", "v1.2.0", true},
+		"the one running":                 {"v1.3.0", "v1.3.0", false},
+		"an older release":                {"v1.2.0", "v1.3.0", false},
+		"nothing found yet":               {"", "v1.2.0", false},
+		"a development build":             {"v1.3.0", "dev", false},
+		"something that is not a version": {"latest", "v1.2.0", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := IsNewer(tc.latest, tc.current); got != tc.want {
+				t.Errorf("IsNewer(%q, %q) = %v, want %v", tc.latest, tc.current, got, tc.want)
+			}
+		})
+	}
+}

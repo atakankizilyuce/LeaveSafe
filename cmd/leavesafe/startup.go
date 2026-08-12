@@ -576,6 +576,8 @@ func (a *app) publishRemoteState(st remote.State) {
 func (a *app) superviseUpdateCheck(ctx context.Context, cfg *config.Config,
 	method update.Method, ledger *update.Ledger,
 ) {
+	a.sayWhatIsAlreadyKnown(ledger, method)
+
 	watcher := update.Watcher{
 		Interval: cfg.UpdateCheckInterval(),
 		Settings: a.hub.UpdateSettings,
@@ -585,6 +587,33 @@ func (a *app) superviseUpdateCheck(ctx context.Context, cfg *config.Config,
 		OnError:  func(err error) { log.Debugf("Update check failed: %v", err) },
 	}
 	safe.Supervise(ctx, "update-check", watcher.Run)
+}
+
+// sayWhatIsAlreadyKnown repeats a release this installation has already found,
+// at the moment somebody is looking at the screen.
+//
+// It asks nothing of the network. The ledger remembers the newest version ever
+// reported, and the check that found it announced it once — into a log that has
+// since scrolled, on a run that has since ended. Somebody restarting the program
+// today would otherwise be told nothing about a release found yesterday, and the
+// silence reads exactly like there being nothing to say.
+//
+// A version already installed says nothing, because IsNewer compares against
+// what is running: upgrading is what ends the notice, not anybody clearing it.
+func (a *app) sayWhatIsAlreadyKnown(ledger *update.Ledger, method update.Method) {
+	if !update.IsRelease(version) {
+		// And the one case where no check will ever run. Silence here is what
+		// makes a development build look like a copy that is up to date.
+		a.sb.writeLine("  %s[UPDATE]%s This is a development build (%s), so there is no version "+
+			"to compare against and no check will run.", cDim, cReset, version)
+		return
+	}
+
+	known := ledger.Load().LastSeenLatest
+	if !update.IsNewer(known, version) {
+		return
+	}
+	announceUpdate(a.sb, a.hub, update.Result{Available: true, Latest: known}, method)
 }
 
 // checkForRelease asks GitHub what the newest release on a channel is.
