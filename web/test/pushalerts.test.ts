@@ -93,7 +93,7 @@ it('hands the laptop somewhere to reach this phone', async () => {
 
     // The Push API will not take the key as a string.
     expect(asked.applicationServerKey).toBeInstanceOf(Uint8Array);
-    expect((asked.applicationServerKey as Uint8Array).length).toBe(65);
+    expect(asked.applicationServerKey as Uint8Array).toHaveLength(65);
 });
 
 // A phone that has subscribed before must not be prompted again on every

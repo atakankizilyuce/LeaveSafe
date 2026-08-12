@@ -127,7 +127,7 @@ func TestTheNotifierPublishesTheKeyToSubscribeWith(t *testing.T) {
 	svc := newPushService(t)
 	n := notifierFor(t, svc)
 
-	if got := n.PublicKey(); got == "" {
+	if n.PublicKey() == "" {
 		t.Error("no public key to hand a phone")
 	}
 }

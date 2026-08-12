@@ -42,7 +42,7 @@ self.addEventListener('message', function (e) {
 self.addEventListener('push', function (e) {
     let message = 'Security alarm triggered!';
     try {
-        const text = e.data && e.data.text();
+        const text = e.data?.text();
         if (text) message = text;
     } catch {
         // Whatever arrived was not text. Something still has to be shown, and

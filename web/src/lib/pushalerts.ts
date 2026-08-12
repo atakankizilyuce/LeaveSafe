@@ -89,15 +89,17 @@ function extractKeys(subscription: PushSubscription): { key: string; auth: strin
  */
 function decodeKey(value: string): Uint8Array<ArrayBuffer> {
     const padded = value.padEnd(value.length + ((4 - (value.length % 4)) % 4), '=');
-    const binary = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+    const binary = atob(padded.replaceAll('-', '+').replaceAll('_', '/'));
     const out = new Uint8Array(new ArrayBuffer(binary.length));
-    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.codePointAt(i) ?? 0;
     return out;
 }
 
 /** And back the other way, unpadded, which is what the laptop reads. */
 function encodeKey(buffer: ArrayBuffer): string {
     let binary = '';
-    for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    for (const byte of new Uint8Array(buffer)) binary += String.fromCodePoint(byte);
+    // The padding is only ever trailing, so dropping every "=" is the same as
+    // dropping the run at the end — and needs no expression to backtrack over.
+    return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
