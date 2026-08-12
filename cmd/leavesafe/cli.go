@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -41,11 +42,18 @@ func vcsRevision() string {
 	return ""
 }
 
-// printUsage writes the help text. The default flag package output lists flags
-// and nothing else, which does not tell someone who just double-clicked a
-// binary what it is or where its files live.
+// printUsage writes the help text where the flag package expects it.
 func printUsage() {
-	out := os.Stderr
+	writeUsage(os.Stderr)
+}
+
+// writeUsage is the help text itself. The default flag package output lists
+// flags and nothing else, which does not tell someone who just double-clicked a
+// binary what it is or where its files live.
+//
+// The destination is a parameter so a test can read what it says. A flag that
+// exists and is not described here is one nobody finds.
+func writeUsage(out io.Writer) {
 	fmt.Fprintf(out, `%s
 
 LeaveSafe turns your phone into a remote alarm for your laptop. Run it, scan the
@@ -63,6 +71,10 @@ Commands:
 Flags:
   -dev                Serve the phone UI from web/dist instead of the embedded
                       copy, for development
+  -plain              Print log lines instead of drawing the full-screen
+                      dashboard, leaving the terminal as you found it. Chosen
+                      automatically when output is redirected to a file or pipe
+  -headless           Run with no terminal interface at all, for autostart
   -version            Print the version and exit
   -h, -help           Show this help
 

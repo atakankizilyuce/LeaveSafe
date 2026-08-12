@@ -127,7 +127,7 @@ func TestHeadlessStartupLogsEveryAddressAndTheCertificate(t *testing.T) {
 	keyPath := filepath.Join(t.TempDir(), "pairing.key")
 	sb := dashboardWith(urls, fp, keyPath)
 
-	out := captureLog(t, func() { logHeadlessStartup(sb, nil, fp) })
+	out := captureLog(t, func() { logHeadlessStartup(sb, nil, fp, "headless") })
 
 	for _, u := range urls {
 		if !strings.Contains(out, "Reachable at "+u) {

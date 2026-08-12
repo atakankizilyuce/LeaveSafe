@@ -37,7 +37,12 @@ import (
 type appOptions struct {
 	cfg      *config.Config
 	headless bool
-	devMode  bool
+	// plain keeps the terminal usable: log lines and typed commands, with no
+	// full-screen dashboard drawn over the window the user was working in. It
+	// differs from headless in that there is still somebody at the keyboard, so
+	// the console loop runs and the pairing code is printed once.
+	plain   bool
+	devMode bool
 	// out is where the dashboard is drawn. Unused on a headless start, which
 	// has no terminal to draw on.
 	out *os.File
@@ -174,7 +179,10 @@ func (a *app) serve() error {
 
 // shutdown stops everything this start began.
 func (a *app) shutdown() {
-	fmt.Fprintf(os.Stdout, "\033[r\033[?25h\n")
+	// Before anything else and before a single line is printed: the dashboard
+	// pinned a scrolling region across an alternate screen, and every word
+	// written from here belongs to the user's own terminal.
+	terminalScreen.restore()
 	fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
 
 	a.cancel()
@@ -199,6 +207,11 @@ func (a *app) shutdown() {
 // separate from shutdown because a start that failed has files to close and no
 // server to stop.
 func (a *app) close() {
+	// A start that failed halfway may already have drawn the dashboard, and the
+	// caller's next move is to exit. Idempotent, so the ordinary path — where
+	// shutdown has already done this — costs nothing.
+	terminalScreen.restore()
+
 	if a.cancel != nil {
 		a.cancel()
 	}
@@ -357,10 +370,20 @@ func (a *app) startRemoteAccess(ctx context.Context, cfg *config.Config) remote.
 func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager,
 	remoteState remote.State, keyPath string,
 ) *statusBar {
-	if opts.headless {
+	if opts.headless || opts.plain {
 		sb := newHeadlessStatusBar(a.hub, a.sensors, authMgr.PairingKey(), authMgr.RawPairingKey(),
 			reachableURLs(a.srv, remoteState), remoteState.CertFP, keyPath)
-		logHeadlessStartup(sb, a.srv, remoteState.CertFP)
+		mode := "headless"
+		if opts.plain {
+			mode = "without the dashboard"
+		}
+		logHeadlessStartup(sb, a.srv, remoteState.CertFP, mode)
+		if opts.plain {
+			// Somebody is watching this one, and without a dashboard there is
+			// nowhere else a code to scan could appear. Printed rather than
+			// positioned, so it scrolls away with everything else.
+			printPairingCode(opts.out, sb, authMgr.RawPairingKey(), remoteState.CertFP)
+		}
 		return sb
 	}
 
@@ -438,9 +461,19 @@ func (a *app) superviseLoops(ctx context.Context, opts appOptions, deps consoleD
 	if opts.headless {
 		return
 	}
-	safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, a.sb) })
-	// No terminal means no stdin to read commands from.
+	// No terminal means no stdin to read commands from. -plain still has one:
+	// what it gave up is the dashboard, not the person at the keyboard.
 	safe.Supervise(ctx, "console", func(c context.Context) { runConsole(c, opts.in, deps) })
+
+	if opts.plain {
+		return
+	}
+	safe.Supervise(ctx, "status-ticker", func(c context.Context) { runStatusTicker(c, a.sb) })
+	// Ctrl+Z has to give the terminal back before the process stops, and take
+	// it again when the user brings it forward.
+	safe.Supervise(ctx, "suspend", func(c context.Context) {
+		watchSuspend(c, opts.out, a.sb.paint)
+	})
 }
 
 // wireRemoteChanges routes every later change to remote access onto the

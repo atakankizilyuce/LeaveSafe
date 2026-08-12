@@ -321,6 +321,56 @@ func TestAnInteractiveStartDrawsTheDashboardAndTakesTheLog(t *testing.T) {
 	}
 }
 
+// -plain is between the other two: nobody is looking at a headless start, and
+// somebody is looking at this one. So there is no dashboard drawn over the
+// window the user was working in, but there is still a code to scan, and the
+// console still reads what they type.
+func TestAPlainStartPrintsTheCodeWithoutTakingTheTerminal(t *testing.T) {
+	tempConfigDir(t)
+	cfg := config.Default()
+	cfg.Port = 0
+	off := false
+	cfg.UpdateCheck = &off
+	cfg.RemoteAccess = &off
+
+	screen, err := os.Create(filepath.Join(t.TempDir(), "screen"))
+	if err != nil {
+		t.Fatalf("create the screen file: %v", err)
+	}
+	t.Cleanup(func() { _ = screen.Close() })
+
+	a, err := startApp(appOptions{
+		cfg: cfg, plain: true, out: screen, in: strings.NewReader(""),
+	})
+	if err != nil {
+		t.Fatalf("startApp: %v", err)
+	}
+	t.Cleanup(func() {
+		a.shutdown()
+		a.close()
+		safe.SetPanicHandler(nil)
+	})
+
+	if err := screen.Sync(); err != nil {
+		t.Fatalf("flush the screen file: %v", err)
+	}
+	drawn, err := os.ReadFile(screen.Name())
+	if err != nil {
+		t.Fatalf("read the screen back: %v", err)
+	}
+
+	printed := string(drawn)
+	if !strings.Contains(printed, "Scan to connect:") {
+		t.Errorf("a plain start offered nothing to scan; output was:\n%s", printed)
+	}
+	if strings.Contains(printed, "\033[2J") || strings.Contains(printed, altScreenOn) {
+		t.Error("a plain start took the terminal over anyway")
+	}
+	if !a.sb.headless {
+		t.Error("a plain start drew a dashboard it has no room for")
+	}
+}
+
 // A cleartext PIN left by an older version is hashed and the config rewritten,
 // so the digits themselves no longer live on disk. They guard the alarm, and a
 // config file is not a secret store.
