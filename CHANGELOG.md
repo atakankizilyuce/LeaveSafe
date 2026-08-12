@@ -208,13 +208,16 @@ diff is small.
   call and the next. The phone shrieked and the laptop chirped, which is
   backwards: the laptop is the thing in the room somebody needs to look at.
   LeaveSafe now generates a siren sample by sample and plays it through the
-  machine's own audio output: a tone sweeping 640 to 1400 Hz and back twice a
-  second, with a third harmonic on it so it carries through a closed door,
-  played at full scale into the volume the alarm already forces to maximum.
-  Dismissing it stops the sound within a twentieth of a second. Where there is no
-  audio device — no sound card, a driver that will not open, headphones pulled
-  out mid-alarm — it falls back to the beeps, because silence is the one outcome
-  that helps nobody.
+  machine's own audio output: two dissonant pairs of notes slamming back and
+  forth five times a second, roughened by an amplitude wobble fast enough to be
+  heard as harshness, and driven into a soft clipper so it carries through a
+  closed door. Deliberately not a sweep — a tone gliding up and down is what
+  every emergency vehicle does, and a laptop making that sound reads as an
+  ambulance outside rather than as this machine, in this room, now. Dismissing it
+  stops the sound within a twentieth of a second. Where there is no audio
+  device — no sound card, a driver that will not open, headphones pulled out
+  mid-alarm — it falls back to the beeps, because silence is the one outcome that
+  helps nobody.
 
   **macOS and Linux still beep.** Each wants a backend of its own and they are
   the next change; until then those two fall back exactly as before. That is a
