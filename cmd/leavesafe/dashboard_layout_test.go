@@ -43,6 +43,11 @@ func drawnDashboard(t *testing.T, remoteState remote.State) (*statusBar, string)
 	hub := ws.NewHub(authMgr, mgr, "test")
 	srv := testServer(t)
 
+	// The screen is a package-level singleton, because the paths that have to
+	// give the terminal back do not all have an app to ask. One dashboard per
+	// process is true of the program and not of a test file, so each build
+	// hands it back before the next one takes it.
+	t.Cleanup(terminalScreen.restore)
 	sb := buildDashboard(out, srv, authMgr, hub, mgr, remoteState)
 
 	if err := out.Sync(); err != nil {

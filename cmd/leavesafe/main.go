@@ -86,6 +86,11 @@ type statusBar struct {
 	hub       *ws.Hub
 	sensorMgr *monitor.Manager
 	out       io.Writer
+	// term is out again when out is a terminal, and nil when it is not. It is
+	// kept so a repaint can ask how big the window is now rather than reuse the
+	// size the first draw was laid out for. A test draws into a file and leaves
+	// this nil, which is the same answer terminalSize gives for one.
+	term *os.File
 
 	gridRow   int
 	gridCol   int
@@ -177,6 +182,13 @@ func (sb *statusBar) urlListWithSelection() ([]string, int) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	return append([]string(nil), sb.urls...), sb.qrURLIdx
+}
+
+// keyText returns the pairing key in the grouped form the dashboard shows.
+func (sb *statusBar) keyText() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.key
 }
 
 // setKey records a freshly rotated pairing key for the dashboard to draw.
@@ -448,6 +460,7 @@ func main() {
 	devMode := flag.Bool("dev", false, "serve web assets from filesystem for live reload")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	headless := flag.Bool("headless", false, "run without the terminal dashboard, for autostart")
+	plain := flag.Bool("plain", false, "log to the terminal instead of drawing the full-screen dashboard")
 	flag.Usage = printUsage
 	flag.Parse()
 
@@ -464,7 +477,23 @@ func main() {
 
 	log.SetFormatter(consoleLogFormatter())
 
-	if !*headless {
+	// Whatever happens next, the terminal is handed back. log.Fatal exits from
+	// inside logrus without running a single deferred function, and until this
+	// was registered a failed start left the user on an alternate screen with a
+	// scrolling region pinned across it and no program left to undo either.
+	log.RegisterExitHandler(terminalScreen.restore)
+
+	// A dashboard needs somewhere to draw. Redirected to a file or piped into
+	// something, the cursor escapes it is built from are not decoration that can
+	// be ignored — they are the file's contents, and the layout is positioned
+	// against a window size that was never asked for. Falling back to log lines
+	// is the honest answer, and -plain is the same fallback asked for by hand.
+	if !*headless && !*plain && !drawableTerminal(os.Stdout) {
+		log.Info("Standard output is not a terminal — running without the dashboard")
+		*plain = true
+	}
+
+	if drawing := !*headless && !*plain; drawing {
 		maximizeConsole()
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -475,6 +504,7 @@ func main() {
 	a, err := startApp(appOptions{
 		cfg:      cfg,
 		headless: *headless,
+		plain:    *plain,
 		devMode:  *devMode,
 		out:      os.Stdout,
 		in:       os.Stdin,
@@ -636,8 +666,12 @@ func remoteStatusLine(st remote.State) string {
 // file is the only place the user can find the address to open and the
 // certificate to check. Not the pairing key: that is in its own owner-only file
 // rather than in a log that gets pasted into bug reports.
-func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP string) {
-	log.Infof("LeaveSafe %s started headless — no dashboard on this run", version)
+//
+// mode names why there is no dashboard, because there are now two reasons and
+// they are not the same thing to a reader of the log: nobody is watching a
+// headless start, and somebody is watching a -plain one.
+func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP, mode string) {
+	log.Infof("LeaveSafe %s started %s — no dashboard on this run", version, mode)
 	for _, u := range sb.urlList() {
 		log.Infof("Reachable at %s", u)
 	}
@@ -649,6 +683,33 @@ func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP string) {
 	if sb.keyPath != "" {
 		log.Infof("Pairing key is stored in %s — it is not written to this log", sb.keyPath)
 	}
+}
+
+// printPairingCode writes a QR code, the address it encodes and the pairing key
+// to the terminal, once, as ordinary scrolling output.
+//
+// This is what -plain has instead of a dashboard. The pairing key is written
+// straight to the terminal rather than logged, because the log is a file that
+// gets attached to bug reports and the key is the whole of the front door.
+func printPairingCode(out io.Writer, sb *statusBar, rawKey, certFP string) {
+	urls := sb.urlList()
+	if len(urls) == 0 {
+		return
+	}
+
+	fmt.Fprintf(out, "\n  %sScan to connect:%s\n\n", cDim, cReset)
+	lines, err := qr.Lines(pairingURL(urls[0], rawKey, certFP))
+	if err != nil {
+		fmt.Fprintf(out, "  %sNo QR code for %s: %v — open the address by hand.%s\n",
+			cYellow, urls[0], err, cReset)
+	}
+	for _, line := range lines {
+		fmt.Fprintf(out, "  %s\n", line)
+	}
+
+	fmt.Fprintf(out, "\n  %s●%s  URL      %s%s%s\n", cGreen, cReset, cGreen, urls[0], cReset)
+	fmt.Fprintf(out, "  %s●%s  Key      %s%s%s\n", cYellow, cReset, cBold, sb.keyText(), cReset)
+	fmt.Fprintf(out, "\n  %sCommands: type 'help'. Ctrl+C to quit.%s\n\n", cDim, cReset)
 }
 
 // announceUpdate says a newer release exists, on the dashboard and on the phone.
@@ -794,38 +855,67 @@ const (
 func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State,
 ) *statusBar {
-	termW, termH := terminalSize(out)
-	sep := "  " + strings.Repeat("─", termW-4)
-
-	fmt.Fprintf(out, "\033[2J\033[H")
-	row := drawHeader(out, sep)
-
 	urls := reachableURLs(srv, remoteState)
-	qrCodes := renderQRCodes(urls, authMgr.RawPairingKey(), remoteState.CertFP)
-	qrW, qrH := qrBoxSize(qrCodes)
-	statusCol, statusW := statusColumn(termW, qrW)
-
-	fmt.Fprintf(out, "  %sScan to connect:%s\n", cDim, cReset)
-	row++
-	qrStartRow := row
 
 	sb := &statusBar{
 		out:          out,
+		term:         out,
 		hub:          hub,
 		sensorMgr:    sensorMgr,
-		gridRow:      qrStartRow,
-		gridCol:      statusCol,
-		gridWidth:    statusW,
 		qrCol:        qrIndent + 1,
-		qrBoxW:       qrW,
-		qrBoxH:       qrH,
-		qrCodes:      qrCodes,
+		qrCodes:      renderQRCodes(urls, authMgr.RawPairingKey(), remoteState.CertFP),
 		key:          authMgr.PairingKey(),
 		rawKey:       authMgr.RawPairingKey(),
 		urls:         urls,
 		remoteStatus: remoteStatusLine(remoteState),
 		certFP:       remoteState.CertFP,
 	}
+
+	// The dashboard clears the screen, draws at absolute positions and pins a
+	// scrolling region. Doing that on the screen the user was already using
+	// destroys their scrollback, so it is done on the alternate one — which is
+	// also what makes handing the terminal back at the end a single escape
+	// rather than an attempt to put everything the way it was.
+	terminalScreen.enter(out)
+	sb.paint()
+
+	return sb
+}
+
+// paint draws the whole dashboard: banner, QR box, status grid, footer, and the
+// scrolling region the log lines live in below them.
+//
+// Separate from buildDashboard because the first draw is no longer the only
+// one. Coming back from Ctrl+Z lands on an alternate screen the terminal
+// cleared on the way in, and nothing about the dashboard survives that.
+func (sb *statusBar) paint() {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	sb.doPaint()
+}
+
+// doPaint is paint with the lock already held, which is how the drawing helpers
+// below expect to be called: none of them takes it.
+func (sb *statusBar) doPaint() {
+	if sb.headless {
+		return
+	}
+
+	out := sb.out
+	termW, termH := terminalSize(sb.term)
+	sep := "  " + strings.Repeat("─", termW-4)
+
+	fmt.Fprintf(out, "\033[2J\033[H")
+	row := drawHeader(out, sep)
+
+	qrW, qrH := qrBoxSize(sb.qrCodes)
+	statusCol, statusW := statusColumn(termW, qrW)
+	sb.qrBoxW, sb.qrBoxH = qrW, qrH
+	sb.gridCol, sb.gridWidth = statusCol, statusW
+
+	fmt.Fprintf(out, "  %sScan to connect:%s\n", cDim, cReset)
+	row++
+	qrStartRow := row
 
 	row = qrStartRow + drawCodeAndStatus(out, sb, qrStartRow, statusCol)
 	row = drawFooter(out, sep, row)
@@ -836,8 +926,6 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	headerRows := min(row-1, termH-3)
 	fmt.Fprintf(out, "\033[%d;%dr", headerRows+1, termH)
 	fmt.Fprintf(out, "\033[%d;1H", headerRows+1)
-
-	return sb
 }
 
 // terminalSize is the size of the terminal, or a shape the dashboard fits in
@@ -848,6 +936,9 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 // cut in half — which is worse than a layout that runs off the edge of a window
 // the user can resize.
 func terminalSize(out *os.File) (width, height int) {
+	if out == nil {
+		return 120, 40
+	}
 	w, h, err := term.GetSize(int(out.Fd()))
 	if err != nil || w < 80 || h < 20 {
 		return 120, 40

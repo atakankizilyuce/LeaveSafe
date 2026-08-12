@@ -63,6 +63,10 @@ Commands:
 Flags:
   -dev                Serve the phone UI from web/dist instead of the embedded
                       copy, for development
+  -plain              Print log lines instead of drawing the full-screen
+                      dashboard, leaving the terminal as you found it. Chosen
+                      automatically when output is redirected to a file or pipe
+  -headless           Run with no terminal interface at all, for autostart
   -version            Print the version and exit
   -h, -help           Show this help
 
