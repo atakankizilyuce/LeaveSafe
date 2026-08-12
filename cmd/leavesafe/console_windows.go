@@ -2,12 +2,14 @@
 
 package main
 
-import (
-	"syscall"
-	"unsafe"
+// The Win32 calls in win32_windows.go, as variables so a test can answer for a
+// console it does not have and a window it must not resize. Nothing in the
+// running program reassigns them.
+var (
+	consoleProcessCountFn = consoleProcessCount
+	consoleWindowFn       = consoleWindow
+	maximizeWindowFn      = maximizeWindow
 )
-
-var kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
 // maximizeConsole expands the console window to fill the screen, but only when
 // the window belongs to this program.
@@ -22,17 +24,7 @@ func maximizeConsole() {
 	if !ownsConsole() {
 		return
 	}
-
-	user32 := syscall.NewLazyDLL("user32.dll")
-	getConsoleWindow := kernel32.NewProc("GetConsoleWindow")
-	showWindow := user32.NewProc("ShowWindow")
-
-	hwnd, _, _ := getConsoleWindow.Call()
-	if hwnd != 0 {
-		const swMaximize = 3
-		// ShowWindow returns the previous visibility state, not an error.
-		_, _, _ = showWindow.Call(hwnd, uintptr(swMaximize))
-	}
+	showConsoleMaximized()
 }
 
 // ownsConsole reports whether this process is the only one attached to the
@@ -43,16 +35,18 @@ func maximizeConsole() {
 // attached to it. Run from cmd, PowerShell or Windows Terminal, the shell is
 // attached as well, so the count is at least two.
 //
-// A console that cannot be asked counts as somebody else's. Guessing wrong in
-// that direction costs a window that stays small; guessing wrong in the other
-// costs the user's screen.
+// A console that cannot be asked answers zero, which counts as somebody else's.
+// Guessing wrong in that direction costs a window that stays small; guessing
+// wrong in the other costs the user's screen.
 func ownsConsole() bool {
-	getConsoleProcessList := kernel32.NewProc("GetConsoleProcessList")
+	return consoleProcessCountFn() == 1
+}
 
-	var pids [8]uint32
-	n, _, _ := getConsoleProcessList.Call(
-		uintptr(unsafe.Pointer(&pids[0])),
-		uintptr(len(pids)),
-	)
-	return n == 1
+// showConsoleMaximized maximizes this process's console window, if it has one.
+func showConsoleMaximized() {
+	hwnd := consoleWindowFn()
+	if hwnd == 0 {
+		return
+	}
+	maximizeWindowFn(hwnd)
 }

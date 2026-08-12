@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/term"
 )
 
@@ -44,6 +45,18 @@ type screen struct {
 
 // terminalScreen is the one the running program uses.
 var terminalScreen = &screen{}
+
+func init() {
+	// Whatever happens, the terminal is handed back. log.Fatal exits from
+	// inside logrus without running a single deferred function, and until this
+	// was registered a failed start left the user on an alternate screen with a
+	// scrolling region pinned across it and no program left to undo either.
+	//
+	// Registered here rather than in main because this is the thing being
+	// undone. Nothing is taken over until enter is called, and restore does
+	// nothing when nothing was taken.
+	log.RegisterExitHandler(terminalScreen.restore)
+}
 
 // enter switches to the alternate screen buffer, and remembers where to write
 // the sequence that switches back.
@@ -96,4 +109,26 @@ func (s *screen) active() bool {
 // on: a terminal, rather than a file or a pipe.
 func drawableTerminal(out *os.File) bool {
 	return out != nil && term.IsTerminal(int(out.Fd()))
+}
+
+// planTerminal settles how this run talks to the terminal: with a dashboard,
+// with plain log lines, or with neither.
+//
+// A dashboard needs somewhere to draw. Redirected to a file or piped into
+// something, the cursor escapes it is built from are not decoration that can be
+// ignored — they are the file's contents, and the layout is positioned against
+// a window size that was never asked for. Falling back to log lines is the
+// honest answer there, and -plain is the same fallback asked for by hand.
+//
+// A headless start is neither: it has no terminal at all, and the fallback
+// would be describing a screen nobody is looking at.
+func planTerminal(headless, plain bool, out *os.File) (usePlain, drawDashboard bool) {
+	if headless {
+		return false, false
+	}
+	if !plain && !drawableTerminal(out) {
+		log.Info("Standard output is not a terminal — running without the dashboard")
+		plain = true
+	}
+	return plain, !plain
 }

@@ -3,18 +3,15 @@ package main
 import (
 	"bufio"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"path/filepath"
 
 	log "github.com/sirupsen/logrus"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -28,7 +25,6 @@ import (
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/qr"
 	"github.com/leavesafe/leavesafe/internal/remote"
-	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/state"
 	"github.com/leavesafe/leavesafe/internal/update"
@@ -456,77 +452,6 @@ func consoleLogFormatter() *log.TextFormatter {
 	}
 }
 
-func main() {
-	devMode := flag.Bool("dev", false, "serve web assets from filesystem for live reload")
-	showVersion := flag.Bool("version", false, "print the version and exit")
-	headless := flag.Bool("headless", false, "run without the terminal dashboard, for autostart")
-	plain := flag.Bool("plain", false, "log to the terminal instead of drawing the full-screen dashboard")
-	flag.Usage = printUsage
-	flag.Parse()
-
-	if *showVersion {
-		fmt.Println(versionLine())
-		return
-	}
-
-	// Subcommands run and exit without starting the monitor: they administer
-	// the installation rather than being part of it.
-	if args := flag.Args(); len(args) > 0 {
-		os.Exit(runSubcommand(args))
-	}
-
-	log.SetFormatter(consoleLogFormatter())
-
-	// Whatever happens next, the terminal is handed back. log.Fatal exits from
-	// inside logrus without running a single deferred function, and until this
-	// was registered a failed start left the user on an alternate screen with a
-	// scrolling region pinned across it and no program left to undo either.
-	log.RegisterExitHandler(terminalScreen.restore)
-
-	// A dashboard needs somewhere to draw. Redirected to a file or piped into
-	// something, the cursor escapes it is built from are not decoration that can
-	// be ignored — they are the file's contents, and the layout is positioned
-	// against a window size that was never asked for. Falling back to log lines
-	// is the honest answer, and -plain is the same fallback asked for by hand.
-	if !*headless && !*plain && !drawableTerminal(os.Stdout) {
-		log.Info("Standard output is not a terminal — running without the dashboard")
-		*plain = true
-	}
-
-	if drawing := !*headless && !*plain; drawing {
-		maximizeConsole()
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	cfg := loadConfig()
-	chooseConnectionMode(cfg, *headless)
-
-	a, err := startApp(appOptions{
-		cfg:      cfg,
-		headless: *headless,
-		plain:    *plain,
-		devMode:  *devMode,
-		out:      os.Stdout,
-		in:       os.Stdin,
-	})
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	defer a.close()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	safe.Go("shutdown", func() {
-		<-sigCh
-		a.shutdown()
-		os.Exit(0)
-	})
-
-	if err := a.serve(); err != nil {
-		log.Fatalf("Server error: %v", err)
-	}
-}
-
 // loadConfig reads the config and reports what it had to correct.
 //
 // A hand-edited config is the normal way to change most of these settings, and a
@@ -939,12 +864,18 @@ func terminalSize(out *os.File) (width, height int) {
 	if out == nil {
 		return 120, 40
 	}
-	w, h, err := term.GetSize(int(out.Fd()))
+	w, h, err := termSizeFn(int(out.Fd()))
 	if err != nil || w < 80 || h < 20 {
 		return 120, 40
 	}
 	return w, h
 }
+
+// termSizeFn is term.GetSize, as a variable so a test can answer for a window
+// no test process has: `go test` is attached to a pipe, and every size it could
+// be asked for is the failure the fallback above is for. Nothing in the running
+// program reassigns it.
+var termSizeFn = term.GetSize
 
 // drawHeader writes the banner, the version and the rule under them, and returns
 // the row the next thing goes on.
