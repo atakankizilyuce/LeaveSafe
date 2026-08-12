@@ -215,6 +215,28 @@ diff is small.
   did — they arrive as keystrokes now rather than as signals, so the program
   answers them itself. Input that is not a terminal is read as whole lines, as
   before.
+- **The QR code survives turning remote access on.** The certificate
+  fingerprint was added to every address, including the local plain-HTTP one
+  that never presents a certificate — sixty-eight characters of a
+  hundred-and-sixteen-character payload, which pushed that code from 37 modules
+  square to 49. The box was then sized to the largest of the codes, so the local
+  one was laid out as though it were the remote one, and a window with room for
+  the code somebody was actually looking at was told it had none. That is what
+  "the QR code stops working when I choose mobile data" was. The fingerprint now
+  goes only on the address that presents it, the box is sized to the code on
+  screen, and `qr <n>` moves the layout with it.
+- **The code outlasts the decoration.** A window too small for everything gave
+  up the QR code while keeping the block letters and the command list. It is the
+  one part of that screen that is there to be used rather than read, so it is
+  the last thing to go: the banner shrinks first, then the command list, then
+  the shape changes, and only then is the code dropped — with a line saying so.
+  A default 120×30 terminal with remote access on showed no code at all; it now
+  shows one.
+- **A run without the dashboard prints a code for an address that arrives.**
+  `-plain` printed the pairing code once at startup. Turning remote access on
+  afterwards added an address that no code had ever been printed for, so the
+  user was told they were reachable from the internet and left to type the
+  address into a phone by hand.
 - **A small window keeps the address instead of the command list.** In a window
   with no room for the QR code, the status grid was clipped where the log
   started — but the command footer is drawn at fixed rows above the log, so it
