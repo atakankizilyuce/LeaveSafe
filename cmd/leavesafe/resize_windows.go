@@ -14,7 +14,11 @@ import "os"
 // five-second repaint is what notices instead: it checks the layout still
 // describes the screen before painting anything, so a resized window is put
 // right within five seconds rather than immediately.
-func notifyResize(chan os.Signal) {}
+func notifyResize(chan os.Signal) {
+	// Deliberately empty: there is no signal on Windows to ask for. See above.
+}
 
-// stopResizeNotices undoes notifyResize, which asked for nothing.
-func stopResizeNotices(chan os.Signal) {}
+// stopResizeNotices undoes notifyResize.
+func stopResizeNotices(chan os.Signal) {
+	// Deliberately empty: nothing was asked for, so there is nothing to undo.
+}

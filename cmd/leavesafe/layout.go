@@ -254,31 +254,50 @@ func truncateVisible(s string, maxVisible int) string {
 	}
 
 	var b strings.Builder
-	seen, colored, i := 0, false, 0
-	for i < len(s) {
-		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
-			start := i
-			i += 2
-			for i < len(s) && s[i] != 'm' {
-				i++
-			}
-			if i < len(s) {
-				i++
-			}
-			b.WriteString(s[start:i])
+	seen, colored := 0, false
+	for i := 0; i < len(s); {
+		if n := escapeLen(s, i); n > 0 {
+			b.WriteString(s[i : i+n])
 			colored = true
+			i += n
 			continue
 		}
 		if seen == maxVisible {
-			if colored {
-				b.WriteString(cReset)
-			}
-			return b.String()
+			return closeColor(b.String(), colored)
 		}
 		_, size := utf8.DecodeRuneInString(s[i:])
 		b.WriteString(s[i : i+size])
 		seen++
 		i += size
+	}
+	return s
+}
+
+// escapeLen is the length of the color escape beginning at i, or zero if there
+// is none there.
+//
+// Three things walk these strings — measuring one, cutting one, and drawing one
+// — and they have to agree about where an escape starts and ends. They each used
+// to answer it for themselves.
+func escapeLen(s string, i int) int {
+	if i+1 >= len(s) || s[i] != '\033' || s[i+1] != '[' {
+		return 0
+	}
+	j := i + 2
+	for j < len(s) && s[j] != 'm' {
+		j++
+	}
+	if j < len(s) {
+		j++
+	}
+	return j - i
+}
+
+// closeColor ends a color that a cut left open, which would otherwise take the
+// rest of the row.
+func closeColor(s string, colored bool) string {
+	if colored {
+		return s + cReset
 	}
 	return s
 }

@@ -217,17 +217,13 @@ func (sb *statusBar) setCertFP(fp string) {
 	sb.mu.Unlock()
 }
 
+// visLen is how many columns a string takes on screen: its runes, not counting
+// the color escapes, which are written to the terminal and occupy nothing.
 func visLen(s string) int {
-	n, i := 0, 0
-	for i < len(s) {
-		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
-			i += 2
-			for i < len(s) && s[i] != 'm' {
-				i++
-			}
-			if i < len(s) {
-				i++
-			}
+	n := 0
+	for i := 0; i < len(s); {
+		if e := escapeLen(s, i); e > 0 {
+			i += e
 			continue
 		}
 		_, size := utf8.DecodeRuneInString(s[i:])
