@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,6 +134,95 @@ func TestAFileIsNotSomethingToDrawOn(t *testing.T) {
 	}
 }
 
+// How a run decides what to put on screen. Getting this wrong in the direction
+// of "draw it anyway" is what wrote cursor escapes into a redirected log file.
+func TestHowARunDecidesWhatToPutOnScreen(t *testing.T) {
+	notATerminal, err := os.Create(filepath.Join(t.TempDir(), "log.txt"))
+	if err != nil {
+		t.Fatalf("create the file: %v", err)
+	}
+	t.Cleanup(func() { _ = notATerminal.Close() })
+
+	cases := map[string]struct {
+		headless, plain      bool
+		out                  *os.File
+		wantPlain, wantDrawn bool
+	}{
+		"redirected to a file": {out: notATerminal, wantPlain: true},
+		"-plain asked for":     {plain: true, out: notATerminal, wantPlain: true},
+		"headless":             {headless: true, out: notATerminal},
+		"headless outranks -plain": {
+			headless: true, plain: true, out: notATerminal,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			plain, drawn := planTerminal(tc.headless, tc.plain, tc.out)
+			if plain != tc.wantPlain {
+				t.Errorf("plain = %v, want %v", plain, tc.wantPlain)
+			}
+			if drawn != tc.wantDrawn {
+				t.Errorf("dashboard = %v, want %v", drawn, tc.wantDrawn)
+			}
+		})
+	}
+}
+
+// A headless status bar draws nothing at all. It is handed io.Discard, but the
+// check has to be in the drawing rather than in where it lands: the escapes are
+// positioned against a terminal, and a headless run's output is a log file.
+func TestAHeadlessStatusBarDrawsNothing(t *testing.T) {
+	var out syncBuffer
+	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "", "")
+	sb.out = &out
+
+	sb.paint()
+
+	if written := out.String(); written != "" {
+		t.Errorf("a headless run drew a dashboard: %q", written)
+	}
+}
+
+// A window too small is treated the same as no answer at all: the layout
+// assumes it has room, and squeezing it into eighty by twenty produces a QR
+// code cut in half, which is worse than one running off the edge of a window
+// the user can resize.
+func TestTheSizeTheDashboardIsLaidOutFor(t *testing.T) {
+	cases := map[string]struct {
+		w, h         int
+		err          error
+		wantW, wantH int
+	}{
+		"a window that answers": {w: 200, h: 60, wantW: 200, wantH: 60},
+		"a window too narrow":   {w: 70, h: 60, wantW: 120, wantH: 40},
+		"a window too short":    {w: 200, h: 12, wantW: 120, wantH: 40},
+		"nothing to ask":        {err: errNoSize, wantW: 120, wantH: 40},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			real := termSizeFn
+			termSizeFn = func(int) (int, int, error) { return tc.w, tc.h, tc.err }
+			t.Cleanup(func() { termSizeFn = real })
+
+			w, h := terminalSize(os.Stdout)
+
+			if w != tc.wantW || h != tc.wantH {
+				t.Errorf("terminalSize = %dx%d, want %dx%d", w, h, tc.wantW, tc.wantH)
+			}
+		})
+	}
+
+	// Nothing at all to ask, which is what a headless start and every test that
+	// draws into a buffer hands it.
+	if w, h := terminalSize(nil); w != 120 || h != 40 {
+		t.Errorf("terminalSize(nil) = %dx%d, want the 120x40 fallback", w, h)
+	}
+}
+
+// errNoSize stands in for whatever the platform says when the thing it was
+// handed is not a terminal.
+var errNoSize = errors.New("not a terminal")
+
 // -plain has no dashboard, so this is the only place a code to scan appears.
 // Without it the user is left with a URL to type on a phone keyboard and a
 // pairing key to copy by eye.
@@ -156,6 +246,35 @@ func TestPlainOutputStillPrintsSomethingToScan(t *testing.T) {
 	// Positioning escapes belong to a dashboard. This output scrolls.
 	if strings.Contains(printed, "\033[2J") {
 		t.Error("the plain output cleared the screen")
+	}
+}
+
+// An address too long to fit in a QR code has to be said out loud. Printing
+// nothing would leave the user staring at a blank space where a code should be,
+// with no idea whether to wait or type the address in.
+func TestPlainOutputSaysWhenThereIsNoCodeToPrint(t *testing.T) {
+	var out syncBuffer
+	huge := "http://" + strings.Repeat("a", 4000) + ":8080"
+	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey,
+		[]string{huge}, "", "")
+
+	printPairingCode(&out, sb, testRawKey, "")
+
+	if !strings.Contains(out.String(), "No QR code") {
+		t.Errorf("nothing said why there was no code; output was:\n%s", out.String())
+	}
+}
+
+// A start with nowhere to connect to has nothing to print, and must not print a
+// heading promising a code that never follows.
+func TestPlainOutputPrintsNothingWithNoAddress(t *testing.T) {
+	var out syncBuffer
+	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "", "")
+
+	printPairingCode(&out, sb, testRawKey, "")
+
+	if written := out.String(); written != "" {
+		t.Errorf("something was printed for a run with no address: %q", written)
 	}
 }
 
