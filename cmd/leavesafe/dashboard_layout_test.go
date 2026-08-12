@@ -155,34 +155,22 @@ func TestTerminalSizeFallsBackWhenItCannotAsk(t *testing.T) {
 	}
 }
 
-// The box is sized to the largest code so that switching between addresses with
-// `qr <n>` never overflows into the rest of the layout.
-func TestQRBoxIsSizedToTheLargestCode(t *testing.T) {
-	codes := [][]string{
-		{"##", "##"},
-		{"####", "####", "####"},
-		{"###"},
-	}
-
-	w, h := qrBoxSize(codes)
+// The box is sized to the code on screen rather than the largest of them. The
+// largest was safer for switching and worse for everything else: remote access
+// adds an address whose code is bigger, and a window with room for the local
+// code was told it had none.
+func TestQRBoxIsSizedToTheCodeOnScreen(t *testing.T) {
+	w, h := qrBoxSize([]string{"####", "####", "####"})
 
 	if w != 4 || h != 3 {
-		t.Errorf("qrBoxSize = %dx%d, want 4x3 — the largest of the three", w, h)
+		t.Errorf("qrBoxSize = %dx%d, want 4x3", w, h)
 	}
 }
 
 // A code that would not render is kept as a nil entry rather than dropped, so
-// the indexes stay lined up with the address list. It must not be mistaken for
-// the widest one either.
-func TestQRBoxIgnoresACodeThatWouldNotRender(t *testing.T) {
-	w, h := qrBoxSize([][]string{nil, {"###", "###"}})
-
-	if w != 3 || h != 2 {
-		t.Errorf("qrBoxSize = %dx%d, want 3x2", w, h)
-	}
-}
-
-func TestQRBoxOfNothingIsEmpty(t *testing.T) {
+// the indexes stay lined up with the address list. Selected, it is a box of no
+// size rather than one of some invented size.
+func TestQRBoxOfACodeThatWouldNotRenderIsEmpty(t *testing.T) {
 	if w, h := qrBoxSize(nil); w != 0 || h != 0 {
 		t.Errorf("qrBoxSize = %dx%d, want 0x0", w, h)
 	}
@@ -392,11 +380,125 @@ func TestQRCodeIsWiderThanItIsTall(t *testing.T) {
 		t.Fatal("no code was rendered")
 	}
 
-	w, h := qrBoxSize(codes)
+	w, h := qrBoxSize(codes[0])
 	if w <= h {
 		t.Errorf("a code %d wide and %d tall is not drawn two characters per module", w, h)
 	}
 	if got := utf8.RuneCountInString(codes[0][0]); got != w {
 		t.Errorf("the box is %d wide but the first line is %d", w, got)
+	}
+}
+
+// The box follows the selection. Remote access adds an address whose code is
+// bigger — a longer address, and a certificate fingerprint with it — and sizing
+// the box to that one meant a window with room for the local code was told it
+// had none.
+func TestTheBoxIsLaidOutForTheCodeTheUserIsLookingAt(t *testing.T) {
+	sb := &statusBar{
+		out:       &syncBuffer{},
+		hub:       testHub(t),
+		sensorMgr: monitor.NewManager(),
+		rawKey:    testRawKey,
+		certFP:    "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+	}
+	sb.setURLs([]string{"http://192.168.1.16:8080", "https://198.51.100.42:9443"})
+
+	local := sb.wantedLayout()
+	sb.showQR(2)
+	remote := sb.wantedLayout()
+
+	if local.qrBoxH == 0 || remote.qrBoxH == 0 {
+		t.Fatalf("a code was dropped: local box %dx%d, remote box %dx%d",
+			local.qrBoxW, local.qrBoxH, remote.qrBoxW, remote.qrBoxH)
+	}
+	if local.qrBoxH >= remote.qrBoxH {
+		t.Errorf("the local code is boxed at %d rows and the remote one at %d; "+
+			"the local address is being laid out for a code it does not have",
+			local.qrBoxH, remote.qrBoxH)
+	}
+}
+
+// The dashboard is redrawn when the selection moves, because the box it is
+// drawn in is a different size now. Without that the layout the pieces are
+// painted against no longer describes the screen.
+func TestSwitchingCodesRedrawsTheWholeDashboard(t *testing.T) {
+	sb, screen := terminalDashboard(t, []string{"http://192.168.1.16:8080",
+		"https://198.51.100.42:9443/with/a/rather/longer/address/to/carry"})
+
+	before := screen.String()
+	sb.showQR(2)
+	added := strings.TrimPrefix(screen.String(), before)
+
+	// A full repaint clears the screen first; a partial one never does.
+	if !strings.Contains(added, "\033[2J") {
+		t.Errorf("switching to a code of a different size did not redraw the screen:\n%q", added)
+	}
+}
+
+// ---- a run with no dashboard --------------------------------------------
+
+// plainBar is the status bar a -plain run gets: no dashboard, and a terminal
+// somebody is watching.
+func plainBar(t *testing.T, urls []string) (*statusBar, *syncBuffer) {
+	t.Helper()
+
+	printed := &syncBuffer{}
+	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), testKey, testRawKey, urls, "", "")
+	sb.plainOut = printed
+	return sb, printed
+}
+
+// Turning remote access on adds an address, and without a dashboard there is no
+// box to redraw: the code printed at startup has scrolled away, and nothing has
+// ever printed one for the new address. The user is told they can be reached
+// from the internet and left to type it into a phone by hand.
+func TestARunWithNoDashboardPrintsACodeForAnAddressThatArrives(t *testing.T) {
+	sb, printed := plainBar(t, []string{"http://192.168.1.16:8080"})
+
+	sb.setURLs([]string{"https://198.51.100.42:9443", "http://192.168.1.16:8080"})
+
+	if !strings.Contains(printed.String(), "Scan to connect:") {
+		t.Errorf("no code was printed for the address that arrived; output was:\n%s", printed.String())
+	}
+	if !strings.Contains(printed.String(), "https://198.51.100.42:9443") {
+		t.Errorf("the new address was not named; output was:\n%s", printed.String())
+	}
+}
+
+// And not otherwise. The startup state is published through the same call, so a
+// list that has not changed must print nothing — or every start would show the
+// code twice and every five-second refresh would add another.
+func TestAnUnchangedAddressListPrintsNothing(t *testing.T) {
+	urls := []string{"http://192.168.1.16:8080"}
+	sb, printed := plainBar(t, urls)
+
+	sb.setURLs(urls)
+
+	if printed.String() != "" {
+		t.Errorf("an unchanged address list printed a code again:\n%s", printed.String())
+	}
+}
+
+// A dashboard redraws its box instead, so printing there would put a QR code
+// into the middle of the log.
+func TestADashboardPrintsNoCodeIntoItsLog(t *testing.T) {
+	sb, screen := terminalDashboard(t, []string{"http://192.168.1.16:8080"})
+
+	before := screen.String()
+	sb.setURLs([]string{"https://198.51.100.42:9443", "http://192.168.1.16:8080"})
+
+	if strings.Contains(strings.TrimPrefix(screen.String(), before), "Scan to connect:\n") {
+		t.Error("a dashboard printed a pairing code into its own log")
+	}
+}
+
+// The box has nothing to draw when there is no address yet, or when the run has
+// no screen at all — both of which are asked about before anything is set up.
+func TestThereIsNoCodeToShowBeforeThereIsAnAddress(t *testing.T) {
+	if lines := (&statusBar{qrURLIdx: -1}).shownCode(); lines != nil {
+		t.Errorf("a run with no address offered a code of %d lines", len(lines))
+	}
+	if lines := (&statusBar{qrURLIdx: 3, qrCodes: [][]string{{"##"}}}).shownCode(); lines != nil {
+		t.Errorf("an address that is not in the list offered a code of %d lines", len(lines))
 	}
 }

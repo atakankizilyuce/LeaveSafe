@@ -71,3 +71,26 @@ func TestPairingURLOmitsAnAbsentFingerprint(t *testing.T) {
 		t.Errorf("a URL with no certificate still names a fingerprint: %q", raw)
 	}
 }
+
+// Nor when there is a certificate somewhere else. Remote access brings one up
+// on its own listener; the local address is still plain HTTP, and the
+// fingerprint of a certificate that address never presents is sixty-eight
+// characters the phone cannot use — which is a third of the payload, and the
+// difference between a code that fits the window and one that is dropped.
+func TestPairingURLKeepsTheFingerprintOffThePlainAddress(t *testing.T) {
+	const fingerprint = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+
+	local := pairingURL("http://192.168.1.5:8080", "1234567890123456", fingerprint)
+	remote := pairingURL("https://203.0.113.9:9443", "1234567890123456", fingerprint)
+
+	if strings.Contains(local, "fp=") {
+		t.Errorf("the plain-HTTP address carries a fingerprint it never presents: %q", local)
+	}
+	if !strings.Contains(remote, "fp=") {
+		t.Errorf("the address that does present one dropped it: %q", remote)
+	}
+	if len(local) >= len(remote) {
+		t.Errorf("the local payload is %d characters and the remote one %d; "+
+			"the code for the local address is no smaller for it", len(local), len(remote))
+	}
+}
