@@ -30,7 +30,26 @@ func TestPowerShellProbeGivesUp(t *testing.T) {
 
 // Canceling the sensor's context has to stop a probe in flight, or disarming
 // would wait on a query nobody is interested in any more.
+//
+// The timeout here is deliberately far longer than the one the sensors use, and
+// the assertion is against a budget rather than against that timeout. What this
+// measures from the outside is cancellation *plus* the cost of starting
+// PowerShell, and on a loaded runner starting PowerShell is not fast — the test
+// above allows twenty seconds of slack for exactly that. Measured against the
+// four-second poll timeout, a slow start alone reached it, and the test failed
+// having observed nothing about cancellation at all.
+//
+// With a ceiling this high, the only thing that can end the call inside the
+// budget is the cancellation working; a cancellation that does not work waits
+// out the timeout and is still caught.
 func TestPowerShellProbeHonorsCancellation(t *testing.T) {
+	// Long enough that neither the timeout nor the sleep can be what ends this,
+	// and a budget with room for a slow process launch inside it.
+	const (
+		ceiling = 45 * time.Second
+		budget  = 20 * time.Second
+	)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		time.Sleep(200 * time.Millisecond)
@@ -38,14 +57,15 @@ func TestPowerShellProbeHonorsCancellation(t *testing.T) {
 	}()
 
 	start := time.Now()
-	_, err := powershellOutput(ctx, pollTimeout, "Start-Sleep -Seconds 60")
+	_, err := powershellOutput(ctx, ceiling, "Start-Sleep -Seconds 120")
 	elapsed := time.Since(start)
 
 	if err == nil {
 		t.Error("a canceled probe returned without an error")
 	}
-	if elapsed >= pollTimeout {
-		t.Errorf("canceling took %v; it should return well before the %v timeout", elapsed, pollTimeout)
+	if elapsed >= budget {
+		t.Errorf("canceling took %v, past the %v budget — the probe waited out its %v timeout "+
+			"rather than stopping when nobody wanted the answer", elapsed, budget, ceiling)
 	}
 }
 
