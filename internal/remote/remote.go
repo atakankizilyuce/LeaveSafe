@@ -11,6 +11,7 @@ package remote
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"strconv"
@@ -110,9 +111,9 @@ type Deps struct {
 	OpenPort func(port int) (PortMapping, error)
 	PublicIP func() (string, error)
 	// Verify opens a connection to the public address and reports whether this
-	// machine's certificate answered it. A nil error is the only evidence in
-	// this package that remote access works.
-	Verify func(addr, certFP string) error
+	// machine's own certificate answered it. A nil error is the only evidence
+	// in this package that remote access works.
+	Verify func(addr string, cert *x509.Certificate) error
 	// FirewallHint is the command that lets this port in through the host
 	// firewall, which is the likeliest reason a verified-looking setup is not
 	// reachable. It is a hint printed to the user, never run.
@@ -221,7 +222,13 @@ func (c *Controller) Enable(ctx context.Context) State {
 	st := c.state
 	c.mu.Unlock()
 
-	safe.Go("remote-reachability", func() { c.probe(ctx, gen, boundPort, fp) })
+	// The leaf is what the reachability check needs: it pins the connection to
+	// this exact certificate. A certificate that will not parse is not worth
+	// refusing to serve over — the listener is already up and working — so the
+	// check simply has nothing to pin to and says as much.
+	leaf := parseLeaf(cert)
+
+	safe.Go("remote-reachability", func() { c.probe(ctx, gen, boundPort, fp, leaf) })
 	return st
 }
 
@@ -231,7 +238,8 @@ func (c *Controller) Enable(ctx context.Context) State {
 // It runs on its own goroutine and can take the better part of a minute. Every
 // exit publishes exactly once, through publish, which drops the result if
 // remote access has been taken down or brought up again in the meantime.
-func (c *Controller) probe(ctx context.Context, gen uint64, boundPort int, fp string) {
+func (c *Controller) probe(ctx context.Context, gen uint64, boundPort int,
+	fp string, leaf *x509.Certificate) {
 	next := State{Enabled: true, CertFP: fp, UPnP: UPnPOK}
 
 	mapping, ok := c.mapPort(ctx, gen, boundPort, &next)
@@ -272,8 +280,32 @@ func (c *Controller) probe(ctx context.Context, gen uint64, boundPort int, fp st
 	}
 
 	next.PublicURL = fmt.Sprintf("https://%s:%d", publicIP, boundPort)
-	c.checkReachable(&next, publicIP, boundPort, fp)
+	c.checkReachable(&next, publicIP, boundPort, leaf)
 	c.publish(gen, next)
+}
+
+// parseLeaf is the certificate the reachability check pins to, or nil.
+//
+// Nil is a perfectly good answer and the reason it is worth having: a
+// certificate that cannot be parsed is not a reason to refuse to serve — the
+// listener is up and working, and the phone on the local network neither knows
+// nor cares. It only means there is nothing to pin a check to, which the check
+// reports as having established nothing.
+//
+// The emptiness test is not decoration. Reaching into the first element of a
+// certificate that has none would panic, in Enable, on the one program whose
+// whole job is to still be running when somebody walks off with the laptop.
+func parseLeaf(cert tls.Certificate) *x509.Certificate {
+	if len(cert.Certificate) == 0 {
+		log.Warn("The certificate carries no data, so reachability cannot be checked")
+		return nil
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		log.Warnf("The certificate could not be parsed, so reachability cannot be checked: %v", err)
+		return nil
+	}
+	return leaf
 }
 
 // mapPort asks the router for a port mapping and records it. It reports whether
@@ -398,13 +430,13 @@ func (c *Controller) reportBlocked(gen uint64, placement network.Placement,
 // what was and was not established, and names the host firewall — the likeliest
 // thing to be silently dropping the connection, and the one thing on this list
 // that is on this machine.
-func (c *Controller) checkReachable(next *State, publicIP string, boundPort int, fp string) {
+func (c *Controller) checkReachable(next *State, publicIP string, boundPort int, leaf *x509.Certificate) {
 	if c.deps.Verify == nil {
 		return
 	}
 
 	addr := net.JoinHostPort(publicIP, strconv.Itoa(boundPort))
-	err := c.deps.Verify(addr, fp)
+	err := c.deps.Verify(addr, leaf)
 	if err == nil {
 		// Evidence outranks everything inferred before it, including a reason
 		// already written. A router that looked like it was behind another one,

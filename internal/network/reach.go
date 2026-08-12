@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net"
 	"time"
-
-	"github.com/leavesafe/leavesafe/internal/certfp"
 )
 
 // verifyTimeout is how long the check waits for the round trip out through the
@@ -37,58 +35,80 @@ var ErrNotVerified = errors.New("reachability could not be confirmed")
 // says where the internet sees this network from, not that anything is listening
 // there. Both were being reported as "ACTIVE" with a URL beside them.
 //
-// This dials the public address and asks what certificate answers. A match is
-// proof of two things at once and it is worth being explicit about the second:
-// that something completed a TCP connection to that address and port, and that
-// the something is this machine rather than the router's own admin page, a
-// neighbor on the same public address, or whatever else an ISP has parked
-// there. Without the fingerprint, a router that serves its web interface on the
-// forwarded port would answer this check and be recorded as success.
+// This dials the public address and requires that this machine's own
+// certificate answer it. A success is proof of two things at once, and the
+// second is worth being explicit about: that something completed a TCP
+// connection to that address and port, and that the something is this machine
+// rather than the router's own admin page, a neighbor on the same public
+// address, or whatever else an ISP has parked there. Without that, a router
+// serving its web interface on the forwarded port would answer this check and
+// be recorded as success.
 //
 // A failure proves nothing, and the caller is expected to say so.
-func VerifyReachable(addr, wantFP string) error {
-	return verifyReachable(addr, wantFP, verifyTimeout)
+func VerifyReachable(addr string, cert *x509.Certificate) error {
+	return verifyReachable(addr, cert, verifyTimeout)
 }
 
-func verifyReachable(addr, wantFP string, timeout time.Duration) error {
-	if wantFP == "" {
-		return fmt.Errorf("%w: there is no certificate fingerprint to check the answer against", ErrNotVerified)
+func verifyReachable(addr string, cert *x509.Certificate, timeout time.Duration) error {
+	conf, err := pinnedTo(cert)
+	if err != nil {
+		return err
 	}
 
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, &tls.Config{
-		// The certificate is self-signed and always will be, so there is no
-		// chain to validate and nothing here to trust on its say-so. It is
-		// checked below, by fingerprint, against the one this machine is
-		// presenting — which is a stronger statement than a chain would make.
-		InsecureSkipVerify: true, //nolint:gosec // G402: checked by fingerprint immediately below
-		MinVersion:         tls.VersionTLS12,
-	})
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, conf)
 	if err != nil {
+		// Everything arrives here: nothing listening, a firewall swallowing the
+		// packet, and something answering that is not this machine. They are
+		// not the same finding, but from here they are the same evidence —
+		// none — and inventing a distinction would be guessing.
 		return fmt.Errorf("%w: %w", ErrNotVerified, err)
 	}
-	defer func() { _ = conn.Close() }()
-
-	return whoAnswered(addr, wantFP, conn.ConnectionState().PeerCertificates)
+	_ = conn.Close()
+	return nil
 }
 
-// whoAnswered decides whether the certificates presented belong to this
-// machine.
+// pinnedTo is a TLS configuration that will complete a handshake with one
+// certificate in the world and no other.
 //
-// Split out because the no-certificate case cannot be produced by a real
-// handshake against a real server — a server that presents none does not get
-// as far as a connection — and an unreachable branch that dereferences the
-// first element of a slice is how a defensive check becomes the crash it was
-// written to prevent.
-func whoAnswered(addr, wantFP string, certs []*x509.Certificate) error {
-	if len(certs) == 0 {
-		return fmt.Errorf("%w: %s answered without presenting a certificate", ErrNotVerified, addr)
+// The certificate is self-signed, so the usual chain to a public authority does
+// not exist and there is nothing for the system trust store to say about it.
+// What replaces that is stricter rather than looser: this machine's own
+// certificate is made the only trusted root, so the ordinary verifier — chain,
+// dates, key usage, hostname, and the handshake signature that proves the far
+// end holds the private key — has to pass against exactly it.
+//
+// The name comes out of the certificate rather than from the address dialed,
+// and that is the point of doing it this way. The address is a public IP that
+// was not known when the certificate was made and is not in its SANs, so asking
+// the verifier to match it would fail on every machine. The name is not what
+// identifies the far end here; being the one certificate in the pool is.
+func pinnedTo(cert *x509.Certificate) (*tls.Config, error) {
+	if cert == nil {
+		return nil, fmt.Errorf("%w: there is no certificate to check the answer against", ErrNotVerified)
 	}
 
-	if got := certfp.Of(certs[0].Raw); !certfp.Equal(got, wantFP) {
-		// Not merely unproven — something else is on that address, and putting
-		// a QR code around it would send the pairing key to whatever it is.
-		return fmt.Errorf("%s is answering with a different certificate (%s), so it is not this machine",
-			addr, got)
+	name := certName(cert)
+	if name == "" {
+		return nil, fmt.Errorf("%w: the certificate names no host to verify against", ErrNotVerified)
 	}
-	return nil
+
+	pool := x509.NewCertPool()
+	pool.AddCert(cert)
+	return &tls.Config{
+		RootCAs:    pool,
+		ServerName: name,
+		MinVersion: tls.VersionTLS12,
+	}, nil
+}
+
+// certName is a name the certificate carries, for the verifier to match itself
+// against.
+func certName(cert *x509.Certificate) string {
+	if len(cert.DNSNames) > 0 {
+		return cert.DNSNames[0]
+	}
+	if len(cert.IPAddresses) > 0 {
+		return cert.IPAddresses[0].String()
+	}
+	return ""
 }

@@ -425,6 +425,22 @@ function safeHttpUrl(raw: string): string {
  * describes what the laptop is doing now, not what the switch is about to ask
  * for.
  */
+/**
+ * What to call the public address, which is a claim and is held to what is
+ * known.
+ *
+ * "Reachable at" is only said about an address something was actually seen to
+ * answer on. A port mapping the router accepted is an agreement, not a
+ * delivered packet — the laptop's own firewall can still drop the connection —
+ * so that case is "possibly", not a fact. And a path that is known to be
+ * blocked has not got as far as "possibly".
+ */
+function addressLabel(state: RemoteState): string {
+    if (state.reach === 'verified') return 'Reachable at';
+    if (state.upnp === 'ok' && state.reach !== 'blocked') return 'Possibly reachable at';
+    return 'Will be reachable at';
+}
+
 function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
     if (!on) return null;
     if (!state || state.probing) {
@@ -447,12 +463,7 @@ function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
     // drop the connection, and under carrier-grade NAT the public address
     // belongs to the provider and always did. Both of those used to read here
     // as "Reachable at".
-    const label =
-        state.reach === 'verified'
-            ? 'Reachable at'
-            : state.upnp === 'ok' && state.reach !== 'blocked'
-              ? 'Possibly reachable at'
-              : 'Will be reachable at';
+    const label = addressLabel(state);
 
     return (
         <>

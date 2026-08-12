@@ -37,8 +37,13 @@ var version = "dev"
 // repoURL is where the project lives; the CLI points at it for bug reports and
 // release downloads rather than repeating the address in several places.
 const (
-	repoURL   = "https://github.com/atakankizilyuce/LeaveSafe"
-	issuesURL = repoURL + "/issues"
+	repoURL = "https://github.com/atakankizilyuce/LeaveSafe"
+
+	// httpsScheme marks the addresses that carry a certificate, which is what
+	// decides whether a fingerprint belongs in the URL and what the dashboard
+	// trims off before showing one.
+	httpsScheme = "https://"
+	issuesURL   = repoURL + "/issues"
 )
 
 // eventLogFileName is the security event history kept in the config directory.
@@ -710,7 +715,7 @@ func pairingURL(base, rawKey, certFP string) string {
 	// modules square to forty-nine the moment remote access came on. A window
 	// with room for the local code was then told it had none, which is what
 	// "the QR code stops working when I turn on mobile data" was.
-	if certFP != "" && strings.HasPrefix(base, "https://") {
+	if certFP != "" && strings.HasPrefix(base, httpsScheme) {
 		fragment += "&fp=" + strings.ToLower(strings.ReplaceAll(certFP, ":", ""))
 	}
 	return base + "/#" + fragment
@@ -786,9 +791,9 @@ func remoteStatusLine(st remote.State) string {
 		// Named as unconfirmed rather than active, because the two used to read
 		// the same and only one of them had been checked. It may well work; it
 		// has not been seen to.
-		return "ON — " + strings.TrimPrefix(st.PublicURL, "https://") + " (unconfirmed)"
+		return "ON — " + strings.TrimPrefix(st.PublicURL, httpsScheme) + " (unconfirmed)"
 	default:
-		return "ACTIVE — " + strings.TrimPrefix(st.PublicURL, "https://")
+		return "ACTIVE — " + strings.TrimPrefix(st.PublicURL, httpsScheme)
 	}
 }
 
