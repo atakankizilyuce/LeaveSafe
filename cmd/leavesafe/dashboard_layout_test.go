@@ -48,7 +48,10 @@ func drawnDashboard(t *testing.T, remoteState remote.State) (*statusBar, string)
 	// process is true of the program and not of a test file, so each build
 	// hands it back before the next one takes it.
 	t.Cleanup(terminalScreen.restore)
-	sb := buildDashboard(out, srv, authMgr, hub, mgr, remoteState)
+	// A file for the input too: it is not a terminal, so nothing here is put
+	// into raw mode and the dashboard is drawn without an input line, which is
+	// what every non-tty run gets.
+	sb := buildDashboard(out, out, srv, authMgr, hub, mgr, remoteState)
 
 	if err := out.Sync(); err != nil {
 		t.Fatalf("flush the screen file: %v", err)

@@ -878,3 +878,28 @@ func TestBluetoothStartsAlongsideWiFiWhenAskedForBoth(t *testing.T) {
 		t.Error("asking for Bluetooth took the network path down with it")
 	}
 }
+
+// Reading the keyboard a keystroke at a time means reading the Ctrl+C that used
+// to become SIGINT before it becomes one, so the handler in main never fires
+// and nothing else would stop the program. This is that handler's work done by
+// hand — and it has to be the same orderly shutdown, not a quicker way out.
+func TestQuitShutsTheProgramDownAndLeavesWithNothingToReport(t *testing.T) {
+	a := startedApp(t, nil)
+
+	left := -1
+	previous := exitProcess
+	exitProcess = func(code int) { left = code }
+	t.Cleanup(func() { exitProcess = previous })
+
+	a.quit()
+
+	if left != 0 {
+		t.Errorf("the program left with status %d, want 0 — nothing went wrong", left)
+	}
+	// The shutdown really happened rather than the program simply stopping:
+	// an armed machine that exits without recording it comes back believing it
+	// was never watching.
+	if err := a.serve(); err != nil {
+		t.Errorf("the server was still running after quit: %v", err)
+	}
+}

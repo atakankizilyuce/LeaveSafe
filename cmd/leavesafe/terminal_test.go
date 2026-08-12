@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/term"
+
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/remote"
 )
@@ -289,4 +291,139 @@ func firstEscape(s string) string {
 		return s[:12]
 	}
 	return s
+}
+
+// ---- taking the keyboard -------------------------------------------------
+
+// Taking the screen takes the keyboard with it, because the input line drawn on
+// that screen only works if this program is the one echoing what is typed. What
+// matters most is the other end: a terminal left in raw mode is a shell that
+// shows nothing of what you type into it, which is a worse thing to walk away
+// from than a pinned scrolling region.
+
+// aTerminal makes the test's own files answer as terminals. No test process has
+// one — `go test` is attached to a pipe — so without this every decision that
+// depends on having a terminal could only ever be tested in the direction where
+// there is not one.
+func aTerminal(t *testing.T) {
+	t.Helper()
+
+	previous := isTerminalFn
+	isTerminalFn = func(int) bool { return true }
+	t.Cleanup(func() { isTerminalFn = previous })
+}
+
+// aKeyboard stands in for the two calls that put a terminal into raw mode and
+// take it out again, and reports how often each was made.
+func aKeyboard(t *testing.T, takeErr, giveBackErr error) (taken, givenBack *int) {
+	t.Helper()
+
+	took, gaveBack := 0, 0
+	previousMake, previousRestore := makeRawFn, restoreRawFn
+	makeRawFn = func(int) (*term.State, error) {
+		took++
+		return &term.State{}, takeErr
+	}
+	restoreRawFn = func(int, *term.State) error {
+		gaveBack++
+		return giveBackErr
+	}
+	t.Cleanup(func() { makeRawFn, restoreRawFn = previousMake, previousRestore })
+	return &took, &gaveBack
+}
+
+// scratchFile is something with a file descriptor, for the calls that need one.
+func scratchFile(t *testing.T) *os.File {
+	t.Helper()
+
+	f, err := os.Create(filepath.Join(t.TempDir(), "keyboard"))
+	if err != nil {
+		t.Fatalf("create the file: %v", err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	return f
+}
+
+func TestTakingTheScreenTakesTheKeyboardAndRestoringGivesItBack(t *testing.T) {
+	aTerminal(t)
+	_, gaveBack := aKeyboard(t, nil, nil)
+
+	var out syncBuffer
+	s := &screen{}
+	s.readsKeys(scratchFile(t))
+	s.enter(&out)
+
+	if !s.takesKeystrokes() {
+		t.Fatal("the keyboard was not taken, so there is nothing to type on the input line with")
+	}
+
+	s.restore()
+	if *gaveBack != 1 {
+		t.Errorf("the keyboard was given back %d times, want once", *gaveBack)
+	}
+	if s.takesKeystrokes() {
+		t.Error("the screen still believes it is reading the keyboard after handing it back")
+	}
+}
+
+// Input that is not a terminal has nothing to put into raw mode and nothing to
+// read a keystroke at a time from: a piped command list, a service with no
+// console, a test.
+func TestInputThatIsNotATerminalIsLeftAlone(t *testing.T) {
+	took, _ := aKeyboard(t, nil, nil)
+
+	var out syncBuffer
+	s := &screen{}
+	s.readsKeys(scratchFile(t))
+	s.enter(&out)
+
+	if *took != 0 {
+		t.Errorf("a file was put into raw mode %d times, want never", *took)
+	}
+	if s.takesKeystrokes() {
+		t.Error("a file is being read as a keyboard")
+	}
+}
+
+// A terminal that refuses raw mode is not a reason to stop. What is lost is the
+// input line, and the terminal goes on echoing typed characters the way it
+// always did — so the keyboard is dropped rather than half-held.
+func TestATerminalThatWillNotBeTakenIsDroppedRatherThanHalfHeld(t *testing.T) {
+	aTerminal(t)
+	_, gaveBack := aKeyboard(t, errors.New("no raw mode here"), nil)
+
+	var out syncBuffer
+	s := &screen{}
+	s.readsKeys(scratchFile(t))
+	s.enter(&out)
+
+	if s.takesKeystrokes() {
+		t.Error("the keyboard was refused and taken anyway")
+	}
+	if !strings.Contains(out.String(), altScreenOn) {
+		t.Error("the dashboard was abandoned over a keyboard, which is still worth drawing")
+	}
+
+	s.restore()
+	if *gaveBack != 0 {
+		t.Errorf("a keyboard that was never taken was given back %d times", *gaveBack)
+	}
+}
+
+// A terminal that will not be handed back leaves the program nothing to do
+// about it. It must not stop the rest of the restore: the alternate screen and
+// the scrolling region still have to go.
+func TestAKeyboardThatWillNotComeBackDoesNotStopTheRestore(t *testing.T) {
+	aTerminal(t)
+	aKeyboard(t, nil, errors.New("the terminal is gone"))
+
+	var out syncBuffer
+	s := &screen{}
+	s.readsKeys(scratchFile(t))
+	s.enter(&out)
+	s.restore()
+
+	if !strings.Contains(out.String(), altScreenOff) {
+		t.Errorf("the user's own screen was not restored; what was written was %q", out.String())
+	}
 }

@@ -27,6 +27,11 @@ const (
 	// which is what the dashboard leaves behind and what the shell inherits.
 	scrollWhole = "\033[r"
 	cursorShow  = "\033[?25h"
+	// The terminal's own one-slot cursor store. With an input line on screen it
+	// holds where the log left off, because the cursor itself is on the row the
+	// user is typing on and the log has to be written somewhere else.
+	cursorSave    = "\033[s"
+	cursorRestore = "\033[u"
 )
 
 // screen is the terminal takeover, and the one thing that has to be undone
@@ -41,7 +46,26 @@ type screen struct {
 	mu      sync.Mutex
 	out     io.Writer
 	entered bool
+
+	// keys is the terminal typing arrives from, when this program is reading it
+	// a keystroke at a time. Taking the screen then means taking the keyboard
+	// too: raw mode is what stops the terminal echoing typed characters into
+	// the middle of the log, and it has to be given back at exactly the same
+	// moments the screen is.
+	keys *os.File
+	// cooked is how the keyboard was set before raw mode, and nil when it was
+	// never taken.
+	cooked *term.State
 }
+
+// The two calls that take the keyboard and give it back, as variables so a test
+// can stand in for them: `go test` is attached to a pipe, and every terminal
+// there is to put into raw mode is the failure path rather than the working
+// one. Nothing in the running program reassigns them.
+var (
+	makeRawFn    = term.MakeRaw
+	restoreRawFn = term.Restore
+)
 
 // terminalScreen is the one the running program uses.
 var terminalScreen = &screen{}
@@ -71,7 +95,63 @@ func (s *screen) enter(out io.Writer) {
 	}
 	s.out = out
 	s.entered = true
+	s.takeKeyboard()
 	fmt.Fprint(out, altScreenOn)
+}
+
+// readsKeys says which terminal the typing comes from, so that taking the
+// screen takes the keyboard with it.
+//
+// Input that is not a terminal — a pipe, a file, a test — is not taken: there
+// is nothing there to put into raw mode, and nothing to read a keystroke at a
+// time from either. Called before enter, because enter is what acts on it.
+func (s *screen) readsKeys(in *os.File) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !drawableTerminal(in) {
+		return
+	}
+	s.keys = in
+}
+
+// takeKeyboard puts the terminal into raw mode, where a keystroke arrives as
+// soon as it is pressed and nothing is echoed until this program echoes it.
+//
+// A terminal that refuses is not a reason to stop: the dashboard is still worth
+// drawing, and what is lost is the input line, so the keyboard is dropped and
+// the terminal goes on echoing typed characters the way it always did.
+func (s *screen) takeKeyboard() {
+	if s.keys == nil {
+		return
+	}
+	state, err := makeRawFn(int(s.keys.Fd()))
+	if err != nil {
+		log.Debugf("Could not take the keyboard, so typed characters are echoed by the terminal: %v", err)
+		s.keys = nil
+		return
+	}
+	s.cooked = state
+}
+
+// giveBackKeyboard undoes takeKeyboard. Without it a terminal is left with no
+// echo and no line editing at all — a shell that shows nothing of what is
+// typed, which is a worse thing to leave behind than a pinned scrolling region.
+func (s *screen) giveBackKeyboard() {
+	if s.keys == nil || s.cooked == nil {
+		return
+	}
+	if err := restoreRawFn(int(s.keys.Fd()), s.cooked); err != nil {
+		log.Debugf("Could not give the keyboard back: %v", err)
+	}
+	s.cooked = nil
+}
+
+// takesKeystrokes reports whether the keyboard is this program's to read one
+// keystroke at a time.
+func (s *screen) takesKeystrokes() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.keys != nil && s.cooked != nil
 }
 
 // restore gives the terminal back: full scrolling region, the user's screen,
@@ -93,6 +173,7 @@ func (s *screen) restore() {
 		return
 	}
 	s.entered = false
+	s.giveBackKeyboard()
 	fmt.Fprint(s.out, scrollWhole+altScreenOff+scrollWhole+cursorShow+cReset)
 	s.out = nil
 }
@@ -108,8 +189,15 @@ func (s *screen) active() bool {
 // drawableTerminal reports whether out is something the dashboard can be drawn
 // on: a terminal, rather than a file or a pipe.
 func drawableTerminal(out *os.File) bool {
-	return out != nil && term.IsTerminal(int(out.Fd()))
+	return out != nil && isTerminalFn(int(out.Fd()))
 }
+
+// isTerminalFn is term.IsTerminal, as a variable so a test can answer for a
+// terminal no test process has: `go test` is attached to a pipe, and every
+// decision that depends on there being one would otherwise only ever be tested
+// in the direction where there is not. Nothing in the running program
+// reassigns it.
+var isTerminalFn = term.IsTerminal
 
 // planTerminal settles how this run talks to the terminal: with a dashboard,
 // with plain log lines, or with neither.
