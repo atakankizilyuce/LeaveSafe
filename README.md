@@ -281,6 +281,12 @@ Type any of these into the dashboard while it runs:
 | `rotate-key` | New pairing key, all sessions invalidated |
 | `help` · `Ctrl+C` | The list above; graceful shutdown |
 
+The dashboard draws on the alternate screen, so the window you started it in is
+handed back exactly as you left it — scrollback and all — when you quit or press
+Ctrl+Z. If you would rather not have a full-screen dashboard at all, `-plain`
+prints the QR code once and then logs; the commands above still work. It is
+chosen for you when output is redirected to a file or a pipe.
+
 Settings persist in a config file between runs — [Configuration](docs/configuration.md) lists every option.
 
 <br/>

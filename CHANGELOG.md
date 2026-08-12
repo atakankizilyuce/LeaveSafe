@@ -97,6 +97,13 @@ diff is small.
   statement, and an honest account of what is deliberately out of scope.
 - **Tests** for `config`, `eventlog`, `network`, `qr`, `safe`, `rotate`, `state`
   and `update`, which had none.
+- **A run without the dashboard.** `-plain` prints the QR code, the address and
+  the pairing key once and then logs, leaving the terminal exactly as it was
+  found — for anyone who would rather keep using the window they typed into.
+  Commands still work; only the full-screen layout is gone. Redirecting output
+  to a file or a pipe selects it automatically, which is also a fix: the
+  dashboard used to write its cursor escapes into the file and lay itself out
+  against a window size it had invented.
 
 ### Changed
 
@@ -195,6 +202,26 @@ diff is small.
   `Permissions-Policy` denies every capability the UI does not use.
 
 ### Fixed
+
+- **The terminal is given back.** The dashboard cleared the screen, drew at
+  absolute positions and pinned a scrolling region under its header — on the
+  window the user had typed the command into. That took their scrollback with
+  it, left them unable to scroll, and the scrolling region was never reset, so
+  the shell inherited a window that could only scroll its bottom few rows long
+  after LeaveSafe had exited. It now draws on the alternate screen buffer, the
+  one terminals keep for full-screen programs, and hands the original back
+  whole on every way out: Ctrl+C, a failed start, and a fatal error from inside
+  the logger, which used to exit without undoing anything at all.
+- **Ctrl+Z works.** Suspending gave the shell back a terminal still on the
+  alternate screen with a scrolling region across it, so the prompt landed on
+  top of a QR code and scrolling up showed nothing. Which is why the program
+  looked as though it could not be put in the background. The terminal is now
+  handed back before the process stops and the dashboard is redrawn when it is
+  brought forward.
+- **The console window is no longer maximized out from under you.** On Windows
+  LeaveSafe asked for the console to fill the screen, which is right for the
+  window Windows opens when the executable is double-clicked and wrong for a
+  terminal somebody was already working in. It now checks which one it is in.
 
 - **A fresh installation now watches something.** Sensors are registered
   switched off and turned on from what the config recorded — and a config
