@@ -12,6 +12,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -29,6 +31,39 @@ const (
 	UPnPOK         UPnPState = "ok"
 	UPnPFailed     UPnPState = "failed"
 	UPnPCarrierNAT UPnPState = "cgnat"
+)
+
+// Reach says what is known about whether a connection from outside can arrive
+// here — as opposed to whether one was arranged for.
+//
+// The distinction is the point of this type. Everything else in State records
+// what this program asked the network for and what the network said back; this
+// records what was observed. A router accepting a port mapping and a lookup
+// service naming an address are both agreements about intent, and neither is a
+// packet completing the journey.
+type Reach string
+
+const (
+	// ReachUnknown is the state before the question has been asked, and while
+	// it is being asked.
+	ReachUnknown Reach = ""
+
+	// ReachVerified means a connection was opened to the public address and
+	// this machine's own certificate answered it. It is the only value here
+	// that is evidence rather than inference.
+	ReachVerified Reach = "verified"
+
+	// ReachUnproven means the check did not complete. It is not the same as
+	// unreachable: plenty of routers refuse to let a machine inside reach its
+	// own public address, and a phone arriving from mobile data takes a
+	// different path entirely. Saying "not reachable" here would be reporting a
+	// failure nobody observed.
+	ReachUnproven Reach = "unproven"
+
+	// ReachBlocked means something on the path makes it impossible, and the
+	// something was identified — carrier-grade NAT, or a second router in front
+	// of the one holding the mapping.
+	ReachBlocked Reach = "blocked"
 )
 
 // State is what remote access is actually doing, as opposed to what the config
@@ -50,6 +85,7 @@ type State struct {
 	CertFP     string    `json:"cert_fp,omitempty"`
 	UPnP       UPnPState `json:"upnp,omitempty"`
 	ManualPort int       `json:"manual_port,omitempty"`
+	Reach      Reach     `json:"reach,omitempty"`
 	Reason     string    `json:"reason,omitempty"`
 }
 
@@ -62,6 +98,7 @@ type Listener interface {
 // PortMapping is the part of *network.PortMapping this package drives.
 type PortMapping interface {
 	ExternalIP() (string, error)
+	WANAddress() (string, error)
 	Close() error
 	KeepAlive(ctx context.Context)
 }
@@ -72,6 +109,14 @@ type Deps struct {
 	Cert     func(configDir string) (tls.Certificate, string, error)
 	OpenPort func(port int) (PortMapping, error)
 	PublicIP func() (string, error)
+	// Verify opens a connection to the public address and reports whether this
+	// machine's certificate answered it. A nil error is the only evidence in
+	// this package that remote access works.
+	Verify func(addr, certFP string) error
+	// FirewallHint is the command that lets this port in through the host
+	// firewall, which is the likeliest reason a verified-looking setup is not
+	// reachable. It is a hint printed to the user, never run.
+	FirewallHint func(port int) string
 }
 
 // Controller starts and stops remote access.
@@ -189,6 +234,56 @@ func (c *Controller) Enable(ctx context.Context) State {
 func (c *Controller) probe(ctx context.Context, gen uint64, boundPort int, fp string) {
 	next := State{Enabled: true, CertFP: fp, UPnP: UPnPOK}
 
+	mapping, ok := c.mapPort(ctx, gen, boundPort, &next)
+	if !ok {
+		return
+	}
+
+	publicIP := c.publicAddress(mapping)
+	if publicIP == "" {
+		next.Reason = "No public address could be found, so there is no URL to scan from " +
+			"another network. The local network is unaffected."
+		c.publish(gen, next)
+		return
+	}
+
+	// Two ways to find carrier-grade NAT, because it shows up in two places and
+	// the second one was missing.
+	//
+	// This first check catches a lookup that answered with shared space itself,
+	// which happens when the query never left the ISP's own network. It is the
+	// check that has always been here — and on its own it almost never fires,
+	// because the usual case is a lookup that does leave, and what comes back
+	// then is the ISP's routable address: an ordinary public address that
+	// passes every test while belonging to thousands of subscribers at once.
+	if network.IsCarrierGradeNAT(publicIP) {
+		log.Warnf("Public address %s is carrier-grade NAT — remote access cannot work here", publicIP)
+		c.publishCarrierNAT(gen, publicIP)
+		return
+	}
+
+	// Which is what the second one is for: ask the router where it sits. Under
+	// carrier NAT the 100.64 address is the one the router holds, on the
+	// inside, and nobody was asking the router. See network.RouterPlacement.
+	if placement := c.placement(mapping, publicIP); placement != network.PlacementEdge {
+		if c.reportBlocked(gen, placement, publicIP, boundPort, &next) {
+			return
+		}
+	}
+
+	next.PublicURL = fmt.Sprintf("https://%s:%d", publicIP, boundPort)
+	c.checkReachable(&next, publicIP, boundPort, fp)
+	c.publish(gen, next)
+}
+
+// mapPort asks the router for a port mapping and records it. It reports whether
+// the probe should carry on: the one case where it should not is remote access
+// having been taken down while the router was thinking.
+//
+// A router that refuses is not that case. There is still a public address to
+// find and still something worth telling the user, so the state is marked and
+// the probe continues.
+func (c *Controller) mapPort(ctx context.Context, gen uint64, boundPort int, next *State) (PortMapping, bool) {
 	mapping, err := c.deps.OpenPort(boundPort)
 	if err != nil {
 		log.Warnf("UPnP failed: %v — manual port forwarding required (port %d)", err, boundPort)
@@ -197,56 +292,156 @@ func (c *Controller) probe(ctx context.Context, gen uint64, boundPort int, fp st
 		next.Reason = fmt.Sprintf("Your router did not accept an automatic port mapping, so nothing "+
 			"outside your network can reach this machine yet. Forward TCP port %d to it in the "+
 			"router's admin page, or pair over the local network instead.", boundPort)
-	} else {
-		c.mu.Lock()
-		if gen != c.gen {
-			// Taken down while the router was thinking. The mapping belongs to a
-			// listener that is gone, and leaving it behind would leave a hole in
-			// the router pointing at nothing.
-			c.mu.Unlock()
-			_ = mapping.Close()
-			return
-		}
-		c.mapping = mapping
-		keepCtx, cancel := context.WithCancel(ctx)
-		c.keepCancel = cancel
+		return nil, true
+	}
+
+	c.mu.Lock()
+	if gen != c.gen {
+		// Taken down while the router was thinking. The mapping belongs to a
+		// listener that is gone, and leaving it behind would leave a hole in
+		// the router pointing at nothing.
 		c.mu.Unlock()
-		safe.Go("upnp-keepalive", func() { mapping.KeepAlive(keepCtx) })
+		_ = mapping.Close()
+		return nil, false
+	}
+	c.mapping = mapping
+	keepCtx, cancel := context.WithCancel(ctx)
+	c.keepCancel = cancel
+	c.mu.Unlock()
+
+	safe.Go("upnp-keepalive", func() { mapping.KeepAlive(keepCtx) })
+	return mapping, true
+}
+
+// publicAddress is where the internet sees this network from.
+//
+// Asked of the internet first, and of the router only if that fails. The
+// router's answer arrives over unauthenticated SSDP from whatever replied
+// fastest on the local network, and this address goes into the QR code with the
+// pairing key beside it.
+func (c *Controller) publicAddress(mapping PortMapping) string {
+	publicIP, err := c.deps.PublicIP()
+	if err == nil {
+		return publicIP
 	}
 
-	// Asked of the internet first, and of the router only if that fails. The
-	// router's answer arrives over unauthenticated SSDP from whatever replied
-	// fastest on the local network, and this address goes into the QR code with
-	// the pairing key beside it.
-	publicIP, ipErr := c.deps.PublicIP()
-	if ipErr != nil {
-		log.Warnf("Could not determine public IP: %v", ipErr)
-		publicIP = ""
-		if mapping != nil {
-			if ip, mapErr := mapping.ExternalIP(); mapErr == nil {
-				log.Infof("Using the address the router reports, %s, as the public one", ip)
-				publicIP = ip
-			} else {
-				log.Warnf("The router's idea of the public address was not usable: %v", mapErr)
-			}
-		}
+	log.Warnf("Could not determine public IP: %v", err)
+	if mapping == nil {
+		return ""
 	}
+	ip, mapErr := mapping.ExternalIP()
+	if mapErr != nil {
+		log.Warnf("The router's idea of the public address was not usable: %v", mapErr)
+		return ""
+	}
+	log.Infof("Using the address the router reports, %s, as the public one", ip)
+	return ip
+}
 
-	switch {
-	case publicIP == "":
-		next.Reason = "No public address could be found, so there is no URL to scan from " +
-			"another network. The local network is unaffected."
-	case network.IsCarrierGradeNAT(publicIP):
-		// Nothing the user can do to their own router changes this, so leaving
-		// the listener up would be inviting them to keep trying.
-		log.Warnf("Public address %s is carrier-grade NAT — remote access cannot work here", publicIP)
+// placement is where the router holding the mapping sits relative to the
+// internet.
+//
+// A router that would not give a mapping is not asked where it is: without a
+// mapping there is nothing on the path either way, and the state already says
+// so in words the user can act on.
+func (c *Controller) placement(mapping PortMapping, publicIP string) network.Placement {
+	if mapping == nil {
+		return network.PlacementUnknown
+	}
+	wan, err := mapping.WANAddress()
+	if err != nil {
+		log.Warnf("The router would not say what its own address is: %v", err)
+		return network.PlacementUnknown
+	}
+	return network.RouterPlacement(wan, publicIP)
+}
+
+// reportBlocked says what a placement other than the edge means, and reports
+// whether the probe is finished.
+//
+// Only carrier-grade NAT ends it. That one is nobody's to fix — not the user's,
+// not their router's — so the listener comes down rather than sitting there
+// inviting somebody to keep trying port forwards at a problem that is not
+// theirs. A second router in front is the user's to fix if they can reach it,
+// so that listener stays up and the address stays listed: the moment they
+// forward the port on the outer box, it starts working.
+func (c *Controller) reportBlocked(gen uint64, placement network.Placement,
+	publicIP string, boundPort int, next *State) bool {
+	switch placement {
+	case network.PlacementCarrier:
+		log.Warnf("The router is behind carrier-grade NAT — remote access cannot work here")
 		c.publishCarrierNAT(gen, publicIP)
-		return
+		return true
+
+	case network.PlacementDouble:
+		log.Warnf("The router that took the port mapping is itself behind another router")
+		next.Reach = ReachBlocked
+		next.ManualPort = boundPort
+		next.Reason = fmt.Sprintf("The router that accepted the port mapping is itself behind another "+
+			"router, so the mapping stops one hop short of the internet. Forward TCP port %d on the "+
+			"outer router too — the one holding the %s address — or pair over the local network.",
+			boundPort, publicIP)
+		return false
+
 	default:
-		next.PublicURL = fmt.Sprintf("https://%s:%d", publicIP, boundPort)
+		return false
+	}
+}
+
+// checkReachable tries to reach the public address from here and records what
+// happened.
+//
+// A success is the only proof in this package that remote access works. A
+// failure is not proof of the opposite and is not reported as one: a great many
+// routers refuse to let a machine inside reach its own public address, and the
+// phone arriving from mobile data never takes that path. So the wording says
+// what was and was not established, and names the host firewall — the likeliest
+// thing to be silently dropping the connection, and the one thing on this list
+// that is on this machine.
+func (c *Controller) checkReachable(next *State, publicIP string, boundPort int, fp string) {
+	if c.deps.Verify == nil {
+		return
 	}
 
-	c.publish(gen, next)
+	addr := net.JoinHostPort(publicIP, strconv.Itoa(boundPort))
+	err := c.deps.Verify(addr, fp)
+	if err == nil {
+		// Evidence outranks everything inferred before it, including a reason
+		// already written. A router that looked like it was behind another one,
+		// or refused a mapping that somebody had forwarded by hand years ago,
+		// is a router that has just been watched carrying a connection — and
+		// leaving the earlier explanation on screen would be telling the user
+		// to go and fix something that demonstrably works.
+		log.Infof("Remote access verified: %s answered with this machine's certificate", addr)
+		next.Reach = ReachVerified
+		next.Reason = ""
+		return
+	}
+
+	log.Warnf("Could not confirm that %s is reachable from outside: %v", addr, err)
+
+	// A check that proved nothing does not get to overwrite something that was
+	// established. Being behind a second router is a specific finding with a
+	// specific fix; replacing it with "this could not be confirmed" would trade
+	// an answer for a shrug.
+	if next.Reach == ReachBlocked {
+		return
+	}
+	next.Reach = ReachUnproven
+	next.Reason = fmt.Sprintf("The port is mapped and there is a public address, but nothing could be "+
+		"confirmed to reach this machine from outside — so this address may or may not work from "+
+		"mobile data. Many routers simply refuse this check from inside the network, in which case "+
+		"there is nothing wrong. If a phone cannot connect, the likeliest cause is this machine's own "+
+		"firewall blocking TCP port %d: %s", boundPort, c.firewallHint(boundPort))
+}
+
+// firewallHint is the command that opens the port on this platform, or an empty
+// note when there is nothing useful to say.
+func (c *Controller) firewallHint(boundPort int) string {
+	if c.deps.FirewallHint == nil {
+		return "allow it in the firewall's settings."
+	}
+	return c.deps.FirewallHint(boundPort)
 }
 
 // publish stores a probe's result and hands it on, unless the listener it
@@ -276,10 +471,12 @@ func (c *Controller) publishCarrierNAT(gen uint64, publicIP string) {
 	}
 	c.teardownLocked()
 	c.state = State{
-		UPnP: UPnPCarrierNAT,
-		Reason: fmt.Sprintf("Your ISP puts this connection behind carrier-grade NAT (%s). "+
-			"Nothing on this machine or your router can make it reachable from the internet, "+
-			"so remote access has been stopped. The local network is unaffected.", publicIP),
+		UPnP:  UPnPCarrierNAT,
+		Reach: ReachBlocked,
+		Reason: fmt.Sprintf("Your ISP puts this connection behind carrier-grade NAT, so the address "+
+			"the internet sees (%s) is shared and is not yours to be reached at. Nothing on this "+
+			"machine or your router can change that, so remote access has been stopped. The local "+
+			"network is unaffected.", publicIP),
 	}
 	st := c.state
 	fn := c.onUpdate

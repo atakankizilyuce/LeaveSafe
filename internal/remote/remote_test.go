@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,6 +50,12 @@ type fakeMapping struct {
 	mu         sync.Mutex
 	externalIP string
 	ipErr      error
+	// wanAddress is what the router says about itself, which is a different
+	// question from externalIP and has a different answer whenever there is
+	// anything between this router and the internet. Empty means "the same as
+	// the public address", which is the ordinary case of a router at the edge.
+	wanAddress string
+	wanErr     error
 	closed     int
 }
 
@@ -55,6 +63,12 @@ func (m *fakeMapping) ExternalIP() (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.externalIP, m.ipErr
+}
+
+func (m *fakeMapping) WANAddress() (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.wanAddress, m.wanErr
 }
 
 func (m *fakeMapping) Close() error {
@@ -80,13 +94,23 @@ func (m *fakeMapping) closeCount() int {
 const testFingerprint = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
 
 // workingDeps is the everything-succeeds case; each test bends one part of it.
+//
+// "Succeeds" now includes the router being at the edge of the network and the
+// reachability check completing, because those are what the ordinary working
+// case looks like — and a fake that skipped them would let every test pass
+// through the path this change exists to add.
 func workingDeps(mapping *fakeMapping, publicIP string) Deps {
+	if mapping != nil && mapping.wanAddress == "" && mapping.wanErr == nil {
+		mapping.wanAddress = publicIP
+	}
 	return Deps{
 		Cert: func(string) (tls.Certificate, string, error) {
 			return tls.Certificate{}, testFingerprint, nil
 		},
-		OpenPort: func(int) (PortMapping, error) { return mapping, nil },
-		PublicIP: func() (string, error) { return publicIP, nil },
+		OpenPort:     func(int) (PortMapping, error) { return mapping, nil },
+		PublicIP:     func() (string, error) { return publicIP, nil },
+		Verify:       func(string, string) error { return nil },
+		FirewallHint: func(int) string { return "allow the port" },
 	}
 }
 
@@ -383,5 +407,222 @@ func TestAListenerThatWillNotBindLeavesRemoteAccessOff(t *testing.T) {
 	}
 	if got.Reason == "" {
 		t.Error("no reason given for the bind failure")
+	}
+}
+
+// ---- what is known, as opposed to what was arranged ------------------------
+
+// The bug this whole change is about, in one test.
+//
+// Behind carrier-grade NAT the address the internet reports is the ISP's own
+// routable one — an ordinary public address that passes every check. The 100.64
+// address is the one the router holds, and nothing was asking the router. So
+// this used to end with Enabled, a public URL, and the dashboard drawing it as
+// the QR code to scan; a phone on mobile data then sat on a spinner forever
+// with nothing said. Nothing about the old inputs changes here: the public
+// address still looks perfectly ordinary. Only the question does.
+func TestCarrierNATIsCaughtEvenWhenThePublicAddressLooksOrdinary(t *testing.T) {
+	ln := &fakeListener{}
+	mapping := &fakeMapping{wanAddress: "100.72.19.4"}
+	c := NewController(ln, t.TempDir(), 9443, workingDeps(mapping, "85.105.20.30"))
+
+	got := enableAndWait(t, c)
+
+	if got.Enabled {
+		t.Error("remote access stayed on behind carrier-grade NAT")
+	}
+	if got.PublicURL != "" {
+		t.Errorf("PublicURL = %q, want none — nothing outside can reach it", got.PublicURL)
+	}
+	if got.UPnP != UPnPCarrierNAT {
+		t.Errorf("UPnP = %q, want %q", got.UPnP, UPnPCarrierNAT)
+	}
+	if got.Reach != ReachBlocked {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachBlocked)
+	}
+	if _, stopped := ln.counts(); stopped != 1 {
+		t.Errorf("listener stopped %d times, want 1", stopped)
+	}
+}
+
+// A second router in front is the user's to fix if they can reach it, so unlike
+// carrier NAT the listener stays up and the address stays listed: the moment
+// they forward the port on the outer box it starts working.
+func TestASecondRouterInFrontIsReportedWithoutGivingUp(t *testing.T) {
+	ln := &fakeListener{}
+	mapping := &fakeMapping{wanAddress: "192.168.100.2"}
+	deps := workingDeps(mapping, "85.105.20.30")
+	// The check fails, which is what being behind a second router looks like
+	// from in here.
+	deps.Verify = func(string, string) error { return errors.New("i/o timeout") }
+	c := NewController(ln, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off for something the user can fix")
+	}
+	if got.Reach != ReachBlocked {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachBlocked)
+	}
+	if got.PublicURL == "" {
+		t.Error("the public address was dropped, so there is nothing to scan once the outer router is set")
+	}
+	if !strings.Contains(got.Reason, "outer router") {
+		t.Errorf("Reason = %q, want it to say which router to forward on", got.Reason)
+	}
+	if _, stopped := ln.counts(); stopped != 0 {
+		t.Errorf("listener stopped %d times, want 0", stopped)
+	}
+}
+
+// The only evidence in this package that remote access works: something opened
+// a connection to the public address and this machine's certificate answered.
+func TestAnAnsweredCheckIsRecordedAsVerified(t *testing.T) {
+	var asked struct {
+		addr string
+		fp   string
+	}
+	deps := workingDeps(&fakeMapping{}, "85.105.20.30")
+	deps.Verify = func(addr, fp string) error {
+		asked.addr, asked.fp = addr, fp
+		return nil
+	}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachVerified)
+	}
+	if asked.addr != "85.105.20.30:9443" {
+		t.Errorf("the check was aimed at %q, want the public address and the bound port", asked.addr)
+	}
+	if asked.fp != testFingerprint {
+		t.Errorf("the check was given fingerprint %q, want this machine's", asked.fp)
+	}
+}
+
+// A check that does not complete is not a failure and must not read as one.
+// Plenty of routers refuse to let a machine inside reach its own public
+// address, and the phone arriving from mobile data never takes that path — so
+// the address stays, and what is said about it is that nothing was established.
+func TestAnUnansweredCheckIsUnprovenRatherThanBroken(t *testing.T) {
+	deps := workingDeps(&fakeMapping{}, "85.105.20.30")
+	deps.Verify = func(string, string) error { return errors.New("i/o timeout") }
+	deps.FirewallHint = func(port int) string {
+		return fmt.Sprintf("run the thing that opens %d", port)
+	}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off over a check that proved nothing")
+	}
+	if got.Reach != ReachUnproven {
+		t.Errorf("Reach = %q, want %q", got.Reach, ReachUnproven)
+	}
+	if got.PublicURL != "https://85.105.20.30:9443" {
+		t.Errorf("PublicURL = %q, want it kept — it may well work from mobile data", got.PublicURL)
+	}
+	// The host firewall is the likeliest thing silently dropping the
+	// connection, and the only likely cause that is on this machine.
+	if !strings.Contains(got.Reason, "run the thing that opens 9443") {
+		t.Errorf("Reason = %q, want it to carry this platform's firewall command", got.Reason)
+	}
+}
+
+// With no way to check, nothing is claimed either way — least of all success.
+func TestWithNoWayToCheckNothingIsClaimed(t *testing.T) {
+	deps := workingDeps(&fakeMapping{}, "85.105.20.30")
+	deps.Verify = nil
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachUnknown {
+		t.Errorf("Reach = %q, want %q — the question was never asked", got.Reach, ReachUnknown)
+	}
+	if got.PublicURL == "" {
+		t.Error("the public address was dropped for want of a check that was never configured")
+	}
+}
+
+// A router that will not say where it sits is not evidence of anything, so the
+// probe carries on and the check has the last word.
+func TestARouterThatWillNotSayWhereItIsDoesNotStopTheProbe(t *testing.T) {
+	mapping := &fakeMapping{wanErr: errors.New("the gateway hung up")}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, workingDeps(mapping, "85.105.20.30"))
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off because a router would not answer a question")
+	}
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want the check to have decided it", got.Reach)
+	}
+}
+
+// Without a mapping there is nothing on the path whatever the router would have
+// said, and the state already tells the user to forward the port by hand. The
+// check is still worth running: a port forwarded by hand earlier is exactly the
+// case where it succeeds.
+func TestNoMappingStillLeavesTheUserSomethingToDo(t *testing.T) {
+	deps := workingDeps(nil, "85.105.20.30")
+	deps.OpenPort = func(int) (PortMapping, error) { return nil, errors.New("no gateway here") }
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.UPnP != UPnPFailed {
+		t.Errorf("UPnP = %q, want %q", got.UPnP, UPnPFailed)
+	}
+	if got.ManualPort != 9443 {
+		t.Errorf("ManualPort = %d, want the port to forward", got.ManualPort)
+	}
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want the check to still have run", got.Reach)
+	}
+}
+
+// Having watched a connection arrive beats having worked out that one could
+// not. A router that looks like it is behind another one, but whose port has
+// been forwarded on the outer box already, is reachable — and telling its owner
+// to go and fix that would be telling them to fix something that works.
+func TestSeeingItWorkBeatsWorkingOutThatItCannot(t *testing.T) {
+	mapping := &fakeMapping{wanAddress: "192.168.100.2"}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, workingDeps(mapping, "85.105.20.30"))
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachVerified {
+		t.Errorf("Reach = %q, want %q — the connection was watched arriving", got.Reach, ReachVerified)
+	}
+	if got.Reason != "" {
+		t.Errorf("Reason = %q, want none — it names a problem that demonstrably is not one", got.Reason)
+	}
+}
+
+// With no platform hint configured there is still a sentence to finish. An
+// empty one would leave the dashboard reading "the likeliest cause is this
+// machine's own firewall blocking TCP port 9443:" and then stopping.
+func TestTheAdviceIsAWholeSentenceWithoutAPlatformHint(t *testing.T) {
+	deps := workingDeps(&fakeMapping{}, "85.105.20.30")
+	deps.Verify = func(string, string) error { return errors.New("i/o timeout") }
+	deps.FirewallHint = nil
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if got.Reach != ReachUnproven {
+		t.Fatalf("Reach = %q, want %q", got.Reach, ReachUnproven)
+	}
+	if strings.HasSuffix(strings.TrimSpace(got.Reason), ":") {
+		t.Errorf("Reason = %q, which stops mid-sentence", got.Reason)
+	}
+	if !strings.Contains(got.Reason, "firewall") {
+		t.Errorf("Reason = %q, want it to still name the firewall", got.Reason)
 	}
 }

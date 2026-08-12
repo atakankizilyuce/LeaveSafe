@@ -116,6 +116,19 @@ export interface RemoteState {
     cert_fp?: string;
     upnp?: 'ok' | 'failed' | 'cgnat';
     manual_port?: number;
+    /**
+     * What is known about whether a connection from outside actually arrives —
+     * as opposed to whether one was arranged for.
+     *
+     * `verified` is the only one that is evidence: something opened a
+     * connection to the public address and the laptop's own certificate
+     * answered it. `unproven` means the check did not complete, which is not
+     * the same as unreachable — plenty of routers refuse to let a machine
+     * inside reach its own public address, and a phone on mobile data takes a
+     * different path entirely. `blocked` means something on the path makes it
+     * impossible and the something was identified.
+     */
+    reach?: 'verified' | 'unproven' | 'blocked';
     reason?: string;
 }
 

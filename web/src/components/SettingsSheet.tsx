@@ -441,12 +441,18 @@ function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
         );
     }
 
-    // The router refused a port mapping. The laptop has an address on the
-    // internet and nothing on the path will carry a connection to it, so the
-    // address is a destination the user has to make work rather than one that
-    // does — and labelling it "reachable at" was the app asserting the opposite
-    // of what it had just found out.
-    const reachable = state.upnp === 'ok';
+    // "Reachable at" is a claim, and it is only made about an address something
+    // was actually seen to answer on. A port mapping the router accepted is an
+    // agreement, not a delivered packet: the laptop's own firewall can still
+    // drop the connection, and under carrier-grade NAT the public address
+    // belongs to the provider and always did. Both of those used to read here
+    // as "Reachable at".
+    const label =
+        state.reach === 'verified'
+            ? 'Reachable at'
+            : state.upnp === 'ok' && state.reach !== 'blocked'
+              ? 'Possibly reachable at'
+              : 'Will be reachable at';
 
     return (
         <>
@@ -457,8 +463,22 @@ function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
                     Pairing over the local network is unaffected.
                 </p>
             )}
+            {/* Carrier-grade NAT returned above, so a block here is the other kind. */}
+            {state.reach === 'blocked' && (
+                <p class="group-note">
+                    The router that took the port mapping is itself behind another router, so the mapping stops
+                    one hop short of the internet. Forward TCP port {state.manual_port} on the outer router too.
+                </p>
+            )}
+            {state.reach === 'unproven' && (
+                <p class="group-note">
+                    The port is mapped, but nothing could be confirmed to reach the laptop from outside — many
+                    routers refuse that check from inside the network, so this address may still work. If it
+                    does not, the laptop's own firewall is the likeliest cause.
+                </p>
+            )}
             {state.public_url ? (
-                <Field label={reachable ? 'Reachable at' : 'Will be reachable at'}>
+                <Field label={label}>
                     <span class="field-readout figure">{state.public_url}</span>
                 </Field>
             ) : (

@@ -17,11 +17,23 @@ const (
 	portDescription    = "LeaveSafe"
 )
 
+// gateway is the part of a UPnP device this package uses.
+//
+// It is an interface so that what this file decides can be tested without a
+// router answering on the network: which addresses are fit to hand a phone,
+// where the router sits, what a renewal does when it fails. *upnp.IGD is the
+// only implementation that ships.
+type gateway interface {
+	Forward(port uint16, desc string) error
+	Clear(port uint16) error
+	ExternalIP() (string, error)
+}
+
 // PortMapping represents an active UPnP port forwarding rule.
 type PortMapping struct {
 	InternalPort uint16
 	ExternalPort uint16
-	device       *upnp.IGD
+	device       gateway
 }
 
 // OpenPort discovers a UPnP gateway and forwards the given TCP port.
@@ -74,6 +86,30 @@ func (pm *PortMapping) ExternalIP() (string, error) {
 		return "", err
 	}
 	return publicAddr(raw)
+}
+
+// WANAddress is whatever the gateway says its own external address is, with
+// none of the filtering ExternalIP applies.
+//
+// The two exist separately because they answer different questions. ExternalIP
+// is asked "what address should the owner's phone be pointed at", and a private
+// or shared-space answer to that is not an answer at all. This one is asked
+// "where does this router sit", and a private or shared-space answer is the
+// whole point — it is how carrier-grade NAT and a second router are told from a
+// network with nothing in between. See RouterPlacement.
+//
+// Nothing from here ever reaches a URL, so the trust that ExternalIP has to
+// withhold does not arise.
+func (pm *PortMapping) WANAddress() (string, error) {
+	raw, err := pm.device.ExternalIP()
+	if err != nil {
+		return "", err
+	}
+	ip := net.ParseIP(strings.TrimSpace(raw))
+	if ip == nil {
+		return "", fmt.Errorf("the gateway reported %q as its own address, which is not an IP address", raw)
+	}
+	return ip.String(), nil
 }
 
 // publicAddr returns raw as a canonical IP string if it could be this machine's

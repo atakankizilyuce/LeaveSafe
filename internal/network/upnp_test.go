@@ -1,6 +1,9 @@
 package network
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // The address the router claims is not a fact about the internet — it is a
 // string from whatever answered an unauthenticated multicast on the local
@@ -52,5 +55,54 @@ func TestARealPublicAddressIsAccepted(t *testing.T) {
 		if got != want {
 			t.Errorf("%q became %q, want %q", claim, got, want)
 		}
+	}
+}
+
+// fakeGateway is a router that says whatever a test needs it to say. The real
+// one answers unauthenticated SSDP from somewhere on the local network, which
+// is precisely why what this package does with its answers is worth testing.
+type fakeGateway struct {
+	wan    string
+	wanErr error
+}
+
+func (g fakeGateway) Forward(uint16, string) error { return nil }
+func (g fakeGateway) Clear(uint16) error           { return nil }
+func (g fakeGateway) ExternalIP() (string, error)  { return g.wan, g.wanErr }
+
+// The two accessors answer different questions and are allowed to disagree.
+// ExternalIP is asked what address to point a phone at, and a private answer to
+// that is not an answer. WANAddress is asked where the router sits, and a
+// private answer is the finding — it is how a second router in front of this
+// one is detected at all.
+func TestWhereTheRouterSitsIsAskedDifferentlyFromWhereToPointAPhone(t *testing.T) {
+	pm := &PortMapping{device: fakeGateway{wan: "192.168.1.2"}}
+
+	if _, err := pm.ExternalIP(); err == nil {
+		t.Error("a private address was offered as somewhere to point a phone")
+	}
+
+	wan, err := pm.WANAddress()
+	if err != nil {
+		t.Fatalf("WANAddress = %v, want the address the router reported", err)
+	}
+	if wan != "192.168.1.2" {
+		t.Errorf("WANAddress = %q, want the router's own address unfiltered", wan)
+	}
+}
+
+func TestARouterThatWillNotSayWhereItIsReportsSo(t *testing.T) {
+	pm := &PortMapping{device: fakeGateway{wanErr: errors.New("no route to the gateway")}}
+
+	if _, err := pm.WANAddress(); err == nil {
+		t.Error("a router that answered with an error was reported as having answered")
+	}
+}
+
+func TestSomethingThatIsNotAnAddressIsNotOne(t *testing.T) {
+	pm := &PortMapping{device: fakeGateway{wan: "the router, obviously"}}
+
+	if _, err := pm.WANAddress(); err == nil {
+		t.Error("a string that is not an IP address was accepted as the router's address")
 	}
 }

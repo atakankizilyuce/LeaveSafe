@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -362,6 +363,18 @@ func hooksAsTheyAre() log.LevelHooks {
 	return copied
 }
 
+// firewallHint is the command that lets a port in through this machine's own
+// firewall, which the remote controller shows when it could not confirm that
+// anything outside reaches this machine.
+//
+// It is a function rather than a closure so that it can be called by a test.
+// What it stands for is worth one: the host firewall is the likeliest reason a
+// correctly mapped port is still unreachable, and it is the only likely reason
+// that is on this machine rather than out on somebody else's network.
+func firewallHint(port int) string {
+	return network.FirewallCommand(runtime.GOOS, port)
+}
+
 // startRemoteAccess builds the remote controller and brings it up if the config
 // asks for it, returning whatever state that left it in.
 func (a *app) startRemoteAccess(ctx context.Context, cfg *config.Config) remote.State {
@@ -370,7 +383,9 @@ func (a *app) startRemoteAccess(ctx context.Context, cfg *config.Config) remote.
 		OpenPort: func(p int) (remote.PortMapping, error) {
 			return network.OpenPort(p)
 		},
-		PublicIP: network.GetPublicIP,
+		PublicIP:     network.GetPublicIP,
+		Verify:       network.VerifyReachable,
+		FirewallHint: firewallHint,
 	})
 
 	if cfg.RemoteAccess != nil && *cfg.RemoteAccess {
