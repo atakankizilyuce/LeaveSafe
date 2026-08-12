@@ -686,3 +686,56 @@ func TestACertificateThatWillNotParseStillLeavesTheListenerUp(t *testing.T) {
 		t.Errorf("Reach = %q, want %q", got.Reach, ReachUnproven)
 	}
 }
+
+// A certificate with no bytes in it. This is the guard that stopped Enable
+// panicking on the way to the reachability check — reaching for the first
+// element of a certificate that has none — and it is worth a test of its own
+// because the crash it prevents would land in the one program whose job is to
+// still be running after somebody walks off with the laptop.
+func TestACertificateWithNothingInItStillLeavesTheListenerUp(t *testing.T) {
+	deps := workingDeps(t, &fakeMapping{}, "85.105.20.30")
+	deps.Cert = func(string) (tls.Certificate, string, error) {
+		return tls.Certificate{}, testFingerprint, nil
+	}
+	handed := make(chan *x509.Certificate, 1)
+	deps.Verify = func(_ string, cert *x509.Certificate) error {
+		handed <- cert
+		return errors.New("nothing to pin to")
+	}
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off over a certificate the listener is already serving")
+	}
+	if cert := <-handed; cert != nil {
+		t.Error("an empty certificate was handed to the check as if it were one")
+	}
+}
+
+// Neither the internet nor the router could say where this network is. There is
+// no URL to offer and nothing to check, but the listener stays up: somebody who
+// knows an address can still reach it, and the local network never depended on
+// any of this.
+func TestNoAddressFromEitherSourceLeavesTheListenerUp(t *testing.T) {
+	deps := workingDeps(t, nil, "")
+	deps.OpenPort = func(int) (PortMapping, error) { return nil, errors.New("no gateway here") }
+	deps.PublicIP = func() (string, error) { return "", errors.New("STUN timed out") }
+	c := NewController(&fakeListener{}, t.TempDir(), 9443, deps)
+
+	got := enableAndWait(t, c)
+
+	if !got.Enabled {
+		t.Error("remote access was switched off for want of an address")
+	}
+	if got.PublicURL != "" {
+		t.Errorf("PublicURL = %q, want none — no address was found", got.PublicURL)
+	}
+	if got.Reach != ReachUnknown {
+		t.Errorf("Reach = %q, want %q — there was nothing to check", got.Reach, ReachUnknown)
+	}
+	if !strings.Contains(got.Reason, "No public address") {
+		t.Errorf("Reason = %q, want it to say no address was found", got.Reason)
+	}
+}
