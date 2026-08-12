@@ -78,3 +78,10 @@ func TestATestBinaryDoesNotOwnItsConsole(t *testing.T) {
 		t.Error("a process started from a shell claimed the console as its own")
 	}
 }
+
+// Ctrl+Z arrives as a keystroke on Windows too, because the keyboard is read
+// raw. There is nothing to do with it here, and what matters is that asking is
+// harmless: the console loop calls this without knowing which platform it is on.
+func TestAskingToSuspendOnWindowsDoesNothing(t *testing.T) {
+	requestSuspend()
+}

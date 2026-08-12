@@ -93,6 +93,12 @@ type statusBar struct {
 	// layoutHolds.
 	layout layout
 
+	// line is what the user is typing, drawn on a row of its own at the foot of
+	// the window. It is nil when nobody is typing on a screen this program
+	// owns: a headless start, a -plain run, or input that is not a terminal —
+	// and then the terminal echoes typed characters itself, as it always did.
+	line *inputLine
+
 	// qrCodes holds one rendered code per address, and qrURLIdx which of them
 	// the box is showing. The box is sized to the largest of them so that
 	// switching between them with `qr <n>` never overflows the layout.
@@ -389,6 +395,64 @@ func (sb *statusBar) drawGrid() {
 	}
 }
 
+// readsKeystrokes reports whether the keyboard is being read a keystroke at a
+// time, which is what puts an input line of this program's own on screen.
+func (sb *statusBar) readsKeystrokes() bool {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.line != nil
+}
+
+// promptRows is how much of the window the input line takes. It is held back
+// from the layout, so that nothing else is placed on that row and the log's
+// scrolling region stops above it.
+func (sb *statusBar) promptRows() int {
+	if sb.line == nil {
+		return 0
+	}
+	return 1
+}
+
+// drawPrompt puts the input line back on its row and leaves the cursor in it.
+//
+// Called last by everything that writes to the screen. The cursor ending up
+// under the user's fingers rather than wherever the last absolute move landed
+// is what makes typing during a busy log survivable.
+func (sb *statusBar) drawPrompt() {
+	if sb.line == nil {
+		return
+	}
+	row := sb.layout.termH + 1
+	text, col := sb.line.view(sb.layout.termW)
+	fmt.Fprintf(sb.out, "\033[%d;1H\033[2K%s\033[%d;%dH", row, text, row, col)
+}
+
+// applyKey gives one keystroke to the input line and draws the result.
+func (sb *statusBar) applyKey(k key) action {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	a := sb.line.apply(k)
+	sb.drawPrompt()
+	return a
+}
+
+// takeLine hands back what was typed and clears the row for the next command.
+func (sb *statusBar) takeLine() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	line := sb.line.take()
+	sb.drawPrompt()
+	return line
+}
+
+// maskLine draws what is typed as asterisks, or stops doing so.
+func (sb *statusBar) maskLine(on bool) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	sb.line.masked = on
+	sb.drawPrompt()
+}
+
 // repaint puts one piece of the dashboard back on screen, or the whole thing
 // when the layout it would be drawn against no longer describes the screen.
 //
@@ -406,12 +470,21 @@ func (sb *statusBar) repaint(piece func()) {
 		return
 	}
 
+	if sb.line != nil {
+		// Nothing to put aside: the cursor is on the input row and the saved
+		// position belongs to the log, and a piece of the dashboard is drawn at
+		// neither. Redrawing the input line is what puts the cursor back.
+		piece()
+		sb.drawPrompt()
+		return
+	}
+
 	// The cursor is in the log, part-way through a line the user may be typing.
 	// It is put back where it was rather than left wherever the last absolute
 	// move landed.
-	fmt.Fprint(sb.out, "\033[s")
+	fmt.Fprint(sb.out, cursorSave)
 	piece()
-	fmt.Fprint(sb.out, "\033[u")
+	fmt.Fprint(sb.out, cursorRestore)
 }
 
 // showQR switches the displayed QR code to the URL at index i (1-based, as the
@@ -464,8 +537,24 @@ func (sb *statusBar) writeLine(format string, args ...interface{}) {
 	}
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-	fmt.Fprintf(sb.out, "%s\n", fmt.Sprintf(format, args...))
+	sb.writeLog(fmt.Sprintf(format, args...))
 	sb.doRedrawGrid()
+}
+
+// writeLog puts one line into the scrolling region.
+//
+// With an input line on screen the cursor is not in the log — it is on the row
+// the user is typing on, which is below the scrolling region and must not
+// scroll. So the log's own position is kept in the terminal's cursor store:
+// restored to write, saved again afterwards, and the input line redrawn last by
+// the repaint that follows. Written at the cursor instead, every log line would
+// land on top of whatever was half-typed.
+func (sb *statusBar) writeLog(text string) {
+	if sb.line == nil {
+		fmt.Fprintf(sb.out, "%s\n", text)
+		return
+	}
+	fmt.Fprintf(sb.out, "%s%s\n%s", cursorRestore, text, cursorSave)
 }
 
 // stripANSI removes the color and cursor escapes the dashboard uses, so the
@@ -825,7 +914,7 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 	hub.RestoreArmed(prev.ChangedAt)
 }
 
-func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
+func buildDashboard(out *os.File, in io.Reader, srv *server.Server, authMgr *auth.Manager,
 	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State,
 ) *statusBar {
 	urls := reachableURLs(srv, remoteState)
@@ -848,7 +937,17 @@ func buildDashboard(out *os.File, srv *server.Server, authMgr *auth.Manager,
 	// destroys their scrollback, so it is done on the alternate one — which is
 	// also what makes handing the terminal back at the end a single escape
 	// rather than an attempt to put everything the way it was.
+	//
+	// The keyboard goes with it, when there is a keyboard to take. That has to
+	// be settled before the first draw rather than after: an input line of this
+	// program's own needs a row of the window that nothing else may be placed
+	// on, and the layout is worked out here.
+	keys, _ := in.(*os.File)
+	terminalScreen.readsKeys(keys)
 	terminalScreen.enter(out)
+	if terminalScreen.takesKeystrokes() {
+		sb.line = &inputLine{}
+	}
 	sb.paint()
 
 	return sb
@@ -886,9 +985,16 @@ func (sb *statusBar) doPaint() {
 
 	// Everything above is drawn once and must stay put, so the scrolling region
 	// starts below it. Without this the log would scroll over the QR code the
-	// user is trying to scan.
+	// user is trying to scan. It stops above the input line for the same
+	// reason: a row that scrolled would take what the user is typing with it.
 	fmt.Fprintf(out, "\033[%d;%dr", l.logRow, l.termH)
 	fmt.Fprintf(out, "\033[%d;1H", l.logRow)
+	// The log starts here, and from here on its position lives in the cursor
+	// store rather than in the cursor — which belongs to the input line.
+	if sb.line != nil {
+		fmt.Fprint(out, cursorSave)
+	}
+	sb.drawPrompt()
 }
 
 // wantedLayout is where everything would go if the dashboard were drawn now,
@@ -896,7 +1002,10 @@ func (sb *statusBar) doPaint() {
 func (sb *statusBar) wantedLayout() layout {
 	termW, termH := terminalSize(sb.term)
 	qrW, qrH := qrBoxSize(sb.qrCodes)
-	return computeLayout(termW, termH, qrW, qrH, sb.gridHeight())
+	// The input line's row is taken off the window before anything is placed
+	// in it, so that the layout — which knows nothing about typing — cannot put
+	// the log's last row where the user is writing.
+	return computeLayout(termW, termH-sb.promptRows(), qrW, qrH, sb.gridHeight())
 }
 
 // layoutHolds reports whether the screen still looks the way the last full draw
@@ -1110,6 +1219,11 @@ type consoleDeps struct {
 	srv           *server.Server
 	remoteCtl     *remote.Controller
 	cfg           *config.Config
+	// quit ends the program the way Ctrl+C used to. In raw mode the terminal
+	// no longer turns that keystroke into a signal on our behalf, so the loop
+	// has to be able to do it itself. Nil everywhere the terminal is still
+	// doing it.
+	quit func()
 }
 
 // console is the state one typed command acts on: the dependencies, plus the
@@ -1120,7 +1234,7 @@ type consoleDeps struct {
 // meant to bound.
 type console struct {
 	consoleDeps
-	in *bufio.Scanner
+	in lineReader
 	// arg is whatever followed the command word, trimmed. Empty for every
 	// command that takes none.
 	arg string
@@ -1163,10 +1277,14 @@ var consoleCommands = map[string]consoleCommand{
 // a parameter rather than os.Stdin directly so the loop can be driven from a
 // test; the running program always passes os.Stdin.
 func runConsole(ctx context.Context, in io.Reader, d consoleDeps) {
-	c := &console{consoleDeps: d, in: bufio.NewScanner(in)}
+	c := &console{consoleDeps: d, in: newLineReader(bufio.NewReader(in), d.sb, d.quit)}
 
-	for c.in.Scan() {
-		line := strings.TrimSpace(c.in.Text())
+	for {
+		typed, ok := c.in.readLine()
+		if !ok {
+			return
+		}
+		line := strings.TrimSpace(typed)
 		if line == "" {
 			continue
 		}
@@ -1227,10 +1345,11 @@ func consoleDisarm(_ context.Context, c *console) {
 	pin := ""
 	if c.hub.PinRequired() {
 		c.sb.writeLine("  PIN required to disarm. Type it and press enter:")
-		if !c.in.Scan() {
+		typed, ok := c.in.readSecret()
+		if !ok {
 			return
 		}
-		pin = strings.TrimSpace(c.in.Text())
+		pin = strings.TrimSpace(typed)
 	}
 
 	if err := c.hub.DisarmWithPin("console", pin); err != nil {
@@ -1361,11 +1480,12 @@ func consoleMode(ctx context.Context, c *console) {
 	}
 	c.sb.writeLine("  [1] Wi-Fi only   [2] Remote access   (currently %d)", cur)
 	c.sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
-	if !c.in.Scan() {
+	typed, ok := c.in.readLine()
+	if !ok {
 		return
 	}
 
-	want, ok := parseModeChoice(c.in.Text())
+	want, ok := parseModeChoice(typed)
 	if !ok {
 		c.sb.writeLine("  Left unchanged")
 		return
@@ -1395,11 +1515,12 @@ func consoleMode(ctx context.Context, c *console) {
 func consoleLang(_ context.Context, c *console) {
 	c.sb.writeLine("  [1] Türkçe   [2] English   (currently %s)", languageByCode(c.cfg.Language).code)
 	c.sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
-	if !c.in.Scan() {
+	typed, ok := c.in.readLine()
+	if !ok {
 		return
 	}
 
-	code, ok := parseLanguageChoice(c.in.Text())
+	code, ok := parseLanguageChoice(typed)
 	if !ok {
 		c.sb.writeLine("  Left unchanged")
 		return
@@ -1422,6 +1543,12 @@ func consoleHelp(_ context.Context, c *console) {
 	// Every one of them, because this is the list the footer's shorter one
 	// points at.
 	c.sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, update, rotate-key, help")
+	// Said out loud because the keys are this program's own now: on a dashboard
+	// it reads the keyboard itself, and nothing about the row being typed on
+	// suggests that the last command is one press away.
+	if c.sb.readsKeystrokes() {
+		c.sb.writeLine("  %sType on the line at the foot of the window. ↑ and ↓ walk through what you typed before.%s", cDim, cReset)
+	}
 }
 
 func runStatusTicker(ctx context.Context, sb *statusBar) {

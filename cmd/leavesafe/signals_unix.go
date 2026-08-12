@@ -25,6 +25,20 @@ import (
 // is what does that, and while the signal is being delivered to a channel the
 // default is not in force. So it is put back, raised, and installed again —
 // after the raise, which is where execution continues once the user types fg.
+// requestSuspend asks for the same thing Ctrl+Z used to ask for on its own.
+//
+// In raw mode the terminal no longer turns that keystroke into a signal, so it
+// arrives as a byte and is turned into one here. It goes through the signal
+// rather than straight to the suspending code because everything that has to
+// happen around a suspend — handing the terminal back, taking it again,
+// redrawing what was on it — is already hung off that signal.
+//
+// A failure means the program carries on running rather than stopping, which is
+// survivable and has nowhere useful to be reported.
+func requestSuspend() {
+	_ = syscall.Kill(syscall.Getpid(), syscall.SIGTSTP)
+}
+
 func raiseStop(ch chan os.Signal) {
 	signal.Reset(syscall.SIGTSTP)
 	// A failure here means the process carries on running rather than stopping,

@@ -153,7 +153,7 @@ func startApp(opts appOptions) (*app, error) {
 	a.superviseLoops(ctx, opts, consoleDeps{
 		hub: hub, sb: a.sb, localAlarm: a.alarm, authMgr: authMgr,
 		installMethod: installMethod, updateLedger: updateLedger,
-		srv: a.srv, remoteCtl: a.remote, cfg: cfg,
+		srv: a.srv, remoteCtl: a.remote, cfg: cfg, quit: a.quit,
 	})
 	a.wireRemoteChanges(ctx)
 	a.superviseUpdateCheck(ctx, cfg, installMethod, updateLedger)
@@ -202,6 +202,22 @@ func (a *app) shutdown() {
 		log.Warnf("Server shutdown: %v", err)
 	}
 }
+
+// quit ends the program, for the Ctrl+C the terminal no longer delivers.
+//
+// Reading the keyboard a keystroke at a time means reading the keystroke that
+// used to become SIGINT before it became one, so the signal handler in main
+// never fires and nothing else would stop the program. This is that handler's
+// work done by hand: the same orderly shutdown, and then out.
+func (a *app) quit() {
+	a.shutdown()
+	exitProcess(0)
+}
+
+// exitProcess is os.Exit, as a variable so a test can watch a program end
+// without ending the test binary with it. Nothing in the running program
+// reassigns it.
+var exitProcess = os.Exit
 
 // close releases what the start opened, whether or not it ever served. It is
 // separate from shutdown because a start that failed has files to close and no
@@ -387,7 +403,7 @@ func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager,
 		return sb
 	}
 
-	sb := buildDashboard(opts.out, a.srv, authMgr, a.hub, a.sensors, remoteState)
+	sb := buildDashboard(opts.out, opts.in, a.srv, authMgr, a.hub, a.sensors, remoteState)
 	// The dashboard owns the terminal, so log lines have to be routed through it
 	// to land inside its scrolling region rather than on top of the QR code.
 	// Headless has no such constraint.
