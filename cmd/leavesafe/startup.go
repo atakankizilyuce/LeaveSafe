@@ -397,7 +397,9 @@ func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager,
 		if opts.plain {
 			// Somebody is watching this one, and without a dashboard there is
 			// nowhere else a code to scan could appear. Printed rather than
-			// positioned, so it scrolls away with everything else.
+			// positioned, so it scrolls away with everything else — and printed
+			// again by setURLs if the addresses change, for the same reason.
+			sb.plainOut = opts.out
 			printPairingCode(opts.out, sb, authMgr.RawPairingKey(), remoteState.CertFP)
 		}
 		return sb

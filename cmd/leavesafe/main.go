@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	log "github.com/sirupsen/logrus"
 	"strconv"
@@ -120,6 +121,11 @@ type statusBar struct {
 	// into a log file as garbage, and the QR code would be a wall of blocks
 	// nobody ever sees. Messages become ordinary log lines instead.
 	headless bool
+	// plainOut is where a -plain run prints, and nil for every other run. It is
+	// the one shape with somebody watching and no dashboard to redraw, so it is
+	// also the only one that has to print a new pairing code when the addresses
+	// change rather than putting one back on screen.
+	plainOut io.Writer
 	// keyPath is where the pairing key is persisted, empty when it is not.
 	// Rotating the key has to update that file, or the next start would come
 	// back with the key the user just invalidated.
@@ -159,6 +165,7 @@ func (sb *statusBar) setURLs(urls []string) {
 	codes := renderQRCodes(urls, rawKey, certFP)
 
 	sb.mu.Lock()
+	changed := !slices.Equal(sb.urls, urls)
 	sb.urls = urls
 	sb.qrCodes = codes
 	if sb.qrURLIdx >= len(urls) {
@@ -166,7 +173,31 @@ func (sb *statusBar) setURLs(urls []string) {
 	}
 	sb.mu.Unlock()
 
+	if changed {
+		sb.reprintPairingCode(rawKey, certFP)
+	}
 	sb.refresh()
+}
+
+// reprintPairingCode prints a code for an address list that has just changed,
+// which is something only a run without the dashboard needs.
+//
+// There the code was printed once at startup and has scrolled away with
+// everything else, and there is no box to redraw. Turning remote access on adds
+// an address nothing has ever printed a code for — so the user is told they can
+// be reached from the internet, and left to type the address into a phone by
+// hand. On a dashboard the box is redrawn instead, and at startup nothing has
+// changed yet, so neither reaches this.
+func (sb *statusBar) reprintPairingCode(rawKey, certFP string) {
+	sb.mu.Lock()
+	out := sb.plainOut
+	sb.mu.Unlock()
+	if out == nil {
+		return
+	}
+
+	log.Info("The addresses changed — the code below is for the first of them")
+	printPairingCode(out, sb, rawKey, certFP)
 }
 
 // urlList returns the addresses currently on offer.
@@ -357,6 +388,16 @@ func shortFingerprint(fp string) string {
 		parts = parts[:4]
 	}
 	return strings.Join(parts, ":")
+}
+
+// shownCode is the code the QR box is showing, or nothing when there is none
+// to show: no addresses yet, a headless run, or an address whose code could not
+// be rendered.
+func (sb *statusBar) shownCode() []string {
+	if sb.qrURLIdx < 0 || sb.qrURLIdx >= len(sb.qrCodes) {
+		return nil
+	}
+	return sb.qrCodes[sb.qrURLIdx]
 }
 
 // drawQR repaints the reserved QR box with the currently selected code. The
@@ -662,7 +703,14 @@ func chooseConnectionMode(cfg *config.Config, headless bool) {
 // SECURITY.md for what it does and does not catch.
 func pairingURL(base, rawKey, certFP string) string {
 	fragment := "key=" + rawKey
-	if certFP != "" {
+	// Only for an address that is actually served over TLS. The fingerprint is
+	// sixty-eight characters of a hundred-and-sixteen-character payload, and
+	// carrying it on the local plain-HTTP address — which has no certificate
+	// for the phone to check it against — pushed that code from thirty-seven
+	// modules square to forty-nine the moment remote access came on. A window
+	// with room for the local code was then told it had none, which is what
+	// "the QR code stops working when I turn on mobile data" was.
+	if certFP != "" && strings.HasPrefix(base, "https://") {
 		fragment += "&fp=" + strings.ToLower(strings.ReplaceAll(certFP, ":", ""))
 	}
 	return base + "/#" + fragment
@@ -1001,7 +1049,7 @@ func (sb *statusBar) doPaint() {
 // against the window as it is now and the state as it is now.
 func (sb *statusBar) wantedLayout() layout {
 	termW, termH := terminalSize(sb.term)
-	qrW, qrH := qrBoxSize(sb.qrCodes)
+	qrW, qrH := qrBoxSize(sb.shownCode())
 	// The input line's row is taken off the window before anything is placed
 	// in it, so that the layout — which knows nothing about typing — cannot put
 	// the log's last row where the user is writing.
@@ -1104,16 +1152,20 @@ func renderQRCodes(urls []string, rawKey, certFP string) [][]string {
 	return codes
 }
 
-// qrBoxSize is the size of the largest code, which is the size the box has to
-// be: switching between them with `qr <n>` must never overflow the layout.
-func qrBoxSize(codes [][]string) (width, height int) {
-	for _, lines := range codes {
-		height = max(height, len(lines))
-		if len(lines) > 0 {
-			width = max(width, utf8.RuneCountInString(lines[0]))
-		}
+// qrBoxSize is the size of the code the dashboard is showing.
+//
+// It used to be the size of the largest of them, so that switching between them
+// with `qr <n>` could not overflow a box laid out for a smaller one. That cost
+// the window: remote access adds an address whose code is bigger than the local
+// one, and boxing the local code at that size is how a window with room for the
+// code somebody was actually looking at was told it had none. A switch now
+// takes the layout with it, which is safe because every repaint already checks
+// that the layout still describes the screen.
+func qrBoxSize(lines []string) (width, height int) {
+	if len(lines) == 0 {
+		return 0, 0
 	}
-	return width, height
+	return utf8.RuneCountInString(lines[0]), len(lines)
 }
 
 // drawScanLabel writes the line above the QR box.

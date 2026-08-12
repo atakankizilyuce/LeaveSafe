@@ -398,3 +398,42 @@ func TestARepaintNoticesTheWindowChangingSize(t *testing.T) {
 		t.Errorf("redrawn for a %d-row window, want 20", sb.layout.termH)
 	}
 }
+
+// The order everything gives way in, with the code at the end of it. A window
+// that has room for the code once the decoration is gone must be given the
+// code: it is the one part of this screen that is there to be used rather than
+// read, and the addresses under it are useless to a phone that cannot be
+// pointed at them.
+func TestTheDecorationGoesBeforeTheCodeDoes(t *testing.T) {
+	// A local code and a default terminal window, one row of which the input
+	// line has taken. Everything fits here only if something gives way.
+	l := computeLayout(120, 29, 37, 19, 12)
+
+	if l.qrBoxH != 19 {
+		t.Fatalf("the code was dropped (box height %d) in a window with room for it "+
+			"once the banner and the command list gave way", l.qrBoxH)
+	}
+	if l.headRows != shortBannerRows {
+		t.Errorf("the banner is %d rows; it should have gone before the code was at risk", l.headRows)
+	}
+	if l.footerShown {
+		t.Error("the command list was kept in a window that had to choose between it and the code")
+	}
+	if l.logRow+minLogRows-1 > l.termH {
+		t.Errorf("the log starts at row %d and needs %d rows in a window of %d",
+			l.logRow, minLogRows, l.termH)
+	}
+}
+
+// And it comes back the moment the window can hold both, because a screen that
+// permanently hides how to quit is its own bug.
+func TestARoomyWindowKeepsTheCodeAndTheCommandList(t *testing.T) {
+	l := computeLayout(120, 40, 37, 19, 12)
+
+	if l.qrBoxH != 19 {
+		t.Errorf("the code was dropped by a window with room for everything")
+	}
+	if !l.footerShown {
+		t.Error("the command list was dropped by a window with room for everything")
+	}
+}

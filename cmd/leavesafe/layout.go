@@ -88,6 +88,23 @@ type layout struct {
 	logRow int
 }
 
+// room is a window, everything that has to go in it, and what this attempt is
+// allowed to leave out.
+//
+// It is one value rather than seven parameters threaded through every shape
+// below, which is what it was before the banner and the footer both became
+// things that could give way.
+type room struct {
+	termW, termH int
+	// qrW, qrH is the code to place. A height of zero means there is none —
+	// either none was rendered, or this attempt is the one that gave it up.
+	qrW, qrH int
+	gridH    int
+	// head and foot are the rows this attempt allows the banner and the command
+	// list. Both go to nothing before the code does.
+	head, foot int
+}
+
 // computeLayout places the QR box, the status grid and the scrolling region in
 // a window of the given size.
 //
@@ -97,80 +114,86 @@ type layout struct {
 // with room for neither drops the code — it is the one part that cannot be made
 // smaller, and the addresses it encodes are in the grid as text anyway.
 func computeLayout(termW, termH, qrW, qrH, gridH int) layout {
-	// In priority order, and the order is the point. A window too short for
-	// everything gives up the banner before it gives up the code: the block
-	// letters are decoration, and the code is what the program is for. Only
-	// once the header is down to a single line does the shape change, and only
-	// once both have been tried does the code go.
+	r := room{termW: termW, termH: termH, qrW: qrW, qrH: qrH, gridH: gridH}
+
+	// In priority order, and the order is the point: everything that is there
+	// to be read gives way before the one thing that is there to be scanned.
+	// The block letters go first, then the command list — `help` says all of
+	// that again — then the shape changes, and only when none of it was enough
+	// does the code go.
 	//
 	// This matters at ordinary sizes, not exotic ones. A code for an address
-	// with a pairing key in it is about twenty-eight rows, and a default
-	// terminal window is thirty — so with the full banner drawn there is no
-	// window at all in which the old layout fitted. It did not report that; it
-	// drew the code and then pinned the log's scrolling region over the bottom
-	// of it.
-	for _, head := range []int{bannerHeight(termW), shortBannerRows} {
-		for _, place := range []placement{placeSideBySide, placeStacked} {
-			if l, ok := place(head, termW, termH, qrW, qrH, gridH); ok {
-				return l
+	// with a pairing key in it is nineteen rows, and a default terminal window
+	// is thirty; the banner, the label, the footer and the log's own three rows
+	// take the rest, so keeping all of them meant reporting no room for the
+	// code in a window that plainly had some.
+	for _, foot := range []int{footerRows, 0} {
+		for _, head := range []int{bannerHeight(termW), shortBannerRows} {
+			for _, place := range []placement{placeSideBySide, placeStacked} {
+				r.head, r.foot = head, foot
+				if l, ok := place(r); ok {
+					return l
+				}
 			}
 		}
 	}
-	return placeWithoutCode(bannerHeight(termW), termW, termH, gridH)
+
+	r.head, r.foot = bannerHeight(termW), footerRows
+	return placeWithoutCode(r)
 }
 
 // placement is one of the shapes the dashboard can take, which reports whether
 // it fits in the window it was asked about.
-type placement func(head, termW, termH, qrW, qrH, gridH int) (layout, bool)
+type placement func(r room) (layout, bool)
 
 // placeSideBySide puts the code on the left with the status grid beside it,
 // which is the shape the dashboard was designed around.
-func placeSideBySide(head, termW, termH, qrW, qrH, gridH int) (layout, bool) {
-	l, blockRow := newLayout(head, termW, termH)
-	if qrH == 0 || qrIndent+qrW+gap+minGridWidth > termW {
+func placeSideBySide(r room) (layout, bool) {
+	l, blockRow := newLayout(r)
+	if r.qrH == 0 || qrIndent+r.qrW+gap+minGridWidth > r.termW {
 		return l, false
 	}
 
-	block := max(qrH, gridH)
-	if blockRow+block+footerRows > lastDrawableRow(termH) {
+	block := max(r.qrH, r.gridH)
+	if blockRow+block+r.foot > lastDrawableRow(r.termH) {
 		return l, false
 	}
 
 	l.qrCol = qrIndent + 1
-	l.qrBoxW, l.qrBoxH = qrW, qrH
-	l.gridCol = qrIndent + qrW + gap + 1
-	l.gridWidth = clampGridWidth(termW - l.gridCol)
+	l.qrBoxW, l.qrBoxH = r.qrW, r.qrH
+	l.gridCol = qrIndent + r.qrW + gap + 1
+	l.gridWidth = clampGridWidth(r.termW - l.gridCol)
 
 	// Each column is centered against the taller of the two. In practice the
 	// code is taller, but a laptop with every sensor listed and a small code is
 	// the other way round, and drawing the code hard against the top with a
 	// column of blank beneath it looks like a mistake.
-	l.qrRow = blockRow + (block-qrH)/2
-	l.gridRow = blockRow + (block-gridH)/2
-	l.logRow = blockRow + block + footerRows
-	l.gridRows = gridH
+	l.qrRow = blockRow + (block-r.qrH)/2
+	l.gridRow = blockRow + (block-r.gridH)/2
+	l.logRow = blockRow + block + r.foot
+	l.gridRows = r.gridH
 	return l, true
 }
 
 // placeStacked puts the code above the grid, for a window too narrow to hold
 // them side by side. Worth more than a grid drawn over the code.
-func placeStacked(head, termW, termH, qrW, qrH, gridH int) (layout, bool) {
-	l, blockRow := newLayout(head, termW, termH)
-	if qrH == 0 || qrIndent+qrW > termW {
+func placeStacked(r room) (layout, bool) {
+	l, blockRow := newLayout(r)
+	if r.qrH == 0 || qrIndent+r.qrW > r.termW {
 		return l, false
 	}
-	if blockRow+qrH+1+gridH+footerRows > lastDrawableRow(termH) {
+	if blockRow+r.qrH+1+r.gridH+r.foot > lastDrawableRow(r.termH) {
 		return l, false
 	}
 
 	l.qrCol = qrIndent + 1
 	l.qrRow = blockRow
-	l.qrBoxW, l.qrBoxH = qrW, qrH
+	l.qrBoxW, l.qrBoxH = r.qrW, r.qrH
 	l.gridCol = qrIndent + 1
-	l.gridWidth = clampGridWidth(termW - l.gridCol)
-	l.gridRow = blockRow + qrH + 1
-	l.logRow = l.gridRow + gridH + footerRows
-	l.gridRows = gridH
+	l.gridWidth = clampGridWidth(r.termW - l.gridCol)
+	l.gridRow = blockRow + r.qrH + 1
+	l.logRow = l.gridRow + r.gridH + r.foot
+	l.gridRows = r.gridH
 	return l, true
 }
 
@@ -181,44 +204,43 @@ func placeStacked(head, termW, termH, qrW, qrH, gridH int) (layout, bool) {
 // carries — so this is the end of the line rather than a further compromise.
 // The addresses it would have encoded are listed in the grid as text, and the
 // label above says so.
-func placeWithoutCode(head, termW, termH, gridH int) layout {
-	l, blockRow := newLayout(head, termW, termH)
+func placeWithoutCode(r room) layout {
+	l, blockRow := newLayout(r)
 	l.gridCol = qrIndent + 1
-	l.gridWidth = clampGridWidth(termW - l.gridCol)
+	l.gridWidth = clampGridWidth(r.termW - l.gridCol)
 	l.gridRow = blockRow
 
-	// The footer is the first thing to go once there is not room for both. It
-	// lists commands and says how to quit, and `help` says all of it again; the
-	// grid it would otherwise be drawn on top of carries the address to pair
-	// with and the key to pair with it. Taking rows off the grid to keep the
-	// footer would be keeping the reminder and losing the thing it reminds you
-	// about.
-	foot := footerRows
-	if blockRow+gridH+foot > lastDrawableRow(termH) {
+	// The footer goes here too, for the grid this time. It is drawn at fixed
+	// rows above the log, so a grid that reached them was drawn over: the
+	// address to pair with, with a list of commands through the middle of it.
+	// Taking rows off the grid instead would be keeping the reminder and losing
+	// the thing it reminds you about.
+	foot := r.foot
+	if blockRow+r.gridH+foot > lastDrawableRow(r.termH) {
 		foot = 0
 	}
 	l.footerShown = foot > 0
 
-	l.logRow = min(blockRow+gridH+foot, lastDrawableRow(termH)+1)
+	l.logRow = min(blockRow+r.gridH+foot, lastDrawableRow(r.termH)+1)
 	// Clipped rather than allowed to run into the log. A window this small
 	// cannot show the whole grid, and drawing the rest of it into the scrolling
 	// region would not show it either — it would scroll away a line at a time
 	// while the layout went on believing it was there.
-	l.gridRows = max(min(gridH, l.logRow-foot-l.gridRow), 0)
+	l.gridRows = max(min(r.gridH, l.logRow-foot-l.gridRow), 0)
 	return l
 }
 
 // newLayout starts a layout with the parts every shape shares, and hands back
 // the row the code and the grid begin on.
-func newLayout(head, termW, termH int) (layout, int) {
-	blockRow := head + scanLabelRows + 2
+func newLayout(r room) (layout, int) {
+	blockRow := r.head + scanLabelRows + 2
 	return layout{
-		termW:       termW,
-		termH:       termH,
-		headRows:    head,
+		termW:       r.termW,
+		termH:       r.termH,
+		headRows:    r.head,
 		labelRow:    blockRow - 1,
 		logRow:      blockRow,
-		footerShown: true,
+		footerShown: r.foot > 0,
 	}, blockRow
 }
 
