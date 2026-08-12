@@ -420,12 +420,12 @@ func terminalDashboard(t *testing.T, urls []string) (*statusBar, *syncBuffer) {
 		sensorMgr: monitor.NewManager(),
 		key:       testKey,
 		rawKey:    testRawKey,
-		// A QR box with height, or drawQR draws nothing and the selection is
-		// never read back.
-		gridRow: 1, gridCol: 1, gridWidth: 78,
-		qrRow: 1, qrCol: 1, qrBoxW: 40, qrBoxH: 40,
 	}
 	sb.setURLs(urls)
+	// The layout is settled once the codes are in, because that is what its
+	// shape is worked out from. Without this drawQR has a box of no height and
+	// draws nothing, and the selection is never read back.
+	sb.paint()
 	return sb, screen
 }
 

@@ -183,10 +183,13 @@ func TestAHeadlessStatusBarDrawsNothing(t *testing.T) {
 	}
 }
 
-// A window too small is treated the same as no answer at all: the layout
-// assumes it has room, and squeezing it into eighty by twenty produces a QR
-// code cut in half, which is worse than one running off the edge of a window
-// the user can resize.
+// A real window is taken at its word, however small, and the layout adapts to
+// it. Inventing a larger one is what put the log's scrolling region over the top
+// of the status grid: every line written then scrolled the grid away, and the
+// next repaint drew it again lower down — two grids on one screen.
+//
+// Only a window that cannot answer at all gets a size made up for it, and that
+// is a test drawing into a buffer rather than anybody's terminal.
 func TestTheSizeTheDashboardIsLaidOutFor(t *testing.T) {
 	cases := map[string]struct {
 		w, h         int
@@ -194,9 +197,10 @@ func TestTheSizeTheDashboardIsLaidOutFor(t *testing.T) {
 		wantW, wantH int
 	}{
 		"a window that answers": {w: 200, h: 60, wantW: 200, wantH: 60},
-		"a window too narrow":   {w: 70, h: 60, wantW: 120, wantH: 40},
-		"a window too short":    {w: 200, h: 12, wantW: 120, wantH: 40},
+		"a narrow window":       {w: 70, h: 60, wantW: 70, wantH: 60},
+		"a short window":        {w: 200, h: 12, wantW: 200, wantH: 12},
 		"nothing to ask":        {err: errNoSize, wantW: 120, wantH: 40},
+		"a nonsense answer":     {w: 0, h: 0, wantW: 120, wantH: 40},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

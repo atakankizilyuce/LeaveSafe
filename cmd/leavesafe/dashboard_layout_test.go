@@ -93,16 +93,14 @@ func TestDashboardDrawsItselfAndHandsBackAStatusBarThatMatches(t *testing.T) {
 func TestDashboardKeepsTheLogBelowWhatItDrewOnce(t *testing.T) {
 	sb, drawn := drawnDashboard(t, remote.State{})
 
-	bottom := sb.qrRow + sb.qrBoxH
-	found := false
-	for row := bottom; row < 40; row++ {
-		if strings.Contains(drawn, "\033["+itoa(row)+";40r") {
-			found = true
-			break
-		}
+	l := sb.layout
+	bottom := max(l.qrRow+l.qrBoxH, l.gridRow+len(sb.gridLines()))
+	if l.logRow < bottom {
+		t.Errorf("the log scrolls from row %d, over a dashboard that reaches row %d",
+			l.logRow, bottom-1)
 	}
-	if !found {
-		t.Errorf("no scrolling region starts below the QR box (which ends at row %d)", bottom-1)
+	if !strings.Contains(drawn, "\033["+itoa(l.logRow)+";"+itoa(l.termH)+"r") {
+		t.Errorf("no scrolling region was pinned at row %d", l.logRow)
 	}
 }
 
@@ -187,27 +185,41 @@ func TestQRBoxOfNothingIsEmpty(t *testing.T) {
 	}
 }
 
-// The status column sits to the right of the QR box, and its width is clamped at
-// both ends: too narrow and the sensor lines wrap into nonsense, too wide and it
+// The status grid sits to the right of the QR box, and its width is clamped at
+// both ends: too narrow and its lines wrap into nonsense, too wide and it
 // sprawls across a maximized window with a yard of space between the columns.
-func TestStatusColumnIsPlacedBesideTheCodeAndKeptReadable(t *testing.T) {
+//
+// The window with no room is the one that mattered. The old arithmetic put the
+// grid at column 51 with a width of 30 in an eighty-column window — nine columns
+// past the right edge — so every line of it wrapped, pushing the rows below it
+// down while the next repaint drew them back where they were. That is what two
+// status grids on one screen looked like.
+func TestTheGridIsPlacedBesideTheCodeAndKeptInsideTheWindow(t *testing.T) {
 	cases := map[string]struct {
-		termW, qrW  int
-		wantCol     int
-		wantedWidth int
+		termW, termH   int
+		wantCol        int
+		wantWidth      int
+		wantSideBySide bool
 	}{
-		"an ordinary window":    {120, 45, 51, 50},
-		"a window with no room": {80, 45, 51, 30},
-		"a very wide window":    {400, 45, 51, 50},
+		"an ordinary window":   {120, 40, 51, 50, true},
+		"a very wide window":   {400, 40, 51, 50, true},
+		"no room for the grid": {80, 40, 3, 50, false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			col, width := statusColumn(tc.termW, tc.qrW)
-			if col != tc.wantCol {
-				t.Errorf("column = %d, want %d", col, tc.wantCol)
+			l := computeLayout(tc.termW, tc.termH, 45, 23, 12)
+
+			if l.gridCol != tc.wantCol {
+				t.Errorf("column = %d, want %d", l.gridCol, tc.wantCol)
 			}
-			if width != tc.wantedWidth {
-				t.Errorf("width = %d, want %d", width, tc.wantedWidth)
+			if l.gridWidth != tc.wantWidth {
+				t.Errorf("width = %d, want %d", l.gridWidth, tc.wantWidth)
+			}
+			if right := l.gridCol + l.gridWidth - 1; right > tc.termW {
+				t.Errorf("the grid ends at column %d, past the %d-column window", right, tc.termW)
+			}
+			if beside := l.gridRow < l.qrRow+l.qrBoxH && l.gridCol > l.qrCol; beside != tc.wantSideBySide {
+				t.Errorf("side by side = %v, want %v", beside, tc.wantSideBySide)
 			}
 		})
 	}
@@ -254,59 +266,104 @@ func TestRenderQRCodesKeepsTheIndexesLinedUpWhenOneWillNotRender(t *testing.T) {
 // a laptop with every sensor listed and a small code would otherwise draw the
 // code hard against the top with a column of blank beneath it.
 func TestTheShorterColumnIsCentredAgainstTheTaller(t *testing.T) {
-	var screen syncBuffer
-	sb := &statusBar{
-		out:       &screen,
-		hub:       testHub(t),
-		sensorMgr: monitor.NewManager(),
-		gridWidth: 50,
-		// One row of code against a status grid several rows tall.
-		qrBoxW:  4,
-		qrBoxH:  1,
-		qrCodes: [][]string{{"####"}},
-	}
+	// One row of code against a status grid several rows tall.
+	l := computeLayout(120, 40, 4, 1, 13)
 
-	const startRow = 11
-	rows := drawCodeAndStatus(&screen, sb, startRow, 51)
-
-	statusH := len(sb.gridLines())
-	if rows != statusH {
-		t.Fatalf("the block is %d rows tall, want %d — the taller of the two", rows, statusH)
+	if l.gridRow != l.labelRow+1 {
+		t.Errorf("the taller column starts on row %d, want %d — it sets the height",
+			l.gridRow, l.labelRow+1)
 	}
-	if sb.qrRow != startRow+(statusH-1)/2 {
-		t.Errorf("the code starts on row %d, want it centered at %d", sb.qrRow, startRow+(statusH-1)/2)
-	}
-	// The taller column is the one that sets the height, so it is not moved.
-	if sb.gridRow != startRow {
-		t.Errorf("the status grid starts on row %d, want %d", sb.gridRow, startRow)
+	if want := l.gridRow + (13-1)/2; l.qrRow != want {
+		t.Errorf("the code starts on row %d, want it centered at %d", l.qrRow, want)
 	}
 }
 
-// The header is drawn from row 1 down, and everything below it is positioned by
-// the row this returns. Getting it wrong puts the QR code over the banner.
-func TestHeaderReportsTheRowItFinishedOn(t *testing.T) {
-	var screen syncBuffer
+// The banner is six rows of block letters that do not wrap gracefully: in a
+// window too narrow for them each row folds onto the next, the header becomes
+// twelve rows instead of six, and everything the layout placed below it lands on
+// top of something else. So a narrow window gets the name on one line.
+func TestTheBannerGivesWayInAWindowTooNarrowForIt(t *testing.T) {
+	var wide, narrow, short syncBuffer
 
-	row := drawHeader(&screen, "  ----")
+	drawHeader(&wide, computeLayout(120, 60, 45, 23, 12))
+	drawHeader(&narrow, computeLayout(bannerWidth-1, 60, 45, 23, 12))
+	// Wide enough for the block letters, and short enough that keeping them
+	// would cost the code instead.
+	drawHeader(&short, computeLayout(120, 32, 53, 18, 12))
 
-	if row != 10 {
-		t.Errorf("drawHeader returned row %d, want 10", row)
+	if !strings.Contains(wide.String(), "█") {
+		t.Error("a wide window did not get the block letters")
 	}
-	if lines := strings.Count(screen.String(), "\n"); lines != row-1 {
-		t.Errorf("drew %d lines but claims to have finished on row %d", lines, row)
+	if strings.Contains(narrow.String(), "█") {
+		t.Error("a narrow window got block letters it has no room for")
+	}
+	// And the other reason they give way: a window wide enough for them but too
+	// short for them and the code together. The header cannot know that on its
+	// own, and one that drew six rows where the layout allowed two put its own
+	// banner underneath everything placed below it.
+	if strings.Contains(short.String(), "█") {
+		t.Error("a short window kept the block letters and gave up the code instead")
+	}
+	for _, drawn := range []string{wide.String(), narrow.String(), short.String()} {
+		if !strings.Contains(drawn, "Device Security Monitor") {
+			t.Error("the header does not say what the program is")
+		}
+	}
+	if got := bannerHeight(bannerWidth - 1); got != shortBannerRows {
+		t.Errorf("a narrow header is %d rows, want %d", got, shortBannerRows)
 	}
 }
 
-func TestFooterReportsTheRowItFinishedOn(t *testing.T) {
-	var screen syncBuffer
+// And nothing the header draws may reach the row the label above the code goes
+// on. That overlap is what put "Scan to connect:" through the middle of the
+// banner.
+func TestTheHeaderStopsAboveTheLabel(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{120, 60}, {120, 30}, {80, 24}, {60, 40}} {
+		var screen syncBuffer
+		l := computeLayout(size.w, size.h, 53, 15, 12)
 
-	row := drawFooter(&screen, "  ----", 30)
+		drawHeader(&screen, l)
 
-	if row != 33 {
-		t.Errorf("drawFooter returned row %d, want 33", row)
+		for row := l.labelRow; row <= size.h; row++ {
+			if strings.Contains(screen.String(), "\x1b["+itoa(row)+";1H") {
+				t.Errorf("%dx%d: the header drew on row %d, at or below the label at %d",
+					size.w, size.h, row, l.labelRow)
+			}
+		}
 	}
-	if !strings.Contains(screen.String(), "Commands:") {
-		t.Errorf("the footer did not list the commands; screen was:\n%s", screen.String())
+}
+
+func TestTheFooterSitsJustAboveTheLog(t *testing.T) {
+	var screen syncBuffer
+	l := computeLayout(120, 40, 45, 23, 12)
+
+	drawFooter(&screen, l)
+
+	drawn := screen.String()
+	if !strings.Contains(drawn, "Commands:") {
+		t.Errorf("the footer did not list the commands; screen was:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, "\x1b["+itoa(l.logRow-2)+";1H") {
+		t.Errorf("the command list is not two rows above the log at %d", l.logRow)
+	}
+}
+
+// A window narrower than the command list is not a reason to wrap it. A wrapped
+// footer pushes the first log line into the scrolling region the layout just
+// pinned, and the screen ends up a row out of step with what was drawn.
+func TestTheFooterIsCutRatherThanWrapped(t *testing.T) {
+	var screen syncBuffer
+	l := computeLayout(60, 40, 45, 23, 12)
+
+	drawFooter(&screen, l)
+
+	for _, line := range strings.Split(screen.String(), "\x1b[") {
+		if i := strings.Index(line, "H"); i >= 0 {
+			if got := visLen(line[i+1:]); got > l.termW {
+				t.Errorf("a footer row is %d columns wide in a %d-column window: %q",
+					got, l.termW, line[i+1:])
+			}
+		}
 	}
 }
 
