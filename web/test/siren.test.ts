@@ -264,7 +264,7 @@ it('renders a whole number of notes at the rate the phone runs at', async () => 
     if (!wave) throw new Error('the siren built no sound');
     expect(wave.channels).toBe(1);
     expect(wave.sampleRate).toBe(48000);
-    expect(wave.length).toBe(Math.round(48000 * 0.19) * 10);
+    expect(wave).toHaveLength(Math.round(48000 * 0.19) * 10);
 });
 
 // Both ends of the buffer are silent, so the loop joins where there is nothing
