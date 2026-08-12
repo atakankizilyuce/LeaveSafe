@@ -203,6 +203,29 @@ diff is small.
 
 ### Fixed
 
+- **One status grid, not two.** The dashboard drew at absolute rows worked out
+  once at startup, and three ordinary things moved those rows out from under it:
+  remote access arriving a minute later and adding an address, so the grid grew;
+  a longer address producing a bigger QR code; and the window being resized. Each
+  left the old drawing on screen with the new one painted somewhere else. Worse,
+  the layout was worked out for a window of 120×40 whenever the real one was
+  smaller than 80×20 — so the log's scrolling region was pinned across the middle
+  of the status grid, and every line written scrolled part of the dashboard away
+  for the next repaint to draw again lower down. The layout is now one value
+  computed from the window as it is, and every repaint checks it still describes
+  the screen before painting a piece of it.
+- **The dashboard fits the window it is in.** A QR code carrying a pairing key is
+  around twenty-eight rows and a default terminal is thirty, so there was no
+  window in which the old layout fitted; it drew the code and then pinned the log
+  over the bottom of it. Now the block-letter banner gives way first — it is
+  decoration, and the code is what the program is for — then the code moves above
+  the status grid in a window too narrow for both, and only in a window with room
+  for neither is it dropped, with a line saying so where it would have been. Long
+  lines are cut to the window instead of wrapping, which was its own way of
+  pushing everything below them down a row.
+- **A resized window is drawn for again.** Immediately where the platform says so,
+  and within five seconds everywhere else.
+
 - **The terminal is given back.** The dashboard cleared the screen, drew at
   absolute positions and pinned a scrolling region under its header — on the
   window the user had typed the command into. That took their scrollback with
