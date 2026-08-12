@@ -709,7 +709,7 @@ func TestACertificateWithNothingInItStillLeavesTheListenerUp(t *testing.T) {
 	if !got.Enabled {
 		t.Error("remote access was switched off over a certificate the listener is already serving")
 	}
-	if cert := <-handed; cert != nil {
+	if <-handed != nil {
 		t.Error("an empty certificate was handed to the check as if it were one")
 	}
 }
