@@ -6,7 +6,8 @@ import (
 )
 
 // ErrNoOutput is what a machine with nowhere to send sound answers: no audio
-// device, no driver, or a platform this build has no backend for.
+// device, no driver, or — on Linux and macOS, where the way to a speaker is a
+// library loaded at run time rather than one linked in — no library.
 //
 // It is a value the caller is expected to act on rather than only report. The
 // alarm falls back to whatever noise it can still make, because a siren that

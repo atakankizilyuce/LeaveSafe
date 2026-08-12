@@ -287,8 +287,8 @@ func (a *Alarm) IsPlaying() bool {
 // The siren proper is generated sample by sample and played through the audio
 // device, which is what makes it a sound somebody in the next room turns
 // towards. Where there is no device to play it through — no sound card, a
-// driver that will not open, or a platform this build has no backend for — it
-// falls back to the beeps, which are thin and are better than nothing.
+// driver that will not open, or a machine with no libasound on it — it falls
+// back to the beeps, which are thin and are better than nothing.
 //
 // Falling back rather than reporting and stopping is the whole point. This runs
 // while a laptop is being carried away; silence is the one outcome that helps

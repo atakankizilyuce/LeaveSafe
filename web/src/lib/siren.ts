@@ -1,11 +1,19 @@
-// The phone's own alarm: a two-tone square wave, plus vibration and a
-// notification. Kept apart from the UI so starting and stopping it is one call
-// rather than four intervals to remember to clear.
+// The phone's half of the alarm: the same siren the laptop is making, plus
+// vibration, a notification and a flashing title. Kept apart from the UI so
+// starting and stopping it is one call rather than four intervals to remember
+// to clear.
+//
+// The phone is the second voice here, not the first. The laptop is the one in
+// the room being walked out of, and it is the one that has to be heard by
+// whoever is in that room; the phone is in a pocket a few inches from the
+// person who needs telling, and what reaches them there is the buzzing as much
+// as the noise. So this plays the laptop's siren rather than a warble of its
+// own — one alarm with one voice, recognisable as the same thing in both
+// places — at a level that leaves the phone's speaker some headroom instead of
+// asking it for everything it has.
 
 let ctx: AudioContext | null = null;
-let osc: OscillatorNode | null = null;
-let harmonic: OscillatorNode | null = null;
-let warble: number | null = null;
+let siren: AudioBufferSourceNode | null = null;
 let buzz: number | null = null;
 let titleFlash: number | null = null;
 let titleStop: number | null = null;
@@ -68,20 +76,13 @@ export function startSiren(message: string) {
 }
 
 export function stopSiren() {
-    if (warble !== null) {
-        window.clearInterval(warble);
-        warble = null;
+    try {
+        siren?.stop();
+        siren?.disconnect();
+    } catch {
+        // Already stopped.
     }
-    for (const node of [osc, harmonic]) {
-        try {
-            node?.stop();
-            node?.disconnect();
-        } catch {
-            // Already stopped.
-        }
-    }
-    osc = null;
-    harmonic = null;
+    siren = null;
     // The context itself is deliberately left open. See audioContext.
 
     if (buzz !== null) {
@@ -101,38 +102,103 @@ export function stopSiren() {
     document.title = BASE_TITLE;
 }
 
+// The siren, which is internal/audio/siren.go written out again in a language
+// with a different way of reaching a speaker. Every number below is the same
+// number as there, and the reason for each of them is written there too: two
+// pairs of notes a tritone apart, alternating five times a second, roughened at
+// twenty hertz and driven into a soft clipper so it has an edge on it.
+//
+// It is deliberately not a sweep. A tone gliding up and down is what every
+// emergency vehicle in the world does, so a phone making that sound reads as an
+// ambulance somewhere outside rather than as this alarm, now.
+const LOW_A = 622;
+const HIGH_A = 880;
+const LOW_B = 740;
+const HIGH_B = 1046;
+const NOTE_MS = 190;
+const EDGE_MS = 4;
+const ROUGH_HZ = 20;
+const ROUGH_DEPTH = 0.3;
+const DRIVE = 1.8;
+
+// The one number that differs from the laptop's, which is at 0.9. A phone
+// speaker asked for everything it has answers with distortion rather than
+// volume, and this one is a few inches from the person it is talking to.
+const AMPLITUDE = 0.5;
+
+// LOOP_NOTES is how much siren is rendered before it repeats. Ten notes is 1.9
+// seconds, and that length is not arbitrary: it is a whole number of notes, so
+// the two pairs still alternate across the join, and a whole number of 20 Hz
+// roughness cycles, so the wobble does not jump either. The join itself lands
+// in the silence at the end of a note, where nothing is playing to click.
+const LOOP_NOTES = 10;
+
 function startTone() {
     try {
         const audio = audioContext();
         if (!audio) return;
 
-        osc = audio.createOscillator();
-        const mainGain = audio.createGain();
-        osc.type = 'square';
-        osc.frequency.value = 880;
-        mainGain.gain.value = 1;
-        osc.connect(mainGain).connect(audio.destination);
+        const rate = audio.sampleRate;
+        const note = Math.round((rate * NOTE_MS) / 1000);
+        const wave = audio.createBuffer(1, note * LOOP_NOTES, rate);
+        renderSiren(wave.getChannelData(0), rate, note);
 
-        harmonic = audio.createOscillator();
-        const harmonicGain = audio.createGain();
-        harmonic.type = 'square';
-        harmonic.frequency.value = 1760;
-        harmonicGain.gain.value = 0.5;
-        harmonic.connect(harmonicGain).connect(audio.destination);
-
-        osc.start();
-        harmonic.start();
-
-        let high = true;
-        warble = window.setInterval(() => {
-            if (!osc || !harmonic) return;
-            osc.frequency.value = high ? 880 : 660;
-            harmonic.frequency.value = high ? 1760 : 1320;
-            high = !high;
-        }, 400);
+        siren = audio.createBufferSource();
+        siren.buffer = wave;
+        // Looping in the audio thread rather than on a timer. A setInterval on
+        // a phone with the screen off is throttled to once a minute or stopped
+        // outright, which would have made the alarm a sound that played for two
+        // seconds and then waited — the one moment nobody is looking at the
+        // page is the one moment it has to keep going.
+        siren.loop = true;
+        siren.connect(audio.destination);
+        siren.start();
     } catch {
-        // Autoplay policy or no audio device. Vibration and the overlay remain.
+        // Autoplay policy or no audio device. Vibration and the overlay remain,
+        // and the laptop is sounding its own siren regardless.
     }
+}
+
+/** Write one loop of the siren into a buffer of samples. */
+function renderSiren(out: Float32Array, rate: number, note: number) {
+    const edge = Math.round((rate * EDGE_MS) / 1000);
+    let phaseLow = 0;
+    let phaseHigh = 0;
+
+    for (let at = 0; at < out.length; at++) {
+        // The oscillators run continuously, whether or not the note they are
+        // playing is the one being heard. Restarting them at each change would
+        // put a step in the waveform at every note edge, and a step is a click.
+        const [low, high] = notes(Math.floor(at / note));
+        phaseLow += (2 * Math.PI * low) / rate;
+        phaseHigh += (2 * Math.PI * high) / rate;
+
+        const mix = (Math.sin(phaseLow) + Math.sin(phaseHigh)) / 2;
+        out[at] = softClip(mix) * AMPLITUDE * ramp(at % note, note, edge) * rough(at, rate);
+    }
+}
+
+/** The pair being played, which alternates every note. */
+function notes(index: number): [number, number] {
+    return index % 2 === 1 ? [LOW_B, HIGH_B] : [LOW_A, HIGH_A];
+}
+
+/** A linear fade at both ends of a note, so a note starting is not a click. */
+function ramp(at: number, length: number, over: number): number {
+    if (at < over) return at / over;
+    if (at > length - over) return (length - at) / over;
+    return 1;
+}
+
+/** The amplitude wobble that makes it harsh rather than merely loud. */
+function rough(at: number, rate: number): number {
+    const phase = (2 * Math.PI * ROUGH_HZ * at) / rate;
+    return 1 - (ROUGH_DEPTH * (1 - Math.cos(phase))) / 2;
+}
+
+/** Pushes the waveform towards a square without ever passing full scale. */
+function softClip(level: number): number {
+    return Math.tanh(DRIVE * level) / Math.tanh(DRIVE);
 }
 
 function startVibration() {

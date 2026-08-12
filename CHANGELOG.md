@@ -203,7 +203,7 @@ diff is small.
 
 ### Fixed
 
-- **The laptop makes the noise now, on Windows.** The alarm on the machine being
+- **The laptop makes the noise now, on all three.** The alarm on the machine being
   carried away was `kernel32.Beep` — a single square tone, silent between one
   call and the next. The phone shrieked and the laptop chirped, which is
   backwards: the laptop is the thing in the room somebody needs to look at.
@@ -219,9 +219,22 @@ diff is small.
   mid-alarm — it falls back to the beeps, because silence is the one outcome that
   helps nobody.
 
-  **macOS and Linux still beep.** Each wants a backend of its own and they are
-  the next change; until then those two fall back exactly as before. That is a
-  stated gap rather than a hidden one.
+  The way to the speaker is different on each platform and the siren is not:
+  winmm on Windows, ALSA on Linux — which is the layer PulseAudio and PipeWire
+  both sit on, so this reaches the mixer you are actually listening to — and an
+  audio queue on macOS. A machine with no sound library on it at all says so and
+  falls back to the beeps.
+- **The phone stops shouting over the laptop.** The phone played a square wave
+  at full scale with a second one at half on top of it, which is more than a
+  speaker can produce: what came out of a pocket was the phone's limiter rather
+  than an alarm. It now plays the same siren the laptop does — the same notes,
+  the same roughness, the same edge — at half scale, so it is recognisable as
+  one alarm speaking in two places and the speaker has somewhere left to go. The
+  laptop is the one that has to be heard across a room; the phone is a few
+  inches from the person who needs telling, and the buzzing does as much of that
+  work as the noise. It also loops in the audio thread rather than on a timer,
+  which matters for the one stretch that counts: a phone with the screen off
+  throttles a timer to once a minute.
 - **Typing has a line of its own.** The terminal echoed what you typed wherever
   the cursor happened to be, which was inside the scrolling log — so a sensor
   reporting itself while you were half-way through `disarm` wrote its message
