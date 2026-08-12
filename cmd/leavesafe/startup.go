@@ -474,6 +474,11 @@ func (a *app) superviseLoops(ctx context.Context, opts appOptions, deps consoleD
 	safe.Supervise(ctx, "suspend", func(c context.Context) {
 		watchSuspend(c, opts.out, a.sb.paint)
 	})
+	// A window that changed size has to be drawn for again, or every absolute
+	// row the dashboard drew at points somewhere else.
+	safe.Supervise(ctx, "resize", func(c context.Context) {
+		watchResize(c, a.sb.paint)
+	})
 }
 
 // wireRemoteChanges routes every later change to remote access onto the
