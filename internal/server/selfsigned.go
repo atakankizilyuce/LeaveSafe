@@ -4,11 +4,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -16,10 +14,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/leavesafe/leavesafe/internal/certfp"
 )
 
 const (
@@ -96,7 +95,7 @@ func loadCert(certPath, keyPath string) (tls.Certificate, string, error) {
 		return tls.Certificate{}, "", fmt.Errorf("%w: expires %s", errCertUnusable, parsed.NotAfter)
 	}
 
-	fp := certFingerprint(cert.Certificate[0])
+	fp := certfp.Of(cert.Certificate[0])
 	return cert, fp, nil
 }
 
@@ -167,15 +166,6 @@ func generateCert(certPath, keyPath string) (tls.Certificate, string, error) {
 		return tls.Certificate{}, "", err
 	}
 
-	fp := certFingerprint(certDER)
+	fp := certfp.Of(certDER)
 	return tlsCert, fp, nil
-}
-
-func certFingerprint(certDER []byte) string {
-	hash := sha256.Sum256(certDER)
-	parts := make([]string, len(hash))
-	for i, b := range hash {
-		parts[i] = hex.EncodeToString([]byte{b})
-	}
-	return strings.Join(parts, ":")
 }
