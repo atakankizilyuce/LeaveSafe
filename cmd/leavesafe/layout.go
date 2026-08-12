@@ -77,6 +77,12 @@ type layout struct {
 	// it, or the note that says why there is none.
 	labelRow int
 
+	// footerShown is false in a window with no room for both the status grid
+	// and the command list under it. The footer is drawn at fixed rows above
+	// the log, so a grid that reached them was drawn over — the address to pair
+	// with, with a list of commands through the middle of it.
+	footerShown bool
+
 	// logRow is the first row of the scrolling region: everything above it is
 	// drawn once and must stay put, everything from it down scrolls.
 	logRow int
@@ -180,12 +186,25 @@ func placeWithoutCode(head, termW, termH, gridH int) layout {
 	l.gridCol = qrIndent + 1
 	l.gridWidth = clampGridWidth(termW - l.gridCol)
 	l.gridRow = blockRow
-	l.logRow = min(blockRow+gridH+footerRows, lastDrawableRow(termH)+1)
+
+	// The footer is the first thing to go once there is not room for both. It
+	// lists commands and says how to quit, and `help` says all of it again; the
+	// grid it would otherwise be drawn on top of carries the address to pair
+	// with and the key to pair with it. Taking rows off the grid to keep the
+	// footer would be keeping the reminder and losing the thing it reminds you
+	// about.
+	foot := footerRows
+	if blockRow+gridH+foot > lastDrawableRow(termH) {
+		foot = 0
+	}
+	l.footerShown = foot > 0
+
+	l.logRow = min(blockRow+gridH+foot, lastDrawableRow(termH)+1)
 	// Clipped rather than allowed to run into the log. A window this small
 	// cannot show the whole grid, and drawing the rest of it into the scrolling
 	// region would not show it either — it would scroll away a line at a time
 	// while the layout went on believing it was there.
-	l.gridRows = max(min(gridH, l.logRow-l.gridRow), 0)
+	l.gridRows = max(min(gridH, l.logRow-foot-l.gridRow), 0)
 	return l
 }
 
@@ -194,11 +213,12 @@ func placeWithoutCode(head, termW, termH, gridH int) layout {
 func newLayout(head, termW, termH int) (layout, int) {
 	blockRow := head + scanLabelRows + 2
 	return layout{
-		termW:    termW,
-		termH:    termH,
-		headRows: head,
-		labelRow: blockRow - 1,
-		logRow:   blockRow,
+		termW:       termW,
+		termH:       termH,
+		headRows:    head,
+		labelRow:    blockRow - 1,
+		logRow:      blockRow,
+		footerShown: true,
 	}, blockRow
 }
 

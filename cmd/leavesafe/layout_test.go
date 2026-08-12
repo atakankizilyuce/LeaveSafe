@@ -92,6 +92,52 @@ func TestAWindowWithNoRoomGetsNoCode(t *testing.T) {
 	}
 }
 
+// The footer is drawn at fixed rows above the log, so a grid that reached them
+// was drawn over: an address to pair with, with a list of commands through the
+// middle of it. In a window with room for one of the two, the grid is the one
+// worth keeping — `help` says everything the footer says, and nothing says the
+// address.
+func TestASmallWindowKeepsTheAddressesAndDropsTheCommandList(t *testing.T) {
+	// A window of the size this actually bites at: 80 columns, and 23 rows
+	// once the input line has its own.
+	const gridH = 10
+	l := computeLayout(80, 23, 53, 27, gridH)
+
+	if l.footerShown {
+		t.Fatal("the command list was kept in a window with no room for it and the grid")
+	}
+	if l.gridRows != gridH {
+		t.Errorf("%d of the grid's %d rows are drawn; the addresses were clipped to keep a footer that is gone",
+			l.gridRows, gridH)
+	}
+	if l.gridRow+l.gridRows > l.logRow {
+		t.Errorf("the grid runs to row %d, into a log that starts at %d",
+			l.gridRow+l.gridRows-1, l.logRow)
+	}
+}
+
+// And it comes back the moment there is room, because it is how somebody who
+// has never run this before finds out there is anything to type.
+func TestAWindowWithRoomKeepsTheCommandList(t *testing.T) {
+	l := computeLayout(80, 30, 53, 27, 10)
+
+	if !l.footerShown {
+		t.Error("the command list was dropped by a window that had room for it")
+	}
+}
+
+// Nothing is drawn where the footer would have been, or the grid would be
+// painted over by the very thing that made room for it.
+func TestNoFooterIsDrawnWhenThereIsNoRoomForOne(t *testing.T) {
+	var out syncBuffer
+
+	drawFooter(&out, computeLayout(80, 23, 53, 27, 10))
+
+	if out.String() != "" {
+		t.Errorf("a footer was drawn into a window with no room for one: %q", out.String())
+	}
+}
+
 // The label above the code says which of those happened, because a user looking
 // for something to scan should not have to work out that there is nothing there.
 func TestTheLabelSaysWhenThereIsNoCode(t *testing.T) {
