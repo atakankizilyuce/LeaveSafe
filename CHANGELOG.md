@@ -14,12 +14,11 @@ diff is small.
 ### Added
 
 - **A language for the startup questions.** The first start in a terminal asks
-  Turkish or English, remembers the answer, and asks the connection question in
-  it. Those two questions used to carry both languages on every line, which read
-  as neither. The choice reaches the startup questions and stops there — the
-  dashboard, the log and the phone are in English, and translating the first
-  screen alone while implying more would be worse than not asking. `lang` in the
-  console changes it for the next start.
+  Turkish or English and remembers the answer. It used to carry both languages
+  on every line, which read as neither. The choice reaches the startup questions
+  and stops there — the dashboard, the log and the phone are in English, and
+  translating the first screen alone while implying more would be worse than not
+  asking. `lang` in the console changes it for the next start.
 
 - **Autostart.** `leavesafe install-service` registers LeaveSafe to start at
   login — a systemd user unit on Linux, a LaunchAgent on macOS, a Scheduled Task
@@ -40,11 +39,6 @@ diff is small.
 - **Session expiry.** Session tokens now have an absolute lifetime
   (`session_ttl_minutes`, default 24 hours) and an idle timeout
   (`session_idle_minutes`, default 8 hours). Either can be switched off with `0`.
-- **Certificate check at pairing.** The QR code carries the TLS certificate
-  fingerprint, the server names its certificate before it is asked for anything,
-  and the phone refuses to send the pairing key if the two disagree. The
-  fingerprint is shown on the pairing screen so it can be compared against the
-  browser's warning. See SECURITY.md for what this does and does not catch.
 - **Update check.** LeaveSafe asks GitHub whether a newer release exists and
   reports it on the dashboard **and to the paired phone**, with the upgrade command
   for however this copy was installed — Homebrew, Scoop, winget, or the releases
@@ -105,6 +99,33 @@ diff is small.
   dashboard used to write its cursor escapes into the file and lay itself out
   against a window size it had invented.
 
+### Removed
+
+- **Remote access, and everything that served it.** LeaveSafe no longer asks the
+  router for a port mapping, looks up a public address, or publishes a listener
+  beyond the local network. The first-run connection question, the `mode` and
+  `cert` console commands, the phone's remote-access panel, `remote_access` and
+  `remote_port`, and the UPnP dependency are all gone with it.
+
+  The reason is that the feature could not tell the two failures apart. Behind
+  carrier-grade NAT the public address belongs to the internet provider and is
+  shared between subscribers, so nothing arriving at it can be attributed to one
+  machine — and from inside, that looks exactly like a second router the owner
+  could configure. So the program sent people to forward a port on a box they do
+  not own and cannot reach. An instruction that sounds actionable and is not is
+  worse than saying nothing.
+
+  **The local network is unchanged.** The listener has always been plain HTTP on
+  the LAN, the certificate belonged only to the internet-facing port, and the
+  fingerprint was never in a local QR code. Pairing, arming, disarming and the
+  alarm work exactly as they did.
+
+- **The TLS certificate and the fingerprint check.** Both existed for the
+  internet-facing listener and went with it. `cert` is gone from the console, and
+  the pairing screen no longer shows a fingerprint to compare — over plain HTTP
+  there is no certificate for a phone to check. See `SECURITY.md` for what that
+  means for pairing on an untrusted network.
+
 ### Changed
 
 - **Armed is no longer red.** Being covered is good news, and painting it red
@@ -139,8 +160,8 @@ diff is small.
   corner to put six of those in, and the question it answers is asked once, on
   the first visit, about all of them at the same time.
 
-- **The README is half the length it was.** Remote access, location, autostart,
-  configuration and development each moved to a page of their own under `docs/`,
+- **The README is half the length it was.** Location, autostart, configuration
+  and development each moved to a page of their own under `docs/`,
   and every screenshot, the demo GIF and both animated SVGs were recaptured
   against the new design. `SECURITY.md` is shorter too — every limitation is
   still there, with the reasoning tightened around it.
@@ -159,36 +180,6 @@ diff is small.
   why it is unavailable on this machine, and the self-test — moved to an **i**
   in the tile's corner.
 
-- **The connection mode is asked on every start, not only the first.** The
-  question comes up whenever LeaveSafe is started in a terminal, with the
-  current setting shown as the default so pressing enter keeps it. Asking once
-  turned out to mean never asking again for most people: the phone's settings
-  screen sends `remote_access` on every save, so saving any unrelated setting
-  answered the question by accident and it never returned. A `-headless` start,
-  or one with no usable stdin, takes the stored value and says which mode it
-  came up in.
-- **Remote access is switched on and off while LeaveSafe runs.** Changing it —
-  from the phone, from the new `mode` console command, or at startup — takes
-  effect immediately instead of asking for a restart. It runs on a second
-  listener of its own, so **a phone connected over Wi-Fi stays connected while
-  the setting changes**; previously the only listener moved to a new port and
-  switched to TLS, dropping every paired phone and forcing a re-pair from the
-  QR code. As a consequence the local-network listener is now plain HTTP whether
-  remote access is on or off, which also removes the certificate warning that
-  used to appear on local connections. See SECURITY.md.
-- **The phone reports whether remote access actually works.** The settings
-  screen shows the public URL, the certificate fingerprint, and — when the
-  router refused an automatic port mapping — the TCP port to forward by hand.
-  The switch could be flipped with no way to learn it had achieved nothing.
-- **Carrier-grade NAT is detected and named.** When the ISP hands out an address
-  in `100.64.0.0/10` it keeps the routable one, and no port forwarding on the
-  user's own router can help. LeaveSafe now stops remote access and says so
-  rather than leaving a listener up and the user forwarding ports at a problem
-  that is not theirs.
-- **Resetting every setting closes remote access.** The defaults leave it off,
-  but the listener used to stay up — so "reset everything" could leave a port
-  open to the internet while the config it had just written asked for nothing of
-  the sort.
 - **PIN hashing moved to scrypt.** Existing SHA-256 hashes still verify and are
   rewritten on the next successful disarm — the only moment the PIN is in hand.
 - **`ReadLast` tails the event log** instead of reading the whole file, so
@@ -198,8 +189,8 @@ diff is small.
   logged, rather than obeyed.
 - **`PORT` parse failures are reported** rather than silently falling back to
   the configured port.
-- **Response headers**: HSTS is sent when serving HTTPS, and a
-  `Permissions-Policy` denies every capability the UI does not use.
+- **Response headers**: a `Permissions-Policy` denies every capability the UI
+  does not use.
 
 ### Added
 
@@ -212,6 +203,13 @@ diff is small.
   LeaveSafe now takes a web push subscription when a phone pairs, and delivers
   the alarm through the phone's own browser push service over an outbound
   request that works from behind any NAT that lets anything out at all.
+
+  **It does not currently deliver.** A push subscription needs a service worker,
+  a service worker needs a secure context, and the plain-HTTP address LeaveSafe
+  serves on a local network is not one. The only secure context this program
+  offered was the internet-facing listener, which has been removed — so the
+  machinery is present and nothing reaches it. Giving a phone an alert when it
+  is not connected needs a secure context first.
 
   No relay of ours, no tunnel, no account, and nothing new to trust. The payload
   is encrypted to a key only the subscribing phone holds (RFC 8291), so what the
@@ -247,37 +245,6 @@ diff is small.
   returns before it reaches the network when the running version is not a
   release, which is correct — there is nothing to compare against — but saying
   nothing about it made a development build look like a copy that was up to date.
-- **Remote access says what it knows, not what it arranged.** A router accepting
-  a port mapping was being reported as "ACTIVE", with the public address printed
-  as the QR code to scan — and a port mapping is an agreement, not a delivered
-  packet. LeaveSafe now opens a connection to that address and checks that its
-  own certificate answers. Only an address something has been seen to answer on
-  is called reachable and put in front of the QR code; one that could not be
-  confirmed is still offered, but as "unconfirmed" rather than as a fact,
-  because plenty of routers refuse that check from inside the network while a
-  phone on mobile data arrives perfectly well. The certificate is checked as
-  well as the connection: a router serving its own admin page on the forwarded
-  port answers just as happily, and would otherwise have been recorded as
-  success — with a QR code drawn around it and the pairing key in the fragment.
-
-  **Carrier-grade NAT was being looked for in the wrong place.** The check asked
-  whether the address the internet reports is in the ISP's shared range — but
-  under carrier NAT the internet reports the ISP's own routable address, which
-  is an ordinary public address that passes every test. The 100.64 address is
-  the one the *router* holds, and nothing was asking the router. So a
-  connection behind carrier NAT mapped a port, was handed a public URL, and
-  could not be reached by anybody; the symptom was a phone on a spinner with
-  nothing said. LeaveSafe now asks the router where it sits and compares the two
-  answers. The same comparison catches a second router in front of the first —
-  a modem in router mode, a landlord's box, a phone's hotspot — which unlike
-  carrier NAT is fixable, so it says which box to forward the port on rather
-  than giving up.
-
-  When nothing can be confirmed, the message names this machine's own firewall
-  and gives the exact command for the platform — `netsh` on Windows, `ufw` or
-  `firewall-cmd` on Linux, the application firewall on macOS. LeaveSafe does not
-  run it: opening a hole in a firewall outlives the process that made it and
-  needs privileges LeaveSafe does not otherwise ask for, so the user decides.
 - **The laptop makes the noise now, on all three.** The alarm on the machine being
   carried away was `kernel32.Beep` — a single square tone, silent between one
   call and the next. The phone shrieked and the laptop chirped, which is
@@ -322,28 +289,17 @@ diff is small.
   did — they arrive as keystrokes now rather than as signals, so the program
   answers them itself. Input that is not a terminal is read as whole lines, as
   before.
-- **The QR code survives turning remote access on.** The certificate
-  fingerprint was added to every address, including the local plain-HTTP one
-  that never presents a certificate — sixty-eight characters of a
-  hundred-and-sixteen-character payload, which pushed that code from 37 modules
-  square to 49. The box was then sized to the largest of the codes, so the local
-  one was laid out as though it were the remote one, and a window with room for
-  the code somebody was actually looking at was told it had none. That is what
-  "the QR code stops working when I choose mobile data" was. The fingerprint now
-  goes only on the address that presents it, the box is sized to the code on
-  screen, and `qr <n>` moves the layout with it.
+- **The QR box follows the code on screen.** It used to be sized to the largest
+  code on offer, so a window with room for the one somebody was actually looking
+  at was told it had none — and a default 120×30 terminal could end up showing no
+  code at all. The box now takes the size of the code being drawn, and `qr <n>`
+  moves the layout with it.
 - **The code outlasts the decoration.** A window too small for everything gave
   up the QR code while keeping the block letters and the command list. It is the
   one part of that screen that is there to be used rather than read, so it is
   the last thing to go: the banner shrinks first, then the command list, then
   the shape changes, and only then is the code dropped — with a line saying so.
-  A default 120×30 terminal with remote access on showed no code at all; it now
-  shows one.
-- **A run without the dashboard prints a code for an address that arrives.**
-  `-plain` printed the pairing code once at startup. Turning remote access on
-  afterwards added an address that no code had ever been printed for, so the
-  user was told they were reachable from the internet and left to type the
-  address into a phone by hand.
+  A default 120×30 terminal used to show no code at all; it now shows one.
 - **A small window keeps the address instead of the command list.** In a window
   with no room for the QR code, the status grid was clipped where the log
   started — but the command footer is drawn at fixed rows above the log, so it
@@ -355,9 +311,8 @@ diff is small.
   scrollback afterwards. It is drawn as asterisks and never remembered in the
   command history.
 - **One status grid, not two.** The dashboard drew at absolute rows worked out
-  once at startup, and three ordinary things moved those rows out from under it:
-  remote access arriving a minute later and adding an address, so the grid grew;
-  a longer address producing a bigger QR code; and the window being resized. Each
+  once at startup, and two ordinary things moved those rows out from under it:
+  a longer address producing a bigger QR code, and the window being resized. Each
   left the old drawing on screen with the new one painted somewhere else. Worse,
   the layout was worked out for a window of 120×40 whenever the real one was
   smaller than 80×20 — so the log's scrolling region was pinned across the middle
@@ -458,25 +413,6 @@ diff is small.
   while `rotate-key` and the reachability probe were replacing them. What that
   risked was the two things the user is asked to scan or type.
 
-- **Choosing remote access no longer offers a QR code that cannot connect.**
-  When the router refuses a port mapping, the laptop still has an address on the
-  internet — and nothing on the path will carry a connection to it. That address
-  went to the front of the URL list, which is the one the dashboard draws as its
-  QR code, so the phone scanned it and waited forever. It is still listed, and
-  `urls` and `qr <n>` reach it once the port has been forwarded by hand, but the
-  code on screen stays on an address that works. The phone's settings screen no
-  longer labels it "reachable at" while saying underneath that it is not.
-
-- **The dashboard no longer waits half a minute on a router that is not
-  answering.** Enabling remote access asked the router for a port mapping and
-  the internet for the public address before doing anything else, and a network
-  with no UPnP gateway takes about thirty-five seconds to say so. Every one of
-  those seconds was spent between answering the connection question and the
-  dashboard appearing — with nothing on screen to say what was being waited for,
-  and the sensors not yet started. The listener now comes up first and the
-  network is asked in the background; the dashboard and the phone say
-  "checking…" until it answers, then update themselves.
-
 - **The settings sheet closes when it is pulled down.** It had always looked
   like something you could push out of the way — it sits on the bottom edge with
   a grip drawn across the top — and dragging it did nothing. What closed it was
@@ -571,8 +507,7 @@ diff is small.
   went up. Four reconnects from one phone — four screen locks — and the owner
   was refused by their own laptop with "the laptop is busy" until the process
   was restarted. The same asymmetry left an entry behind for every address that
-  ever connected, which with remote access on is memory a stranger gets to
-  spend.
+  ever connected, which is memory a stranger gets to spend.
 - **The phone sends nothing until the connection has proved itself.** Inbound
   messages were already held to that and outbound ones were not, so the check
   guarded one direction. The phone reconnects to the same address every three
@@ -587,24 +522,6 @@ diff is small.
   so anything answering the socket could make the phone throw its stored pairing
   away and leave the owner unpaired from a laptop they are not standing next to.
   It is now ignored unless the pairing key actually went out on that connection.
-- **The public address is asked of the internet, not of the router.** With
-  remote access on, the address came first from whatever answered an
-  unauthenticated UPnP discovery on the local network, was never checked to be
-  an IP address at all, and went to the front of the URL list — which is the QR
-  code the dashboard displays, with the pairing key in it. A machine on the same
-  café Wi-Fi that replied to the discovery first got to choose where the owner's
-  phone tried to pair. STUN and the HTTPS lookup are now preferred, and the
-  router's claim is refused unless it is a public IP address.
-- **Every answer to "what is my public address" is held to the same rule.** The
-  router's was checked; the two that are preferred over it were not. STUN carries
-  no signature and no certificate and reaches its server by a name the network's
-  own resolver answers, so the reply is a claim like any other — and this claim
-  becomes the first URL on the dashboard, which is the one rendered as a QR code
-  with the pairing key in it. The HTTPS lookup is now asked first, because a
-  certificate check is a claim a hostile network cannot make, and STUN is the
-  fallback. Both answers, like the router's, are refused unless they could be
-  this machine's address on the internet. A mapped address that says it is not
-  IPv4 is refused rather than read as one anyway.
 - **The Host header can no longer write part of the policy it is answered with.**
   The address a request asked for is named in the `connect-src` of that response,
   which is the directive that keeps script on the page from opening a socket to

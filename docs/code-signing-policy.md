@@ -100,7 +100,6 @@ them is either optional or switchable:
 | Request | When | What it discloses |
 |---|---|---|
 | `api.github.com` | Once a day, to ask whether a newer release exists | Your IP, and from the `User-Agent` that this is LeaveSafe and which version. Nothing else. Off with `"update_check": false` |
-| `api.ipify.org` | Only with remote access turned on, to learn the address to publish | Your IP, to a service whose entire answer is your IP |
 | `ipapi.co` | Only with location reporting turned on, which is **off by default** | Your IP. Configurable with `ip_lookup_url` |
 | Google Geolocation API | Only with location reporting on **and** an API key set | The MAC addresses and signal strengths of up to 24 nearby access points. Never your IP. Configurable with `geolocate_url` |
 

@@ -90,7 +90,6 @@ body:
       label: How the phone was connected
       options:
         - Local Wi-Fi
-        - Remote access (over mobile data)
         - Bluetooth
         - Not connected / could not pair
     validations:
