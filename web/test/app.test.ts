@@ -36,11 +36,11 @@ vi.mock('../src/lib/transport', () => ({
 }));
 
 // A stored session is the return-visit path: it is what makes the app pair
-// itself on mount rather than waiting for a QR code. The fingerprint is left
+// itself on mount rather than waiting for a QR code. The stored key is left
 // empty so the key goes out as soon as the socket opens, which is the shortest
 // honest route to an authenticated connection.
 vi.mock('../src/lib/session', () => ({
-    loadSession: () => ({ key: '1111111111111116', fingerprint: '' }),
+    loadSession: () => ({ key: '1111111111111116' }),
     saveSession: vi.fn(),
     clearSession: vi.fn(),
 }));

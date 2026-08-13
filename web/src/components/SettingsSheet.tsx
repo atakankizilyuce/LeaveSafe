@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useDragDismiss } from '../lib/dragDismiss';
-import type { AppConfig, ClientMessage, RemoteState } from '../lib/protocol';
+import type { AppConfig, ClientMessage } from '../lib/protocol';
 import { clearSession } from '../lib/session';
 import {
     closeTransport,
@@ -155,20 +155,6 @@ export function SettingsSheet() {
                                 ]}
                                 onChange={(connection_mode) => patch({ connection_mode })}
                             />
-                            <Toggle
-                                label="Reach it from anywhere"
-                                hint="Lets your phone connect over mobile data or another network, over HTTPS."
-                                value={draft.remote_access}
-                                onChange={(remote_access) => patch({ remote_access })}
-                            />
-                            <Num
-                                label="Port used for that"
-                                value={draft.remote_port}
-                                min={1024}
-                                max={65535}
-                                onChange={(remote_port) => patch({ remote_port })}
-                            />
-                            <RemoteStatus state={current?.remote_state} on={draft.remote_access} />
                         </Group>
 
                         <Group title="Keeping others out" note="Limits on pairing attempts and sessions.">
@@ -410,99 +396,6 @@ function safeHttpUrl(raw: string): string {
     } catch {
         return fallback;
     }
-}
-
-/**
- * Whether remote access is actually reachable, which the toggle alone cannot
- * say.
- *
- * A user who turns this on and gets nothing has no way to tell a router that
- * refused the port mapping from an ISP that cannot offer one at all, and the
- * two need entirely different responses — so the laptop names which it is
- * rather than leaving the phone to guess.
- *
- * It reads the saved config rather than the unsaved draft on purpose: this
- * describes what the laptop is doing now, not what the switch is about to ask
- * for.
- */
-/**
- * What to call the public address, which is a claim and is held to what is
- * known.
- *
- * "Reachable at" is only said about an address something was actually seen to
- * answer on. A port mapping the router accepted is an agreement, not a
- * delivered packet — the laptop's own firewall can still drop the connection —
- * so that case is "possibly", not a fact. And a path that is known to be
- * blocked has not got as far as "possibly".
- */
-function addressLabel(state: RemoteState): string {
-    if (state.reach === 'verified') return 'Reachable at';
-    if (state.upnp === 'ok' && state.reach !== 'blocked') return 'Possibly reachable at';
-    return 'Will be reachable at';
-}
-
-function RemoteStatus({ state, on }: { state?: RemoteState; on: boolean }) {
-    if (!on) return null;
-    if (!state || state.probing) {
-        return <p class="group-note">Checking whether it can be reached from outside…</p>;
-    }
-
-    if (state.upnp === 'cgnat') {
-        return (
-            <p class="group-note">
-                Your internet provider puts this connection behind carrier-grade NAT, so the laptop cannot be
-                reached from outside your network. Nothing on the laptop or the router changes that. The local
-                network still works normally.
-            </p>
-        );
-    }
-
-    // "Reachable at" is a claim, and it is only made about an address something
-    // was actually seen to answer on. A port mapping the router accepted is an
-    // agreement, not a delivered packet: the laptop's own firewall can still
-    // drop the connection, and under carrier-grade NAT the public address
-    // belongs to the provider and always did. Both of those used to read here
-    // as "Reachable at".
-    const label = addressLabel(state);
-
-    return (
-        <>
-            {state.upnp === 'failed' && (
-                <p class="group-note">
-                    Your router refused an automatic port mapping, so nothing outside your network can reach
-                    the laptop yet. Forward TCP port {state.manual_port} to it in the router's admin page.
-                    Pairing over the local network is unaffected.
-                </p>
-            )}
-            {/* Carrier-grade NAT returned above, so a block here is the other kind. */}
-            {state.reach === 'blocked' && (
-                <p class="group-note">
-                    The router that took the port mapping is itself behind another router, so the mapping
-                    stops one hop short of the internet. Forward TCP port {state.manual_port} on the outer
-                    router too.
-                </p>
-            )}
-            {state.reach === 'unproven' && (
-                <p class="group-note">
-                    The port is mapped, but nothing could be confirmed to reach the laptop from outside — many
-                    routers refuse that check from inside the network, so this address may still work. If it
-                    does not, the laptop's own firewall is the likeliest cause.
-                </p>
-            )}
-            {state.public_url ? (
-                <Field label={label}>
-                    <span class="field-readout figure">{state.public_url}</span>
-                </Field>
-            ) : (
-                state.upnp !== 'failed' && <p class="group-note">No public address found.</p>
-            )}
-            {state.cert_fp && (
-                <Field label="Certificate">
-                    <span class="field-readout figure">{state.cert_fp.slice(0, 11)}…</span>
-                </Field>
-            )}
-        </>
-    );
 }
 
 function UpdateStatus() {

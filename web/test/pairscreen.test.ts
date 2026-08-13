@@ -4,7 +4,7 @@ import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PairScreen } from '../src/components/PairScreen';
-import { pairError, pairing, serverFingerprint } from '../src/lib/store';
+import { pairError, pairing } from '../src/lib/store';
 
 // The key field is the whole of the first screen, and its label is the only
 // thing naming it. A label that has come loose from its input still looks
@@ -17,7 +17,6 @@ let host: HTMLDivElement;
 beforeEach(() => {
     pairError.value = null;
     pairing.value = false;
-    serverFingerprint.value = '';
     host = document.createElement('div');
     document.body.appendChild(host);
 });

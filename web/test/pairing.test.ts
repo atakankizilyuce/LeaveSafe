@@ -24,7 +24,7 @@ vi.mock('../src/lib/transport', () => ({
 }));
 
 vi.mock('../src/lib/session', () => ({
-    loadSession: () => ({ key: '1111111111111116', fingerprint: '' }),
+    loadSession: () => ({ key: '1111111111111116' }),
     saveSession: vi.fn(),
     clearSession: vi.fn(),
 }));

@@ -2,7 +2,6 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { clearSession, loadSession, saveSession } from '../src/lib/session';
 
 const STORAGE_KEY = 'leavesafe_session_v1';
-const FP = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const KEY = '1234567890123456';
 
 interface FakeStorage {
@@ -11,8 +10,8 @@ interface FakeStorage {
     removeItem(k: string): void;
 }
 
-// stubBrowser stands in for the two pieces of the phone's browser this module
-// touches: where the session is kept, and whether the page arrived over TLS.
+// stubBrowser stands in for the piece of the phone's browser this module
+// touches: where the session is kept.
 function stubBrowser(options: { stored?: string | null; protocol?: string; refuseWrites?: boolean } = {}) {
     const entries = new Map<string, string>();
     if (options.stored != null) entries.set(STORAGE_KEY, options.stored);
@@ -41,10 +40,10 @@ beforeEach(() => {
     vi.unstubAllGlobals();
 });
 
-it('resumes a session that was stored with its fingerprint', () => {
-    stubBrowser({ stored: JSON.stringify({ key: KEY, fingerprint: FP }), protocol: 'https:' });
+it('resumes a session that was stored', () => {
+    stubBrowser({ stored: JSON.stringify({ key: KEY }) });
 
-    expect(loadSession()).toEqual({ key: KEY, fingerprint: FP });
+    expect(loadSession()).toEqual({ key: KEY });
 });
 
 it('has no session to resume when nothing was stored', () => {
@@ -53,44 +52,18 @@ it('has no session to resume when nothing was stored', () => {
     expect(loadSession()).toBeNull();
 });
 
-// This is the point of the whole module's care. A page served over HTTPS came
-// from a certificate, so there is always one to check. Resuming without a
-// recorded fingerprint would hand the pairing key to whichever machine holds
-// this address today.
-it('refuses to resume over HTTPS when no fingerprint was recorded', () => {
-    stubBrowser({ stored: JSON.stringify({ key: KEY, fingerprint: null }), protocol: 'https:' });
+// A stored entry written by an older build carries a fingerprint alongside the
+// key. It is ignored rather than refused: the key in it is still this laptop's,
+// and making the user rescan would be a cost with nothing bought.
+it('ignores a fingerprint left behind by an older build', () => {
+    stubBrowser({ stored: JSON.stringify({ key: KEY, fingerprint: 'a1b2c3' }) });
 
-    expect(loadSession()).toBeNull();
-});
-
-// On the plain local path there genuinely is no certificate, and nothing is
-// given up by carrying on.
-it('resumes without a fingerprint over plain HTTP', () => {
-    stubBrowser({ stored: JSON.stringify({ key: KEY, fingerprint: null }), protocol: 'http:' });
-
-    expect(loadSession()).toEqual({ key: KEY, fingerprint: null });
-});
-
-// A damaged or hand-edited fingerprint used to normalise to empty downstream,
-// which reads as "there was no certificate to check" — so the key would go out
-// to whatever answered, silently, on every visit from then on.
-it('rejects a fingerprint that is not a full SHA-256', () => {
-    for (const bad of ['a1b2c3', `${FP}ff`, '', 'zzzz', 123, null]) {
-        stubBrowser({ stored: JSON.stringify({ key: KEY, fingerprint: bad }), protocol: 'https:' });
-        expect(loadSession(), `fingerprint ${JSON.stringify(bad)} was accepted`).toBeNull();
-    }
-});
-
-it('accepts a stored fingerprint written with separators', () => {
-    const separated = (FP.match(/.{2}/g) ?? []).join(':');
-    stubBrowser({ stored: JSON.stringify({ key: KEY, fingerprint: separated }), protocol: 'https:' });
-
-    expect(loadSession()).toEqual({ key: KEY, fingerprint: separated });
+    expect(loadSession()).toEqual({ key: KEY });
 });
 
 it('has no session when the stored entry carries no key', () => {
-    for (const bad of [{ fingerprint: FP }, { key: '', fingerprint: FP }, { key: 42, fingerprint: FP }]) {
-        stubBrowser({ stored: JSON.stringify(bad), protocol: 'http:' });
+    for (const bad of [{}, { key: '' }, { key: 42 }]) {
+        stubBrowser({ stored: JSON.stringify(bad) });
         expect(loadSession(), `entry ${JSON.stringify(bad)} was accepted`).toBeNull();
     }
 });
@@ -103,16 +76,16 @@ it('falls back to pairing by hand when the stored entry is not JSON', () => {
     expect(loadSession()).toBeNull();
 });
 
-it('stores the key and fingerprint together', () => {
+it('stores the key', () => {
     const entries = stubBrowser();
 
-    saveSession(KEY, FP);
+    saveSession(KEY);
 
-    expect(JSON.parse(entries.get(STORAGE_KEY) ?? '{}')).toEqual({ key: KEY, fingerprint: FP });
+    expect(JSON.parse(entries.get(STORAGE_KEY) ?? '{}')).toEqual({ key: KEY });
 });
 
 it('forgets the phone when the session is cleared', () => {
-    const entries = stubBrowser({ stored: JSON.stringify({ key: KEY, fingerprint: FP }) });
+    const entries = stubBrowser({ stored: JSON.stringify({ key: KEY }) });
 
     clearSession();
 
@@ -125,6 +98,6 @@ it('forgets the phone when the session is cleared', () => {
 it('survives a browser that refuses to store anything', () => {
     stubBrowser({ refuseWrites: true });
 
-    expect(() => saveSession(KEY, FP)).not.toThrow();
+    expect(() => saveSession(KEY)).not.toThrow();
     expect(() => clearSession()).not.toThrow();
 });
