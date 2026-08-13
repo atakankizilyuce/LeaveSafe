@@ -270,6 +270,27 @@ func TestThereIsAlwaysAnAddressToPrint(t *testing.T) {
 	}
 }
 
+// Each address is offered as a whole URL, on the port actually bound rather
+// than the one that was asked for — a busy port sends Listen to pick a free one,
+// and a QR code built from the requested port would point at nothing.
+func TestURLsNameTheBoundPort(t *testing.T) {
+	srv := startTestServer(t)
+
+	urls := srv.URLs()
+	if len(urls) == 0 {
+		t.Fatal("no address was offered to pair with")
+	}
+	want := fmt.Sprintf(":%d", srv.Port())
+	for _, u := range urls {
+		if !strings.HasPrefix(u, "http://") {
+			t.Errorf("URL %q does not name the scheme this server actually speaks", u)
+		}
+		if !strings.HasSuffix(u, want) {
+			t.Errorf("URL %q does not end in the bound port %s", u, want)
+		}
+	}
+}
+
 // A machine with nothing dialable — every interface down, or a laptop whose
 // only "networks" are the bridges a container runtime left behind — still has
 // to produce a code. It just says loopback, and works where the laptop is.

@@ -409,6 +409,37 @@ func TestAConfigWithNoPinIsLeftAlone(t *testing.T) {
 	}
 }
 
+// A headless start has nobody to answer the language question, and blocking on
+// stdin there would hang a service forever. Every autostart entry this program
+// writes passes -headless, so no unattended start can reach the prompt.
+func TestAHeadlessStartDoesNotAskForALanguage(t *testing.T) {
+	tempConfigDir(t)
+	cfg := config.Default()
+	cfg.Language = ""
+
+	ensureLanguageChoice(cfg, true)
+
+	if cfg.Language != "" {
+		t.Errorf("a headless start settled on language %q rather than leaving it unasked", cfg.Language)
+	}
+}
+
+// Nor is an interactive start asked twice. It is the one question whose right
+// answer does not change, so a stored one stands and stdin is never read —
+// which is also what keeps this test from blocking on a terminal it has not
+// got.
+func TestAnInteractiveStartKeepsAStoredLanguage(t *testing.T) {
+	tempConfigDir(t)
+	cfg := config.Default()
+	cfg.Language = "tr"
+
+	ensureLanguageChoice(cfg, false)
+
+	if cfg.Language != "tr" {
+		t.Errorf("the stored language became %q", cfg.Language)
+	}
+}
+
 // PORT overrides the config, but only when it names a port that could work.
 // Falling back silently used to mean the server came up somewhere the user did
 // not ask for, behind a QR code they would scan and wonder about.
