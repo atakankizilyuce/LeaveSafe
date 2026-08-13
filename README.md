@@ -31,7 +31,7 @@ Sometimes you have to leave your laptop on the table — the counter, the bathro
 
 No account. No server. No internet needed. Your phone talks straight to your laptop over your local network or Bluetooth, and the 16-digit pairing key never leaves the two of them.
 
-> The phone is the convenience, not the alarm. When its screen locks, the operating system freezes the page, so an alert may not reach it until you open it again. The laptop sounds regardless.
+> The phone is the convenience, not the alarm. It has to be on the same network with the page open: when its screen locks, the operating system freezes the page, so an alert may not reach it until you open it again — and off that network it hears nothing at all. The laptop sounds regardless.
 
 <br/>
 
@@ -91,7 +91,7 @@ The pairing keys and the local address visible in the screenshots are per-run va
 - **A local siren with volume escalation**, so the laptop sounds whether or not your phone is awake
 - **Disconnect alarm** if every phone drops off while armed, plus an optional scrypt-hashed disarm PIN
 - **Wi-Fi everywhere, Bluetooth Low Energy on macOS**
-- **Optional [remote access](docs/remote-access.md) and [location](docs/location.md)** — both off by default, both switchable while it runs
+- **Optional [location](docs/location.md)** — off by default, switchable while it runs
 - **[Starts when you log in](docs/service.md)**, survives a panicking sensor, and reports the gap after a crash
 - **An audit log** of every security event, and **signed provenance** on every release artifact
 
@@ -187,8 +187,6 @@ Double-click it, or run it from a terminal. The dashboard takes over the window:
 <img src="docs/assets/tui-dashboard.png" alt="The LeaveSafe terminal dashboard showing a QR code, the pairing key and the URL" width="88%">
 </div>
 
-> **First run only:** LeaveSafe asks whether you want [remote access](docs/remote-access.md). If you are not sure, answer no — you can turn it on later from the phone, and local pairing works either way.
-
 ### 2. Scan it with your phone
 
 Point your camera at the QR code and open the link. There is no app to install — it is a web page served by your own laptop, and the scan fills the pairing key in for you.
@@ -247,7 +245,7 @@ Tap any station to turn that sensor on or off. Arming pulls every sensor that is
 </td>
 <td width="33%" align="center">
 <img src="docs/assets/phone-settings.png" alt="The settings sheet showing connection and lockout options" width="100%">
-<br/><sub><b>Settings</b> — transport, remote access, session limits, lockout, PIN.</sub>
+<br/><sub><b>Settings</b> — transport, session limits, lockout, PIN.</sub>
 </td>
 <td width="33%" align="center">
 <img src="docs/assets/phone-settings-location.png" alt="The location section of the settings sheet, off by default" width="100%">
@@ -275,8 +273,7 @@ Type any of these into the dashboard while it runs:
 | `stop` / `silence` | Stop an alarm that is going off, on the laptop and on every paired phone |
 | `history` | The last 20 security events |
 | `urls` · `qr <n>` | Every address the server is reachable on, and the QR code for one of them |
-| `cert` | Print the TLS fingerprint, to compare against your phone's warning |
-| `mode` · `lang` | Switch Wi-Fi / remote access without restarting; change the startup language |
+| `lang` | Change the language the startup questions are asked in |
 | `update` | Ask GitHub now whether a newer release exists, and say either way |
 | `rotate-key` | New pairing key, all sessions invalidated |
 | `help` · `Ctrl+C` | The list above; graceful shutdown |
@@ -362,12 +359,11 @@ sequenceDiagram
 | **Rate limiting** | 60-second lockout after 5 failed attempts, counted **per source address** so a stranger cannot lock you out |
 | **Session limit** | 3 concurrent connections |
 | **Disarm PIN** | Optional, hashed with scrypt, against the same lockout as the pairing key |
-| **Transport** | Local network only. With remote access enabled the port is published over HTTPS — never plain HTTP |
-| **Certificate** | Self-signed, its fingerprint carried in the QR code so the phone can check which server it reached before sending the key |
+| **Transport** | Local network only, over plain HTTP. Nothing is published beyond your network and nothing is asked of your router |
 
-All of these are configurable; the defaults are shown. Nothing is uploaded anywhere — even with remote access the phone talks directly to your laptop.
+All of these are configurable; the defaults are shown. Nothing is uploaded anywhere — the phone talks directly to your laptop.
 
-[`SECURITY.md`](SECURITY.md) sets out what is in scope, what is deliberately not, and how to report a flaw privately. **Read the section on what pairing does and does not prove before you rely on remote access.**
+[`SECURITY.md`](SECURITY.md) sets out what is in scope, what is deliberately not, and how to report a flaw privately. **Read the section on what pairing does and does not prove**: the connection carries no certificate, so a phone cannot tell which machine answered before it sends the key.
 
 <br/>
 
@@ -376,7 +372,6 @@ All of these are configurable; the defaults are shown. Nothing is uploaded anywh
 | | |
 |---|---|
 | [Configuration](docs/configuration.md) | Where settings live and every option there is |
-| [Remote access](docs/remote-access.md) | Reaching the laptop over mobile data, and what that costs you |
 | [Location](docs/location.md) | How the machine's position is worked out, and why it is off by default |
 | [Starting at login](docs/service.md) | `install-service`, and what happens after a crash or a reboot |
 | [Development](docs/development.md) | Building, the phone interface, the checks, and what CI actually proves |

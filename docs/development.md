@@ -39,11 +39,12 @@ cd .. && go build -o leavesafe ./cmd/leavesafe
 ```
 
 For live reload, run the binary and point Vite's dev server at it. The dev
-server proxies `/ws` to port 9443:
+server proxies `/ws` to port 9443, so start the binary on that port — the
+listener picks a free one otherwise, and the proxy would have nothing to aim at:
 
 ```bash
-go run ./cmd/leavesafe        # terminal one
-cd web && npm run dev         # terminal two
+PORT=9443 go run ./cmd/leavesafe   # terminal one
+cd web && npm run dev              # terminal two
 ```
 
 `./leavesafe -dev` also exists and serves `web/dist` straight from disk, so a

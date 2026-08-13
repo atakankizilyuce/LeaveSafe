@@ -145,7 +145,7 @@ Point a throwaway config directory at the beta channel — `APPDATA` on Windows,
 `HOME` elsewhere — with:
 
 ```json
-{ "update_channel": "beta", "remote_access": false }
+{ "update_channel": "beta" }
 ```
 
 Run it and type `update` at the dashboard. Expect:
@@ -161,7 +161,7 @@ comparison, the validation of everything the endpoint returned, the write to
 
 Two things that will waste your afternoon otherwise:
 
-- Leaving `remote_access` out of the config makes the first run ask about it on
+- Leaving `language` out of the config makes the first run ask about it on
   standard input, and whatever you typed becomes the answer to that question.
 - `Set-Content -Encoding utf8` in Windows PowerShell writes a byte-order mark, and
   the config then fails to parse. Use `[System.IO.File]::WriteAllText`.

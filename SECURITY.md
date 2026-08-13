@@ -11,7 +11,7 @@ form. If it is unavailable to you, open a normal issue saying only that you have
 found a security problem and would like a private channel — no details.
 
 Include what an attacker gains in terms of the laptop and the alarm, how to
-reproduce it, the platform, `leavesafe -version`, and whether remote access was
+reproduce it, the platform, `leavesafe -version`, and which sensors were
 on, since that changes what is reachable.
 
 Expect acknowledgement within 5 days, an assessment within 14, and a fix as soon
@@ -59,24 +59,21 @@ as an issue or a pull request.
 read its memory, or edit its config. This defends a laptop against someone
 walking past it, not against someone who already owns it.
 
-**The TLS certificate is self-signed** — no authority can vouch for a LAN
-address — so your phone warns on first connection. Comparing the fingerprint,
-shown by `cert`, on the pairing screen and in the QR code, is what tells that
-warning apart from an interception. Its limit is below.
-
 **A four-digit PIN is guessable in ten thousand tries.** scrypt-hashed so it is
 not cleartext in `config.json`, and rate-limited to five guesses per address per
 minute. A speed bump against someone holding an unlocked paired phone, not a
 second factor.
 
-**Remote access publishes a port to the internet.** That is what it is for. Off
-by default, opt-in per install, and with it on the pairing key is the only thing
-between the internet and the alarm.
+**The listener is plain HTTP**, so a pairing key sent over the LAN can be read by
+a hostile machine on the same Wi-Fi. There is no TLS anywhere: a certificate for
+a LAN address cannot be vouched for by any authority, and the self-signed one
+that used to guard the internet-facing listener went with that listener. Treat
+an untrusted network as a place where the key is visible, and `rotate-key`
+afterwards.
 
-**The local listener is plain HTTP, remote access or not,** so a pairing key sent
-over the LAN can be read by a hostile machine on the same Wi-Fi. Remote access
-runs on a second, TLS-only listener rather than converting this one — which is
-what lets the setting change without disturbing a connected phone.
+**Nothing is reachable from outside your network.** LeaveSafe binds to the local
+interfaces and asks nothing of your router. A phone that is not on the same
+network cannot reach the laptop and is not told anything.
 
 **Bluetooth pairing runs on macOS only.** The Windows and Linux stacks do not
 report which device performed a write, so every device in radio range collapses
@@ -100,27 +97,21 @@ disarm check, while the panel still read ARMED.
 
 ## What pairing does not prove
 
-The certificate fingerprint travels in the QR code and the phone refuses to send
-the key if the server reports a different one. That catches a misdirected
-connection — wrong host, stale port forward, a certificate changed since the code
-was printed — and puts the value on the phone's own screen for comparison against
-the browser warning.
+The pairing key rides in the URL **fragment**, which is never put on the wire:
+it reaches the page's own JavaScript and no server sees it. Older builds put it
+in the query string, so the first request line already carried it to whatever
+answered. A QR code containing `?key=` is from such a build; treat that key as
+disclosed and run `rotate-key`.
 
-Both the key and the fingerprint ride in the URL **fragment**, which is never put
-on the wire: the key reaches the page's own JavaScript and no server sees it.
-Older builds put it in the query string, so the first request line already
-carried it to whatever answered. A QR code containing `?key=` is from such a
-build; treat that key as disclosed and run `rotate-key`.
+**What the phone cannot check is who answered.** The connection is plain HTTP,
+so there is no certificate to compare and nothing identifies the far end before
+the key is offered. Anything that can answer the laptop's address on your network
+— a machine that took the address after a reboot, or one interposing on it — is
+handed the key by a phone that scanned a code printed for the real one.
 
-**It is not proof against a determined interceptor.** A browser gives page
-JavaScript no way to see the certificate of its own connection, so the comparison
-relies on what the server says about itself — and a proxy terminating TLS with
-the user's accepted certificate, relaying honestly to the real server, would pass
-it. Closing that needs a password-authenticated key exchange so the key never
-leaves the phone. Worth doing; not done yet.
-
-Until then: **compare the fingerprint on the pairing screen against the one in
-your browser's warning before accepting it**, especially over remote access.
+Closing that needs a password-authenticated key exchange, so the key never leaves
+the phone at all. Worth doing; not done yet. Until then, scan on a network you
+trust.
 
 ## Dependencies
 

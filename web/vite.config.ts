@@ -21,7 +21,9 @@ export default defineConfig({
     },
     server: {
         // `npm run dev` serves the UI with hot reload and forwards the API to a
-        // leavesafe running on 9443. Run the binary, then run this.
+        // leavesafe running on 9443. Start it with PORT=9443, then run this —
+        // the listener picks a free port otherwise and this would aim at
+        // nothing. See docs/development.md.
         proxy: {
             '/ws': {
                 target: 'ws://127.0.0.1:9443',
