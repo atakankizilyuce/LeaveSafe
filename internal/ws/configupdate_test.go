@@ -185,29 +185,6 @@ func TestAnEndpointSuppliedWithItsOwnKeyKeepsThatKey(t *testing.T) {
 	}
 }
 
-// Remote access is owned by whoever built the listener, and in a headless run
-// or before startup finishes there is nobody to hand the change to. Asking for
-// it then has to be a no-op rather than a nil call.
-func TestTurningRemoteAccessOnWithNobodyListeningIsHarmless(t *testing.T) {
-	hub, _ := hubWithSensors(t, "power")
-	cfg := config.Default()
-	off := false
-	cfg.RemoteAccess = &off
-	hub.SetConfig(cfg)
-	listeningClient(t, hub)
-
-	payload := configToPayload(cfg)
-	payload.RemoteAccess = true
-	hub.handleUpdateConfig(ClientMessage{Type: MsgTypeUpdateConfig, Config: &payload}, &Client{hub: hub})
-
-	hub.mu.RLock()
-	stored := hub.cfg.RemoteAccess != nil && *hub.cfg.RemoteAccess
-	hub.mu.RUnlock()
-	if !stored {
-		t.Error("remote access was not recorded as wanted")
-	}
-}
-
 // Switching a sensor from the panel goes through its own message rather than
 // the settings sheet, and it is refused while armed for the same reason.
 func TestSwitchingASensorFromThePanel(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/leavesafe/leavesafe/internal/monitor"
-	"github.com/leavesafe/leavesafe/internal/remote"
 )
 
 // A QR code for an address with a pairing key in it is about twenty-eight rows
@@ -161,10 +160,8 @@ func TestTheCountedGridHeightMatchesTheDrawnOne(t *testing.T) {
 	cases := map[string]*statusBar{
 		"the least there can be": {urls: nil},
 		"one address":            {urls: []string{"http://192.168.1.10:8080"}},
-		"remote access on": {
-			urls:         []string{"http://192.168.1.10:8080", "https://198.51.100.4:9443"},
-			remoteStatus: "ACTIVE — 198.51.100.4:9443",
-			certFP:       "AA:BB:CC:DD",
+		"two addresses": {
+			urls: []string{"http://192.168.1.10:8080", "http://198.51.100.4:8080"},
 		},
 	}
 	for name, sb := range cases {
@@ -182,17 +179,15 @@ func TestTheCountedGridHeightMatchesTheDrawnOne(t *testing.T) {
 
 // A line wider than the box it goes in wraps, and a wrapped line pushes every
 // row below it down while the layout still believes they are where it put them.
-// The remote-access line is the one that outgrows a narrow box without warning.
+// An address long enough to outgrow a narrow box is what does it.
 func TestNoGridLineIsWiderThanTheBox(t *testing.T) {
 	sb := &statusBar{
-		hub:          testHub(t),
-		sensorMgr:    monitor.NewManager(),
-		out:          &syncBuffer{},
-		key:          "1111-1111-1111-1116",
-		urls:         []string{"http://" + strings.Repeat("x", 90) + ":8080"},
-		remoteStatus: "ON — not reachable yet, forward TCP 9443 by hand from the router's admin page",
-		certFP:       "AA:BB:CC:DD:EE:FF:00:11:22:33",
-		layout:       computeLayout(80, 40, 0, 0, 12),
+		hub:       testHub(t),
+		sensorMgr: monitor.NewManager(),
+		out:       &syncBuffer{},
+		key:       "1111-1111-1111-1116",
+		urls:      []string{"http://" + strings.Repeat("x", 90) + ":8080"},
+		layout:    computeLayout(80, 40, 0, 0, 12),
 	}
 
 	for i, line := range sb.gridLines() {
@@ -314,7 +309,7 @@ func TestACodeTallerThanItsBoxIsClipped(t *testing.T) {
 // are garbage.
 func TestAHeadlessRunDrawsNoGrid(t *testing.T) {
 	var screen syncBuffer
-	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "", "")
+	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "")
 	sb.out = &screen
 
 	sb.drawGrid()
@@ -327,7 +322,7 @@ func TestAHeadlessRunDrawsNoGrid(t *testing.T) {
 // Rotating the key invalidates every code on screen. They have to be rebuilt and
 // redrawn, or the dashboard keeps offering the key the user just revoked.
 func TestRotatingTheKeyRedrawsTheCode(t *testing.T) {
-	sb, _ := drawnDashboard(t, remote.State{})
+	sb, _ := drawnDashboard(t)
 	before := append([][]string(nil), sb.qrCodes...)
 
 	sb.rekeyQR("2222222222222224")
@@ -353,18 +348,30 @@ func TestRotatingTheKeyRedrawsTheCode(t *testing.T) {
 	}
 }
 
-// The check that stops a repaint drawing a second copy of anything. Remote
-// access arriving a minute after startup adds an address, the grid grows a row,
-// and every row below it moves — so painting the grid alone at the rows it used
-// to occupy is what has to be caught.
+// The check that stops a repaint drawing a second copy of anything. Switching to
+// a code of a different size moves every row below it, so painting the grid
+// alone at the rows it used to occupy is what has to be caught.
 func TestARepaintNoticesWhenTheLayoutHasMoved(t *testing.T) {
-	sb, _ := drawnDashboard(t, remote.State{})
+	urls := []string{
+		"http://192.168.1.10:8080",
+		"http://198.51.100.4:8080/a/rather/longer/address/to/carry/into/the/code",
+	}
+	sb := &statusBar{
+		out:       &syncBuffer{},
+		hub:       testHub(t),
+		sensorMgr: monitor.NewManager(),
+		key:       testKey,
+		rawKey:    testRawKey,
+		urls:      urls,
+		qrCodes:   renderQRCodes(urls, testRawKey),
+	}
+	sb.paint()
 	before := sb.layout
 
-	sb.setURLs([]string{"http://192.168.1.10:8080", "https://198.51.100.4:9443"})
+	sb.showQR(2)
 
 	if sb.layout == before {
-		t.Fatal("an extra address changed nothing about the layout")
+		t.Fatal("a code of a different size changed nothing about the layout")
 	}
 	if !sb.layoutHolds() {
 		t.Error("the dashboard was left believing a layout the screen does not have")
@@ -375,7 +382,7 @@ func TestARepaintNoticesWhenTheLayoutHasMoved(t *testing.T) {
 // Nothing signals this on Windows, so the five-second repaint has to notice it
 // on its own.
 func TestARepaintNoticesTheWindowChangingSize(t *testing.T) {
-	sb, _ := drawnDashboard(t, remote.State{})
+	sb, _ := drawnDashboard(t)
 
 	real := termSizeFn
 	t.Cleanup(func() { termSizeFn = real })

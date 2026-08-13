@@ -19,15 +19,15 @@ const (
 	testRawKey = "1111111111111116"
 )
 
-// dashboardWith builds a headless dashboard holding the addresses, certificate
-// and key file that a console command reads.
-func dashboardWith(urls []string, certFP, keyPath string) *statusBar {
-	return newHeadlessStatusBar(nil, nil, testKey, testRawKey, urls, certFP, keyPath)
+// dashboardWith builds a headless dashboard holding the addresses and key file
+// that a console command reads.
+func dashboardWith(urls []string, keyPath string) *statusBar {
+	return newHeadlessStatusBar(nil, nil, testKey, testRawKey, urls, keyPath)
 }
 
 func TestConsoleUrlsListsEveryAddressItCanOffer(t *testing.T) {
-	urls := []string{"http://192.168.1.10:8080", "https://198.51.100.4:9443"}
-	sb := dashboardWith(urls, "", "")
+	urls := []string{"http://192.168.1.10:8080", "http://198.51.100.4:8080"}
+	sb := dashboardWith(urls, "")
 
 	out := consoleOutput(t, "urls\n", consoleDeps{hub: testHub(t), sb: sb})
 
@@ -40,35 +40,6 @@ func TestConsoleUrlsListsEveryAddressItCanOffer(t *testing.T) {
 	// the list has to say that is what they are for.
 	if !strings.Contains(out, "qr <n>") {
 		t.Errorf("urls did not say how to show one of them; output was:\n%s", out)
-	}
-}
-
-func TestConsoleCertPrintsTheFingerprintToCompare(t *testing.T) {
-	const fp = "AA:BB:CC:DD:EE:FF"
-	sb := dashboardWith([]string{"https://192.168.1.10:8443"}, fp, "")
-
-	out := consoleOutput(t, "cert\n", consoleDeps{hub: testHub(t), sb: sb})
-
-	if !strings.Contains(out, fp) {
-		t.Errorf("cert did not print the fingerprint; output was:\n%s", out)
-	}
-	// The fingerprint on its own is a number nobody knows what to do with. The
-	// phone will warn that the certificate is untrusted, and the point of the
-	// command is telling the user that comparing the two is the check.
-	if !strings.Contains(out, "self-signed") {
-		t.Errorf("cert did not explain what to compare it against; output was:\n%s", out)
-	}
-}
-
-// Running over plain HTTP is a different situation from having a certificate
-// nobody has checked, and saying "no fingerprint" would read as the latter.
-func TestConsoleCertOnAPlainHTTPServerSaysThereIsNone(t *testing.T) {
-	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, "", "")
-
-	out := consoleOutput(t, "cert\n", consoleDeps{hub: testHub(t), sb: sb})
-
-	if !strings.Contains(out, "No TLS certificate") {
-		t.Errorf("cert did not report the absence of a certificate; output was:\n%s", out)
 	}
 }
 
@@ -88,7 +59,7 @@ func TestConsoleRotateKeyWritesTheNewKeyToItsFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the seeded key file: %v", err)
 	}
-	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, "", keyPath)
+	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, keyPath)
 
 	out := consoleOutput(t, "rotate-key\n", consoleDeps{
 		hub:     testHub(t),
@@ -120,22 +91,18 @@ func TestConsoleRotateKeyWritesTheNewKeyToItsFile(t *testing.T) {
 }
 
 // Started from an autostart entry there is no dashboard, so the log is the only
-// place the address and the certificate appear at all.
-func TestHeadlessStartupLogsEveryAddressAndTheCertificate(t *testing.T) {
-	const fp = "AA:BB:CC:DD"
-	urls := []string{"http://192.168.1.10:8080", "https://198.51.100.4:9443"}
+// place the addresses appear at all.
+func TestHeadlessStartupLogsEveryAddress(t *testing.T) {
+	urls := []string{"http://192.168.1.10:8080", "http://198.51.100.4:8080"}
 	keyPath := filepath.Join(t.TempDir(), "pairing.key")
-	sb := dashboardWith(urls, fp, keyPath)
+	sb := dashboardWith(urls, keyPath)
 
-	out := captureLog(t, func() { logHeadlessStartup(sb, nil, fp, "headless") })
+	out := captureLog(t, func() { logHeadlessStartup(sb, "headless") })
 
 	for _, u := range urls {
 		if !strings.Contains(out, "Reachable at "+u) {
 			t.Errorf("the startup log did not name %s; output was:\n%s", u, out)
 		}
-	}
-	if !strings.Contains(out, fp) {
-		t.Errorf("the startup log did not carry the fingerprint; output was:\n%s", out)
 	}
 	// The key is deliberately not in the log — logs get pasted into bug
 	// reports — so the log says where it lives instead. The path is matched by

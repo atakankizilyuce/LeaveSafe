@@ -1,15 +1,17 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/monitor"
-	"github.com/leavesafe/leavesafe/internal/remote"
+	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/ws"
 )
 
@@ -19,13 +21,37 @@ import (
 // sized to the wrong code is a code cut in half, and a scrolling region that
 // starts too high is a log scrolling over the thing the user is trying to scan.
 
+// testServer is a listening server the dashboard tests can ask for its
+// addresses.
+func testServer(t *testing.T) *server.Server {
+	t.Helper()
+
+	authMgr, err := auth.NewManager()
+	if err != nil {
+		t.Fatalf("auth manager: %v", err)
+	}
+	srv := server.New(server.Config{
+		Hub:  ws.NewHub(authMgr, monitor.NewManager(), "test"),
+		Port: 0,
+	})
+	if err := srv.Listen(); err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	})
+	return srv
+}
+
 // drawnDashboard builds the dashboard into a file and hands back both the status
 // bar and everything that was written.
 //
 // A file rather than a terminal, which is also the interesting case: term.GetSize
 // cannot answer for one, so this exercises the fallback shape every non-tty run
 // gets.
-func drawnDashboard(t *testing.T, remoteState remote.State) (*statusBar, string) {
+func drawnDashboard(t *testing.T) (*statusBar, string) {
 	t.Helper()
 
 	authMgr, err := auth.NewManager()
@@ -51,7 +77,7 @@ func drawnDashboard(t *testing.T, remoteState remote.State) (*statusBar, string)
 	// A file for the input too: it is not a terminal, so nothing here is put
 	// into raw mode and the dashboard is drawn without an input line, which is
 	// what every non-tty run gets.
-	sb := buildDashboard(out, out, srv, authMgr, hub, mgr, remoteState)
+	sb := buildDashboard(out, out, srv, authMgr, hub, mgr)
 
 	if err := out.Sync(); err != nil {
 		t.Fatalf("flush the screen file: %v", err)
@@ -64,7 +90,7 @@ func drawnDashboard(t *testing.T, remoteState remote.State) (*statusBar, string)
 }
 
 func TestDashboardDrawsItselfAndHandsBackAStatusBarThatMatches(t *testing.T) {
-	sb, drawn := drawnDashboard(t, remote.State{})
+	sb, drawn := drawnDashboard(t)
 
 	if !strings.Contains(drawn, "Device Security Monitor") {
 		t.Errorf("the banner is missing; screen was:\n%s", drawn)
@@ -94,7 +120,7 @@ func TestDashboardDrawsItselfAndHandsBackAStatusBarThatMatches(t *testing.T) {
 // scrolls over the QR code. It is the last escape written, and it names the row
 // the scrolling starts on.
 func TestDashboardKeepsTheLogBelowWhatItDrewOnce(t *testing.T) {
-	sb, drawn := drawnDashboard(t, remote.State{})
+	sb, drawn := drawnDashboard(t)
 
 	l := sb.layout
 	bottom := max(l.qrRow+l.qrBoxH, l.gridRow+len(sb.gridLines()))
@@ -104,39 +130,6 @@ func TestDashboardKeepsTheLogBelowWhatItDrewOnce(t *testing.T) {
 	}
 	if !strings.Contains(drawn, "\033["+itoa(l.logRow)+";"+itoa(l.termH)+"r") {
 		t.Errorf("no scrolling region was pinned at row %d", l.logRow)
-	}
-}
-
-// The certificate rides in the QR code so the phone can check which server it
-// reached before offering the pairing key. A dashboard that drew the codes
-// before the certificate was known would hand out codes that skip the check.
-func TestDashboardCarriesTheCertificateIntoTheStatusBar(t *testing.T) {
-	const fp = "AA:BB:CC:DD:EE:FF"
-	sb, _ := drawnDashboard(t, remote.State{Enabled: true, CertFP: fp})
-
-	if got := sb.certFingerprint(); got != fp {
-		t.Errorf("certFingerprint = %q, want %q", got, fp)
-	}
-}
-
-// Remote access adds a public address, and the dashboard has to offer it — it is
-// the only one a phone on another network can use. Verified, because that is
-// what earns it the front of the list now: an address that has been seen to
-// work rather than one that was merely arranged for.
-func TestDashboardOffersThePublicAddressWhenThereIsOne(t *testing.T) {
-	sb, _ := drawnDashboard(t, remote.State{
-		Enabled:   true,
-		UPnP:      remote.UPnPOK,
-		Reach:     remote.ReachVerified,
-		PublicURL: "https://198.51.100.4:9443",
-	})
-
-	urls := sb.urlList()
-	if len(urls) == 0 || urls[0] != "https://198.51.100.4:9443" {
-		t.Errorf("the public address is not the one the QR code shows: %v", urls)
-	}
-	if !strings.Contains(sb.remoteStatus, "ACTIVE") {
-		t.Errorf("remoteStatus = %q, want it to report remote access as active", sb.remoteStatus)
 	}
 }
 
@@ -159,9 +152,8 @@ func TestTerminalSizeFallsBackWhenItCannotAsk(t *testing.T) {
 }
 
 // The box is sized to the code on screen rather than the largest of them. The
-// largest was safer for switching and worse for everything else: remote access
-// adds an address whose code is bigger, and a window with room for the local
-// code was told it had none.
+// largest was safer for switching and worse for everything else: a window with
+// room for the code somebody was looking at was told it had none.
 func TestQRBoxIsSizedToTheCodeOnScreen(t *testing.T) {
 	w, h := qrBoxSize([]string{"####", "####", "####"})
 
@@ -222,9 +214,9 @@ func TestTheGridIsPlacedBesideTheCodeAndKeptInsideTheWindow(t *testing.T) {
 // Every address gets a code, and every code carries that address — the phone
 // scans one of these and is pointed at whatever is inside it.
 func TestRenderQRCodesBuildsOnePerAddress(t *testing.T) {
-	urls := []string{"http://192.168.1.10:8080", "https://198.51.100.4:9443"}
+	urls := []string{"http://192.168.1.10:8080", "http://198.51.100.4:8080"}
 
-	codes := renderQRCodes(urls, testRawKey, "")
+	codes := renderQRCodes(urls, testRawKey)
 
 	if len(codes) != len(urls) {
 		t.Fatalf("rendered %d codes for %d addresses", len(codes), len(urls))
@@ -242,7 +234,7 @@ func TestRenderQRCodesKeepsTheIndexesLinedUpWhenOneWillNotRender(t *testing.T) {
 	huge := "http://" + strings.Repeat("a", 4000) + ":8080"
 	urls := []string{"http://192.168.1.10:8080", huge}
 
-	codes := renderQRCodes(urls, testRawKey, "")
+	codes := renderQRCodes(urls, testRawKey)
 
 	if len(codes) != 2 {
 		t.Fatalf("rendered %d codes for 2 addresses — the indexes no longer match", len(codes))
@@ -378,7 +370,7 @@ func itoa(n int) string {
 // A QR code is square, so the box the layout reserves has to be as wide as it is
 // tall in characters — the code is drawn two characters per module.
 func TestQRCodeIsWiderThanItIsTall(t *testing.T) {
-	codes := renderQRCodes([]string{"http://192.168.1.10:8080"}, testRawKey, "")
+	codes := renderQRCodes([]string{"http://192.168.1.10:8080"}, testRawKey)
 	if len(codes) != 1 || len(codes[0]) == 0 {
 		t.Fatal("no code was rendered")
 	}
@@ -392,32 +384,35 @@ func TestQRCodeIsWiderThanItIsTall(t *testing.T) {
 	}
 }
 
-// The box follows the selection. Remote access adds an address whose code is
-// bigger — a longer address, and a certificate fingerprint with it — and sizing
-// the box to that one meant a window with room for the local code was told it
-// had none.
+// The box follows the selection rather than the largest code on offer. Sizing
+// it to the biggest one meant a window with room for the code somebody was
+// actually looking at was told it had none.
 func TestTheBoxIsLaidOutForTheCodeTheUserIsLookingAt(t *testing.T) {
+	urls := []string{
+		"http://192.168.1.16:8080",
+		"http://192.168.100.200:8080/a/rather/longer/address/to/carry/into/the/code",
+	}
 	sb := &statusBar{
 		out:       &syncBuffer{},
 		hub:       testHub(t),
 		sensorMgr: monitor.NewManager(),
 		rawKey:    testRawKey,
-		certFP:    "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+		urls:      urls,
+		qrCodes:   renderQRCodes(urls, testRawKey),
 	}
-	sb.setURLs([]string{"http://192.168.1.16:8080", "https://198.51.100.42:9443"})
 
-	local := sb.wantedLayout()
+	short := sb.wantedLayout()
 	sb.showQR(2)
-	remote := sb.wantedLayout()
+	long := sb.wantedLayout()
 
-	if local.qrBoxH == 0 || remote.qrBoxH == 0 {
-		t.Fatalf("a code was dropped: local box %dx%d, remote box %dx%d",
-			local.qrBoxW, local.qrBoxH, remote.qrBoxW, remote.qrBoxH)
+	if short.qrBoxH == 0 || long.qrBoxH == 0 {
+		t.Fatalf("a code was dropped: first box %dx%d, second box %dx%d",
+			short.qrBoxW, short.qrBoxH, long.qrBoxW, long.qrBoxH)
 	}
-	if local.qrBoxH >= remote.qrBoxH {
-		t.Errorf("the local code is boxed at %d rows and the remote one at %d; "+
-			"the local address is being laid out for a code it does not have",
-			local.qrBoxH, remote.qrBoxH)
+	if short.qrBoxH >= long.qrBoxH {
+		t.Errorf("the short address is boxed at %d rows and the long one at %d; "+
+			"the short address is being laid out for a code it does not have",
+			short.qrBoxH, long.qrBoxH)
 	}
 }
 
@@ -426,7 +421,7 @@ func TestTheBoxIsLaidOutForTheCodeTheUserIsLookingAt(t *testing.T) {
 // painted against no longer describes the screen.
 func TestSwitchingCodesRedrawsTheWholeDashboard(t *testing.T) {
 	sb, screen := terminalDashboard(t, []string{"http://192.168.1.16:8080",
-		"https://198.51.100.42:9443/with/a/rather/longer/address/to/carry"})
+		"http://198.51.100.42:8080/with/a/rather/longer/address/to/carry"})
 
 	before := screen.String()
 	sb.showQR(2)
@@ -435,63 +430,6 @@ func TestSwitchingCodesRedrawsTheWholeDashboard(t *testing.T) {
 	// A full repaint clears the screen first; a partial one never does.
 	if !strings.Contains(added, "\033[2J") {
 		t.Errorf("switching to a code of a different size did not redraw the screen:\n%q", added)
-	}
-}
-
-// ---- a run with no dashboard --------------------------------------------
-
-// plainBar is the status bar a -plain run gets: no dashboard, and a terminal
-// somebody is watching.
-func plainBar(t *testing.T, urls []string) (*statusBar, *syncBuffer) {
-	t.Helper()
-
-	printed := &syncBuffer{}
-	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), testKey, testRawKey, urls, "", "")
-	sb.plainOut = printed
-	return sb, printed
-}
-
-// Turning remote access on adds an address, and without a dashboard there is no
-// box to redraw: the code printed at startup has scrolled away, and nothing has
-// ever printed one for the new address. The user is told they can be reached
-// from the internet and left to type it into a phone by hand.
-func TestARunWithNoDashboardPrintsACodeForAnAddressThatArrives(t *testing.T) {
-	sb, printed := plainBar(t, []string{"http://192.168.1.16:8080"})
-
-	sb.setURLs([]string{"https://198.51.100.42:9443", "http://192.168.1.16:8080"})
-
-	if !strings.Contains(printed.String(), "Scan to connect:") {
-		t.Errorf("no code was printed for the address that arrived; output was:\n%s", printed.String())
-	}
-	if !strings.Contains(printed.String(), "https://198.51.100.42:9443") {
-		t.Errorf("the new address was not named; output was:\n%s", printed.String())
-	}
-}
-
-// And not otherwise. The startup state is published through the same call, so a
-// list that has not changed must print nothing — or every start would show the
-// code twice and every five-second refresh would add another.
-func TestAnUnchangedAddressListPrintsNothing(t *testing.T) {
-	urls := []string{"http://192.168.1.16:8080"}
-	sb, printed := plainBar(t, urls)
-
-	sb.setURLs(urls)
-
-	if printed.String() != "" {
-		t.Errorf("an unchanged address list printed a code again:\n%s", printed.String())
-	}
-}
-
-// A dashboard redraws its box instead, so printing there would put a QR code
-// into the middle of the log.
-func TestADashboardPrintsNoCodeIntoItsLog(t *testing.T) {
-	sb, screen := terminalDashboard(t, []string{"http://192.168.1.16:8080"})
-
-	before := screen.String()
-	sb.setURLs([]string{"https://198.51.100.42:9443", "http://192.168.1.16:8080"})
-
-	if strings.Contains(strings.TrimPrefix(screen.String(), before), "Scan to connect:\n") {
-		t.Error("a dashboard printed a pairing code into its own log")
 	}
 }
 

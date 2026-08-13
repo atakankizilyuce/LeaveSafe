@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/leavesafe/leavesafe/internal/monitor"
-	"github.com/leavesafe/leavesafe/internal/remote"
 )
 
 // The input line is what a person types on, and until it existed the terminal
@@ -720,7 +719,7 @@ func TestADashboardOnATerminalOfItsOwnDrawsAnInputLine(t *testing.T) {
 	aTerminal(t)
 	aKeyboard(t, nil, nil)
 
-	sb, drawn := drawnDashboard(t, remote.State{})
+	sb, drawn := drawnDashboard(t)
 
 	if sb.line == nil {
 		t.Fatal("a dashboard with a keyboard of its own has nowhere for the user to type")

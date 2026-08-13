@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 
 	log "github.com/sirupsen/logrus"
 	"strconv"
@@ -25,7 +24,6 @@ import (
 	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/qr"
-	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/state"
 	"github.com/leavesafe/leavesafe/internal/update"
@@ -37,13 +35,8 @@ var version = "dev"
 // repoURL is where the project lives; the CLI points at it for bug reports and
 // release downloads rather than repeating the address in several places.
 const (
-	repoURL = "https://github.com/atakankizilyuce/LeaveSafe"
-
-	// httpsScheme marks the addresses that carry a certificate, which is what
-	// decides whether a fingerprint belongs in the URL and what the dashboard
-	// trims off before showing one.
-	httpsScheme = "https://"
-	issuesURL   = repoURL + "/issues"
+	repoURL   = "https://github.com/atakankizilyuce/LeaveSafe"
+	issuesURL = repoURL + "/issues"
 )
 
 // eventLogFileName is the security event history kept in the config directory.
@@ -114,12 +107,9 @@ type statusBar struct {
 	key string
 	// rawKey is the pairing key as it goes into a QR code, without the grouping
 	// that makes `key` readable on screen. The two are kept side by side
-	// because the URL list is rebuilt whenever remote access comes or goes, and
-	// rebuilding a QR code needs the raw form.
-	rawKey       string
-	urls         []string
-	remoteStatus string // e.g. "ACTIVE — 85.1.2.3:9443" or "" if not remote
-	certFP       string // SHA-256 fingerprint of the TLS certificate, "" if plain HTTP
+	// because rebuilding a QR code needs the raw form.
+	rawKey string
+	urls   []string
 
 	// headless drops every drawing operation. Started from an autostart entry
 	// there is no terminal to draw on: the cursor-positioning escapes would go
@@ -140,7 +130,7 @@ type statusBar struct {
 // newHeadlessStatusBar returns a status bar that draws nothing, for runs with
 // no terminal attached.
 func newHeadlessStatusBar(hub *ws.Hub, sensorMgr *monitor.Manager, key, rawKey string,
-	urls []string, certFP, keyPath string,
+	urls []string, keyPath string,
 ) *statusBar {
 	return &statusBar{
 		out:       io.Discard,
@@ -149,60 +139,10 @@ func newHeadlessStatusBar(hub *ws.Hub, sensorMgr *monitor.Manager, key, rawKey s
 		key:       key,
 		rawKey:    rawKey,
 		urls:      urls,
-		certFP:    certFP,
 		headless:  true,
 		keyPath:   keyPath,
 		qrURLIdx:  -1,
 	}
-}
-
-// setURLs replaces the addresses the dashboard offers and rebuilds their QR
-// codes.
-//
-// The list is not fixed for the life of the process any more: turning remote
-// access on adds a public URL and turning it off removes one. A stale QR code
-// is worse than none — it is an address the user will scan and then wait at.
-func (sb *statusBar) setURLs(urls []string) {
-	sb.mu.Lock()
-	rawKey, certFP := sb.rawKey, sb.certFP
-	sb.mu.Unlock()
-
-	codes := renderQRCodes(urls, rawKey, certFP)
-
-	sb.mu.Lock()
-	changed := !slices.Equal(sb.urls, urls)
-	sb.urls = urls
-	sb.qrCodes = codes
-	if sb.qrURLIdx >= len(urls) {
-		sb.qrURLIdx = 0
-	}
-	sb.mu.Unlock()
-
-	if changed {
-		sb.reprintPairingCode(rawKey, certFP)
-	}
-	sb.refresh()
-}
-
-// reprintPairingCode prints a code for an address list that has just changed,
-// which is something only a run without the dashboard needs.
-//
-// There the code was printed once at startup and has scrolled away with
-// everything else, and there is no box to redraw. Turning remote access on adds
-// an address nothing has ever printed a code for — so the user is told they can
-// be reached from the internet, and left to type the address into a phone by
-// hand. On a dashboard the box is redrawn instead, and at startup nothing has
-// changed yet, so neither reaches this.
-func (sb *statusBar) reprintPairingCode(rawKey, certFP string) {
-	sb.mu.Lock()
-	out := sb.plainOut
-	sb.mu.Unlock()
-	if out == nil {
-		return
-	}
-
-	log.Info("The addresses changed — the code below is for the first of them")
-	printPairingCode(out, sb, rawKey, certFP)
 }
 
 // urlList returns the addresses currently on offer.
@@ -233,30 +173,6 @@ func (sb *statusBar) setKey(key string) {
 	sb.key = key
 	sb.mu.Unlock()
 	sb.refresh()
-}
-
-// certFingerprint returns the fingerprint the QR codes and the header carry.
-func (sb *statusBar) certFingerprint() string {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-	return sb.certFP
-}
-
-// setRemoteStatus replaces the dashboard's remote-access line.
-func (sb *statusBar) setRemoteStatus(status string) {
-	sb.mu.Lock()
-	sb.remoteStatus = status
-	sb.mu.Unlock()
-	sb.refresh()
-}
-
-// setCertFP records the fingerprint the QR codes and the header should carry.
-// It changes when remote access comes up or goes away, because the certificate
-// belongs to that listener.
-func (sb *statusBar) setCertFP(fp string) {
-	sb.mu.Lock()
-	sb.certFP = fp
-	sb.mu.Unlock()
 }
 
 // visLen is how many columns a string takes on screen: its runes, not counting
@@ -290,8 +206,7 @@ func (sb *statusBar) boxLine(content string) string {
 	inner := sb.gridBoxWidth() - 2
 	// Cut rather than allowed to overflow. A line wider than the box wraps onto
 	// the next row, which pushes every row below it down while the layout still
-	// believes they are where it put them — and the remote-access line is
-	// exactly the kind that outgrows a narrow box without warning.
+	// believes they are where it put them.
 	content = truncateVisible(content, inner)
 
 	pad := inner - visLen(content)
@@ -310,14 +225,7 @@ func (sb *statusBar) boxLine(content string) string {
 func (sb *statusBar) gridHeight() int {
 	// Border, title, separator, state, clients, sensors; then a separator, the
 	// key, an address apiece and the bottom border.
-	rows := 6 + 2 + len(sb.urls) + 1
-	if sb.remoteStatus != "" {
-		rows++
-	}
-	if sb.certFP != "" {
-		rows++
-	}
-	return rows
+	return 6 + 2 + len(sb.urls) + 1
 }
 
 func (sb *statusBar) gridLines() []string {
@@ -359,17 +267,6 @@ func (sb *statusBar) gridLines() []string {
 		sb.boxLine(fmt.Sprintf("  %s●%s  Sensors  %s%d / %d%s active", cCyan, cReset, cBold, active, total, cReset)),
 	}
 
-	if sb.remoteStatus != "" {
-		lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Remote   %s%s%s", cGreen, cReset, cGreen, sb.remoteStatus, cReset)))
-	}
-
-	// The certificate is self-signed, so the phone will warn about it. Showing
-	// the fingerprint is what lets the user tell that warning apart from an
-	// actual interception. `cert` prints it in full.
-	if sb.certFP != "" {
-		lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Cert     %s%s…%s", cCyan, cReset, cDim, shortFingerprint(sb.certFP), cReset)))
-	}
-
 	lines = append(lines, midSep)
 	lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Key      %s%s%s", cYellow, cReset, cBold, sb.key, cReset)))
 
@@ -383,16 +280,6 @@ func (sb *statusBar) gridLines() []string {
 
 	lines = append(lines, bottom)
 	return lines
-}
-
-// shortFingerprint returns the first four colon-separated octets of a SHA-256
-// fingerprint, which is enough to eyeball against the phone's warning dialog.
-func shortFingerprint(fp string) string {
-	parts := strings.Split(fp, ":")
-	if len(parts) > 4 {
-		parts = parts[:4]
-	}
-	return strings.Join(parts, ":")
 }
 
 // shownCode is the code the QR box is showing, or nothing when there is none
@@ -555,7 +442,7 @@ func (sb *statusBar) rekeyQR(rawKey string) {
 		return
 	}
 	for i, u := range sb.urls {
-		lines, err := qr.Lines(pairingURL(u, rawKey, sb.certFP))
+		lines, err := qr.Lines(pairingURL(u, rawKey))
 		if err != nil {
 			continue
 		}
@@ -657,36 +544,21 @@ func loadConfig() *config.Config {
 	return cfg
 }
 
-// chooseConnectionMode settles whether this run offers remote access.
-//
-// It is asked on every interactive start, with the saved value as the default,
-// so a user who changed it from their phone sees what is in force and can change
-// it back without hunting for the setting.
+// ensureLanguageChoice asks the language question on an interactive start and
+// remembers the answer.
 //
 // A headless start has nobody to answer and blocking on stdin there would hang
 // the service forever, so it takes what is stored. Every autostart entry this
 // program writes passes -headless, so no unattended start can reach the prompt.
-func chooseConnectionMode(cfg *config.Config, headless bool) {
-	if !headless {
-		// Language first, and only once. It decides how the next question is
-		// worded, so there is no order in which it could come second.
-		promptRemoteAccess(cfg, ensureLanguage(cfg))
+func ensureLanguageChoice(cfg *config.Config, headless bool) {
+	if headless {
 		return
 	}
-
-	if cfg.RemoteAccess == nil {
-		local := false
-		cfg.RemoteAccess = &local
-		if err := config.Save(cfg); err != nil {
-			log.Warnf("Failed to save config: %v", err)
-		}
-	}
-	log.Infof("Connection mode: %s (from config, no terminal to ask)",
-		connectionModeName(*cfg.RemoteAccess))
+	ensureLanguage(cfg)
 }
 
-// pairingURL builds the address a QR code encodes: the server, the pairing key,
-// and — when there is a certificate — its fingerprint.
+// pairingURL builds the address a QR code encodes: the server and the pairing
+// key.
 //
 // Both ride in the fragment, after the '#', and that is the whole point. A
 // fragment is never put on the wire: the browser strips it before building the
@@ -706,95 +578,8 @@ func chooseConnectionMode(cfg *config.Config, headless bool) {
 //
 // This does not turn a self-signed certificate into a verified one. See
 // SECURITY.md for what it does and does not catch.
-func pairingURL(base, rawKey, certFP string) string {
-	fragment := "key=" + rawKey
-	// Only for an address that is actually served over TLS. The fingerprint is
-	// sixty-eight characters of a hundred-and-sixteen-character payload, and
-	// carrying it on the local plain-HTTP address — which has no certificate
-	// for the phone to check it against — pushed that code from thirty-seven
-	// modules square to forty-nine the moment remote access came on. A window
-	// with room for the local code was then told it had none, which is what
-	// "the QR code stops working when I turn on mobile data" was.
-	if certFP != "" && strings.HasPrefix(base, httpsScheme) {
-		fragment += "&fp=" + strings.ToLower(strings.ReplaceAll(certFP, ":", ""))
-	}
-	return base + "/#" + fragment
-}
-
-// reachableURLs returns every address a phone could connect to.
-//
-// The order is the whole point, because the dashboard draws the first of these
-// as a QR code and that is the one the user scans. It goes first only when the
-// router accepted a port mapping — when it did not, the public address is a
-// hope rather than a route: the machine has an address on the internet and
-// nothing on the path will carry a connection to it. Offering that as the code
-// to scan is how a phone ends up on a spinner forever, which is exactly what
-// happened on a network with no UPnP gateway.
-//
-// It stays in the list rather than disappearing, because the accompanying
-// message tells the user to forward the port by hand and it has to be there to
-// scan once they have. `urls` lists it and `qr <n>` shows it.
-func reachableURLs(srv *server.Server, st remote.State) []string {
-	urls := srv.URLs()
-	if st.PublicURL == "" {
-		return urls
-	}
-	// Promoted on evidence now, not on the router having agreed to something.
-	// A mapping the router accepted says nothing about whether a connection
-	// completes the journey, and the address under carrier-grade NAT looks
-	// entirely ordinary while belonging to the ISP — so this used to put a URL
-	// nobody could reach at the front of the list, which is the one the
-	// dashboard draws as a QR code. Scanning it left the phone on a spinner
-	// with nothing said.
-	if st.UPnP != remote.UPnPOK || st.Reach != remote.ReachVerified {
-		return append(urls, st.PublicURL)
-	}
-	return append([]string{st.PublicURL}, urls...)
-}
-
-// applyRemoteState is what every path that changes the connection mode ends
-// with: the addresses on the dashboard, the certificate the QR codes carry, the
-// status the phones hold, and the reason if there is one, all from the same
-// State.
-func applyRemoteState(sb *statusBar, hub *ws.Hub, srv *server.Server, st remote.State) {
-	sb.setCertFP(st.CertFP)
-	sb.setURLs(reachableURLs(srv, st))
-	sb.setRemoteStatus(remoteStatusLine(st))
-	hub.SetCertFingerprint(st.CertFP)
-	hub.SetRemoteState(st)
-	if st.Reason != "" {
-		sb.writeLine("  %s[NET]%s %s", cYellow, cReset, st.Reason)
-	}
-}
-
-// remoteStatusLine is the dashboard's one-line summary of remote access.
-func remoteStatusLine(st remote.State) string {
-	switch {
-	case !st.Enabled && st.UPnP == remote.UPnPCarrierNAT:
-		return "OFF — carrier-grade NAT"
-	case !st.Enabled:
-		return ""
-	case st.Probing:
-		// Named, because the wait is long enough to look like a hang otherwise:
-		// a network with no UPnP gateway takes about thirty-five seconds to say
-		// so, and "public address unknown" during that is a wrong answer rather
-		// than an early one.
-		return "ON — checking whether it can be reached…"
-	case st.UPnP == remote.UPnPFailed:
-		return fmt.Sprintf("ON — not reachable yet, forward TCP %d by hand", st.ManualPort)
-	case st.Reach == remote.ReachBlocked:
-		return fmt.Sprintf("ON — blocked before the internet, forward TCP %d on the outer router",
-			st.ManualPort)
-	case st.PublicURL == "":
-		return "ACTIVE — public address unknown"
-	case st.Reach == remote.ReachUnproven:
-		// Named as unconfirmed rather than active, because the two used to read
-		// the same and only one of them had been checked. It may well work; it
-		// has not been seen to.
-		return "ON — " + strings.TrimPrefix(st.PublicURL, httpsScheme) + " (unconfirmed)"
-	default:
-		return "ACTIVE — " + strings.TrimPrefix(st.PublicURL, httpsScheme)
-	}
+func pairingURL(base, rawKey string) string {
+	return base + "/#key=" + rawKey
 }
 
 // logHeadlessStartup writes what the dashboard would have shown.
@@ -807,15 +592,10 @@ func remoteStatusLine(st remote.State) string {
 // mode names why there is no dashboard, because there are now two reasons and
 // they are not the same thing to a reader of the log: nobody is watching a
 // headless start, and somebody is watching a -plain one.
-func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP, mode string) {
+func logHeadlessStartup(sb *statusBar, mode string) {
 	log.Infof("LeaveSafe %s started %s — no dashboard on this run", version, mode)
 	for _, u := range sb.urlList() {
 		log.Infof("Reachable at %s", u)
-	}
-	if certFP != "" {
-		log.Infof("TLS certificate SHA-256: %s", certFP)
-	} else if srv.IsTLS() {
-		log.Info("TLS is on but the certificate fingerprint is unknown")
 	}
 	if sb.keyPath != "" {
 		log.Infof("Pairing key is stored in %s — it is not written to this log", sb.keyPath)
@@ -828,14 +608,14 @@ func logHeadlessStartup(sb *statusBar, srv *server.Server, certFP, mode string) 
 // This is what -plain has instead of a dashboard. The pairing key is written
 // straight to the terminal rather than logged, because the log is a file that
 // gets attached to bug reports and the key is the whole of the front door.
-func printPairingCode(out io.Writer, sb *statusBar, rawKey, certFP string) {
+func printPairingCode(out io.Writer, sb *statusBar, rawKey string) {
 	urls := sb.urlList()
 	if len(urls) == 0 {
 		return
 	}
 
 	fmt.Fprintf(out, "\n  %sScan to connect:%s\n\n", cDim, cReset)
-	lines, err := qr.Lines(pairingURL(urls[0], rawKey, certFP))
+	lines, err := qr.Lines(pairingURL(urls[0], rawKey))
 	if err != nil {
 		fmt.Fprintf(out, "  %sNo QR code for %s: %v — open the address by hand.%s\n",
 			cYellow, urls[0], err, cReset)
@@ -983,21 +763,19 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 }
 
 func buildDashboard(out *os.File, in io.Reader, srv *server.Server, authMgr *auth.Manager,
-	hub *ws.Hub, sensorMgr *monitor.Manager, remoteState remote.State,
+	hub *ws.Hub, sensorMgr *monitor.Manager,
 ) *statusBar {
-	urls := reachableURLs(srv, remoteState)
+	urls := srv.URLs()
 
 	sb := &statusBar{
-		out:          out,
-		term:         out,
-		hub:          hub,
-		sensorMgr:    sensorMgr,
-		qrCodes:      renderQRCodes(urls, authMgr.RawPairingKey(), remoteState.CertFP),
-		key:          authMgr.PairingKey(),
-		rawKey:       authMgr.RawPairingKey(),
-		urls:         urls,
-		remoteStatus: remoteStatusLine(remoteState),
-		certFP:       remoteState.CertFP,
+		out:       out,
+		term:      out,
+		hub:       hub,
+		sensorMgr: sensorMgr,
+		qrCodes:   renderQRCodes(urls, authMgr.RawPairingKey()),
+		key:       authMgr.PairingKey(),
+		rawKey:    authMgr.RawPairingKey(),
+		urls:      urls,
 	}
 
 	// The dashboard clears the screen, draws at absolute positions and pins a
@@ -1080,11 +858,10 @@ func (sb *statusBar) wantedLayout() layout {
 // left it.
 //
 // This is the check that stops a repaint drawing a second copy of something.
-// The pieces below paint at absolute rows, and three things move those rows out
-// from under them: the window being resized, remote access adding an address so
-// the grid grows a row, and a longer address producing a bigger QR code. Every
-// one of those used to leave the old drawing on screen with the new one painted
-// somewhere else — which is what the two status grids were.
+// The pieces below paint at absolute rows, and two things move those rows out
+// from under them: the window being resized, and a longer address producing a
+// bigger QR code. Both used to leave the old drawing on screen with the new one
+// painted somewhere else — which is what the two status grids were.
 func (sb *statusBar) layoutHolds() bool {
 	return sb.wantedLayout() == sb.layout
 }
@@ -1153,16 +930,15 @@ func drawHeader(out io.Writer, l layout) {
 // renderQRCodes builds a QR code for every address the laptop can be reached at,
 // not just the first.
 //
-// With remote access on, the public URL only works from outside the network:
-// scanning it from a phone on the same Wi-Fi needs NAT hairpinning, which plenty
-// of routers do not do. `qr <n>` switches to the local URL instead.
+// A laptop on both Wi-Fi and Ethernet has an address on each, and only one of
+// them is the network the phone is on. `qr <n>` switches between them.
 //
 // A code that will not render becomes a nil entry rather than a missing one, so
 // the indexes stay lined up with the address list they came from.
-func renderQRCodes(urls []string, rawKey, certFP string) [][]string {
+func renderQRCodes(urls []string, rawKey string) [][]string {
 	codes := make([][]string, 0, len(urls))
 	for _, u := range urls {
-		lines, err := qr.Lines(pairingURL(u, rawKey, certFP))
+		lines, err := qr.Lines(pairingURL(u, rawKey))
 		if err != nil {
 			log.Warnf("Could not render QR code for %s: %v", u, err)
 			lines = nil
@@ -1176,9 +952,8 @@ func renderQRCodes(urls []string, rawKey, certFP string) [][]string {
 //
 // It used to be the size of the largest of them, so that switching between them
 // with `qr <n>` could not overflow a box laid out for a smaller one. That cost
-// the window: remote access adds an address whose code is bigger than the local
-// one, and boxing the local code at that size is how a window with room for the
-// code somebody was actually looking at was told it had none. A switch now
+// the window: boxing the code somebody is looking at at another one's size is
+// how a window with room for it was told it had none. A switch now
 // takes the layout with it, which is safe because every repaint already checks
 // that the layout still describes the screen.
 func qrBoxSize(lines []string) (width, height int) {
@@ -1233,55 +1008,6 @@ func rule(termW int) string {
 	return "  " + strings.Repeat("─", max(termW-4, 1))
 }
 
-// connectionModeName names a connection mode for a log line.
-func connectionModeName(remote bool) string {
-	if remote {
-		return "remote access"
-	}
-	return "local network only"
-}
-
-// promptRemoteAccess asks the connection-mode question and saves the answer.
-//
-// This runs on every interactive start rather than only the first, because the
-// first-run-only version was answered by accident: the phone's settings screen
-// sends remote_access on every save, so saving any unrelated setting turned the
-// unset value into a definite false and the question never came back.
-func promptRemoteAccess(cfg *config.Config, lang language) {
-	current := cfg.RemoteAccess != nil && *cfg.RemoteAccess
-	remote := askConnectionMode(os.Stdin, os.Stdout, lang, current)
-	cfg.RemoteAccess = &remote
-
-	if err := config.Save(cfg); err != nil {
-		log.Warnf("Failed to save config: %v", err)
-	}
-
-	// "Trying" rather than "enabled", because at this point it is a request:
-	// the listener, the router and the ISP all still get a say, and the
-	// dashboard reports what they said. Announcing success here is how a user
-	// ends up scanning a QR code for an address nothing will answer.
-	if remote {
-		promptResult(os.Stdout, lang.remoteAsked)
-	} else {
-		promptResult(os.Stdout, lang.wifiChosen)
-	}
-	fmt.Fprintln(os.Stdout)
-}
-
-// parseModeChoice reads a connection-mode answer. ok is false when the user
-// pressed enter, typed something else, or the input ended — all of which mean
-// "leave it alone" rather than a mode.
-func parseModeChoice(typed string) (want, ok bool) {
-	switch strings.TrimSpace(typed) {
-	case "1":
-		return false, true
-	case "2":
-		return true, true
-	default:
-		return false, false
-	}
-}
-
 // consoleDeps is everything the interactive command loop acts on. It is a
 // struct rather than nine parameters so that a test can build only the two or
 // three a given command actually touches, and leave the rest zero.
@@ -1293,7 +1019,6 @@ type consoleDeps struct {
 	installMethod update.Method
 	updateLedger  *update.Ledger
 	srv           *server.Server
-	remoteCtl     *remote.Controller
 	cfg           *config.Config
 	// quit ends the program the way Ctrl+C used to. In raw mode the terminal
 	// no longer turns that keystroke into a signal on our behalf, so the loop
@@ -1342,9 +1067,7 @@ var consoleCommands = map[string]consoleCommand{
 	"rotate-key": {run: consoleRotateKey},
 	"urls":       {run: consoleURLs},
 	"qr":         {takesArg: true, run: consoleQR},
-	"cert":       {run: consoleCert},
 	"update":     {run: consoleUpdate},
-	"mode":       {run: consoleMode},
 	"lang":       {run: consoleLang},
 	"help":       {run: consoleHelp},
 }
@@ -1532,60 +1255,8 @@ func consoleQR(_ context.Context, c *console) {
 	c.sb.writeLine("  %s[QR]%s Now showing %s", cGreen, cReset, shown)
 }
 
-func consoleCert(_ context.Context, c *console) {
-	fp := c.sb.certFingerprint()
-	if fp == "" {
-		c.sb.writeLine("  No TLS certificate — this server is running over plain HTTP on the local network.")
-		return
-	}
-	c.sb.writeLine("  %sTLS certificate SHA-256 fingerprint:%s", cBold, cReset)
-	c.sb.writeLine("  %s", fp)
-	c.sb.writeLine("  %sYour phone will warn that this certificate is untrusted; it is self-signed.%s", cDim, cReset)
-	c.sb.writeLine("  %sCompare the fingerprint above with the one the warning shows before accepting.%s", cDim, cReset)
-}
-
 func consoleUpdate(_ context.Context, c *console) {
 	checkForUpdateNow(c.sb, c.hub, c.installMethod, c.updateLedger)
-}
-
-func consoleMode(ctx context.Context, c *console) {
-	st := c.remoteCtl.State()
-	cur := 1
-	if st.Enabled {
-		cur = 2
-	}
-	c.sb.writeLine("  [1] Wi-Fi only   [2] Remote access   (currently %d)", cur)
-	c.sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
-	typed, ok := c.in.readLine()
-	if !ok {
-		return
-	}
-
-	want, ok := parseModeChoice(typed)
-	if !ok {
-		c.sb.writeLine("  Left unchanged")
-		return
-	}
-	if want == st.Enabled {
-		c.sb.writeLine("  Already in that mode")
-		return
-	}
-
-	// Written to disk before the listener moves, so a crash in between leaves
-	// the config saying what the user asked for rather than what the process
-	// happened to be doing.
-	c.cfg.RemoteAccess = &want
-	if err := config.Save(c.cfg); err != nil {
-		c.sb.writeLine("  %s[NET]%s Could not save the setting: %v", cRed, cReset, err)
-		return
-	}
-
-	next := c.remoteCtl.Disable()
-	if want {
-		next = c.remoteCtl.Enable(ctx)
-	}
-	applyRemoteState(c.sb, c.hub, c.srv, next)
-	c.sb.writeLine("  %s[NET]%s Connection mode: %s", cGreen, cReset, connectionModeName(want))
 }
 
 func consoleLang(_ context.Context, c *console) {
@@ -1618,7 +1289,7 @@ func consoleLang(_ context.Context, c *console) {
 func consoleHelp(_ context.Context, c *console) {
 	// Every one of them, because this is the list the footer's shorter one
 	// points at.
-	c.sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, cert, mode, lang, update, rotate-key, help")
+	c.sb.writeLine("  Commands: arm, disarm, status, stop, test, trigger <sensor>, history, urls, qr <n>, lang, update, rotate-key, help")
 	// Said out loud because the keys are this program's own now: on a dashboard
 	// it reads the keyboard itself, and nothing about the row being typed on
 	// suggests that the last command is one press away.

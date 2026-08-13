@@ -87,7 +87,6 @@ Files:
     events.jsonl      Security event history, size-rotated
     leavesafe.log     Application log, size-rotated
     state.json        Whether the machine was armed when this last stopped
-    tls/              Self-signed certificate used for remote access
 
 Report bugs at %s
 `, versionLine(), config.ConfigDir(), issuesURL)

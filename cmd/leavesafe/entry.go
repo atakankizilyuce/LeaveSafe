@@ -5,7 +5,7 @@
 // system calls, it ends by serving until the program is killed, and a test that
 // called it would never return to assert anything. Every decision it makes was
 // moved out to somewhere that can be — planTerminal, loadConfig,
-// chooseConnectionMode, startApp — so what is left here is the wiring between
+// ensureLanguageChoice, startApp — so what is left here is the wiring between
 // them, and that wiring is what an e2e run exercises by starting the real
 // binary.
 //
@@ -55,7 +55,7 @@ func main() {
 	}
 
 	cfg := loadConfig()
-	chooseConnectionMode(cfg, *headless)
+	ensureLanguageChoice(cfg, *headless)
 
 	a, err := startApp(appOptions{
 		cfg:      cfg,
