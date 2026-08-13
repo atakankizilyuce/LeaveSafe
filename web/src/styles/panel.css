@@ -131,54 +131,6 @@
     font-size: 0.85rem;
 }
 
-/* The certificate the phone is actually talking to. Quiet when it matches the
-   scanned code — there is nothing to decide — and marked when it does not, so
-   the value sits next to the browser warning it has to be compared against. */
-.pair-cert {
-    margin-top: 22px;
-    padding: 12px 14px;
-    border: 1px solid var(--edge);
-    border-radius: var(--radius-sm);
-    text-align: left;
-}
-
-.pair-cert[data-verdict='match'] {
-    border-color: color-mix(in srgb, var(--ok) 40%, var(--edge));
-}
-
-.pair-cert[data-verdict='unverified'] {
-    border-color: color-mix(in srgb, var(--warn) 45%, var(--edge));
-}
-
-.pair-cert-head {
-    color: var(--quiet);
-    font-size: 0.68rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-}
-
-.pair-cert-fp {
-    margin-top: 6px;
-    color: var(--text);
-    font-size: 0.82rem;
-    letter-spacing: 0.04em;
-    word-break: break-all;
-}
-
-.pair-cert-hint {
-    margin-top: 10px;
-    color: var(--quiet);
-    font-size: 0.76rem;
-    line-height: 1.5;
-    letter-spacing: normal;
-    text-transform: none;
-}
-
-.pair-cert-hint code {
-    font-family: var(--mono);
-    color: var(--text);
-}
-
 /*
  * Pairing happens in the standby room, whose accent is deliberately grey —
  * nothing is being watched, and the page says so. The one action on this

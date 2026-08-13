@@ -93,45 +93,6 @@ export interface UpdatePayload {
     command?: string;
 }
 
-/**
- * What remote access is actually doing, as opposed to `remote_access`, which is
- * what was asked for.
- *
- * The two differ whenever something went wrong, and the difference is the only
- * thing that tells a router which refused a port mapping apart from an ISP that
- * cannot offer one at all — two problems needing entirely different responses.
- */
-export interface RemoteState {
-    enabled: boolean;
-    /**
-     * True between the laptop's internet-facing listener coming up and the
-     * router and the internet having answered how reachable it is.
-     *
-     * That answer takes the better part of a minute on a network with no UPnP
-     * gateway, and "no public address" during it is a wrong answer rather than
-     * an early one.
-     */
-    probing?: boolean;
-    public_url?: string;
-    cert_fp?: string;
-    upnp?: 'ok' | 'failed' | 'cgnat';
-    manual_port?: number;
-    /**
-     * What is known about whether a connection from outside actually arrives —
-     * as opposed to whether one was arranged for.
-     *
-     * `verified` is the only one that is evidence: something opened a
-     * connection to the public address and the laptop's own certificate
-     * answered it. `unproven` means the check did not complete, which is not
-     * the same as unreachable — plenty of routers refuse to let a machine
-     * inside reach its own public address, and a phone on mobile data takes a
-     * different path entirely. `blocked` means something on the path makes it
-     * impossible and the something was identified.
-     */
-    reach?: 'verified' | 'unproven' | 'blocked';
-    reason?: string;
-}
-
 /** Somewhere the laptop can reach this phone while it is not connected. */
 export interface PushSub {
     endpoint: string;
@@ -152,9 +113,6 @@ export interface AppConfig {
     update_check: boolean;
     update_channel?: string;
     update_check_hours?: number;
-    remote_access: boolean;
-    remote_port: number;
-    remote_state?: RemoteState;
     alarm: AlarmConfig;
     pin_protection: { enabled: boolean; has_pin?: boolean; pin?: string };
     location: LocationConfig;
@@ -176,8 +134,6 @@ export interface ServerMessage {
     config?: AppConfig;
     location?: LocationPayload;
     update?: UpdatePayload;
-    /** SHA-256 fingerprint of the server's TLS certificate, sent with `hello`. */
-    cert_fp?: string;
     /**
      * The public half of the key the laptop signs push messages with, sent with
      * `auth_ok`. Without it this phone cannot subscribe to anything.

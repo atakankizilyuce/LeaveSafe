@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +12,6 @@ import (
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/monitor"
-	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/ws"
 )
 
@@ -387,7 +384,7 @@ func TestConsoleHistoryWithNoLogFileSaysItCannotBeRead(t *testing.T) {
 }
 
 func TestConsoleQRRejectsSomethingThatIsNotANumber(t *testing.T) {
-	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, "", "")
+	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, "")
 
 	out := consoleOutput(t, "qr banana\n", consoleDeps{hub: testHub(t), sb: sb})
 
@@ -397,7 +394,7 @@ func TestConsoleQRRejectsSomethingThatIsNotANumber(t *testing.T) {
 }
 
 func TestConsoleQRSaysWhenThereIsNoSuchAddress(t *testing.T) {
-	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, "", "")
+	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, "")
 
 	out := consoleOutput(t, "qr 9\n", consoleDeps{hub: testHub(t), sb: sb})
 
@@ -420,8 +417,9 @@ func terminalDashboard(t *testing.T, urls []string) (*statusBar, *syncBuffer) {
 		sensorMgr: monitor.NewManager(),
 		key:       testKey,
 		rawKey:    testRawKey,
+		urls:      urls,
+		qrCodes:   renderQRCodes(urls, testRawKey),
 	}
-	sb.setURLs(urls)
 	// The layout is settled once the codes are in, because that is what its
 	// shape is worked out from. Without this drawQR has a box of no height and
 	// draws nothing, and the selection is never read back.
@@ -431,11 +429,11 @@ func terminalDashboard(t *testing.T, urls []string) (*statusBar, *syncBuffer) {
 
 func TestConsoleQRNamesTheAddressItIsNowShowing(t *testing.T) {
 	const url = "http://192.168.1.10:8080"
-	sb, screen := terminalDashboard(t, []string{url, "https://198.51.100.4:9443"})
+	sb, screen := terminalDashboard(t, []string{url, "http://198.51.100.4:8080"})
 
 	runConsole(context.Background(), strings.NewReader("qr 2\n"), consoleDeps{hub: sb.hub, sb: sb})
 
-	if !strings.Contains(screen.String(), "Now showing https://198.51.100.4:9443") {
+	if !strings.Contains(screen.String(), "Now showing http://198.51.100.4:8080") {
 		t.Fatalf("qr did not name what it switched to; screen was:\n%s", screen.String())
 	}
 	// The number the user typed has to be the one the dashboard is now drawing,
@@ -449,11 +447,11 @@ func TestConsoleQRNamesTheAddressItIsNowShowing(t *testing.T) {
 // of them is on screen right now. Without the marker the user has no way to tell
 // whether the code they are looking at is the one they want.
 func TestConsoleUrlsMarksTheOneTheQRCodeIsShowing(t *testing.T) {
-	sb, screen := terminalDashboard(t, []string{"http://192.168.1.10:8080", "https://198.51.100.4:9443"})
+	sb, screen := terminalDashboard(t, []string{"http://192.168.1.10:8080", "http://198.51.100.4:8080"})
 
 	runConsole(context.Background(), strings.NewReader("qr 2\nurls\n"), consoleDeps{hub: sb.hub, sb: sb})
 
-	if !strings.Contains(screen.String(), "[2]* https://198.51.100.4:9443") {
+	if !strings.Contains(screen.String(), "[2]* http://198.51.100.4:8080") {
 		t.Errorf("urls did not mark the address on screen; screen was:\n%s", screen.String())
 	}
 }
@@ -473,7 +471,7 @@ func TestConsoleRotateKeyReportsAStoredKeyItCouldNotUpdate(t *testing.T) {
 		t.Fatalf("write the blocking file: %v", err)
 	}
 	keyPath := filepath.Join(blocked, "pairing.key")
-	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, "", keyPath)
+	sb := dashboardWith([]string{"http://192.168.1.10:8080"}, keyPath)
 
 	out := consoleOutput(t, "rotate-key\n", consoleDeps{
 		hub:     testHub(t),
@@ -508,185 +506,7 @@ func TestConsoleUpdateSaysWhenCheckingIsSwitchedOff(t *testing.T) {
 	}
 }
 
-// ---- the two commands that ask a follow-up question ----------------------
-
-// modeDeps is a console wired for the connection-mode command: a real listening
-// server for the address list, and a controller whose certificate step fails so
-// that enabling remote access reports a reason instead of reaching a router.
-func modeDeps(t *testing.T, cfg *config.Config) consoleDeps {
-	t.Helper()
-
-	srv := testServer(t)
-	ctl := remote.NewController(srv, config.ConfigDir(), 0, remote.Deps{
-		Cert: func(string) (tls.Certificate, string, error) {
-			return tls.Certificate{}, "", errors.New("no certificate on a test machine")
-		},
-		OpenPort: func(int) (remote.PortMapping, error) {
-			return nil, errors.New("no router here")
-		},
-		PublicIP: func() (string, error) { return "", errors.New("offline") },
-	})
-	return consoleDeps{
-		hub:       testHub(t),
-		sb:        newHeadlessStatusBar(nil, nil, testKey, testRawKey, srv.URLs(), "", ""),
-		srv:       srv,
-		remoteCtl: ctl,
-		cfg:       cfg,
-	}
-}
-
-// standingListener is a remote listener that always comes up, so a test can put
-// the controller in the state it reaches after remote access is genuinely
-// running — which is the only way to see what the console says to someone who is
-// already in that mode.
-type standingListener struct{ port int }
-
-func (l standingListener) StartRemote(tls.Certificate, string, int) (int, error) { return l.port, nil }
-func (l standingListener) StopRemote()                                           {}
-
-// enabledModeDeps is modeDeps with remote access already up.
-//
-// It waits for the reachability probe to finish before handing the console over.
-// That probe runs on its own goroutine and logs what it found, and the console
-// tests read the log — so letting it settle first is the difference between a
-// deterministic test and one that fails on a busy machine.
-func enabledModeDeps(t *testing.T, cfg *config.Config) consoleDeps {
-	t.Helper()
-
-	srv := testServer(t)
-	ctl := remote.NewController(standingListener{port: 9443}, config.ConfigDir(), 9443, remote.Deps{
-		Cert: func(string) (tls.Certificate, string, error) {
-			return tls.Certificate{}, "AA:BB:CC:DD", nil
-		},
-		OpenPort: func(int) (remote.PortMapping, error) {
-			return nil, errors.New("no router here")
-		},
-		PublicIP: func() (string, error) { return "", errors.New("offline") },
-	})
-	ctl.Enable(context.Background())
-
-	deadline := time.Now().Add(5 * time.Second)
-	for ctl.State().Probing {
-		if time.Now().After(deadline) {
-			t.Fatal("the reachability probe never finished")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if !ctl.State().Enabled {
-		t.Fatal("remote access did not come up, so there is no enabled state to test against")
-	}
-
-	return consoleDeps{
-		hub:       testHub(t),
-		sb:        newHeadlessStatusBar(nil, nil, testKey, testRawKey, srv.URLs(), "", ""),
-		srv:       srv,
-		remoteCtl: ctl,
-		cfg:       cfg,
-	}
-}
-
-// The question has to open on the mode the machine is actually in. Offering
-// "(currently 1)" to someone whose laptop is reachable from the internet would
-// have them type 2 to "turn it on" and be told it is already on.
-func TestConsoleModeOpensOnTheModeInForce(t *testing.T) {
-	tempConfigDir(t)
-
-	out := consoleOutput(t, "mode\n\n", enabledModeDeps(t, config.Default()))
-
-	if !strings.Contains(out, "(currently 2)") {
-		t.Errorf("mode did not open on remote access; output was:\n%s", out)
-	}
-}
-
-// Switching back off takes the listener down without bringing anything up, which
-// is the one path through this command that never touches Enable.
-func TestConsoleModeSwitchesRemoteAccessBackOff(t *testing.T) {
-	tempConfigDir(t)
-	cfg := config.Default()
-
-	out := consoleOutput(t, "mode\n1\n", enabledModeDeps(t, cfg))
-
-	if !strings.Contains(out, "Connection mode: "+connectionModeName(false)) {
-		t.Fatalf("mode did not report the switch; output was:\n%s", out)
-	}
-	if cfg.RemoteAccess == nil || *cfg.RemoteAccess {
-		t.Error("the config still records remote access as wanted")
-	}
-}
-
-func TestConsoleModeLeavesItAloneOnAnEmptyAnswer(t *testing.T) {
-	tempConfigDir(t)
-
-	out := consoleOutput(t, "mode\n\n", modeDeps(t, config.Default()))
-
-	if !strings.Contains(out, "[1] Wi-Fi only") {
-		t.Fatalf("mode did not offer the choice; output was:\n%s", out)
-	}
-	if !strings.Contains(out, "Left unchanged") {
-		t.Errorf("an empty answer changed something; output was:\n%s", out)
-	}
-}
-
-func TestConsoleModeSaysWhenItIsAlreadyInThatMode(t *testing.T) {
-	tempConfigDir(t)
-
-	out := consoleOutput(t, "mode\n1\n", modeDeps(t, config.Default()))
-
-	if !strings.Contains(out, "Already in that mode") {
-		t.Errorf("mode did not notice it was being asked for what it already does; output was:\n%s", out)
-	}
-}
-
-func TestConsoleModeEndsQuietlyWhenTheInputStops(t *testing.T) {
-	tempConfigDir(t)
-
-	out := consoleOutput(t, "mode\n", modeDeps(t, config.Default()))
-
-	if !strings.Contains(out, "Type 1 or 2") {
-		t.Fatalf("mode did not ask; output was:\n%s", out)
-	}
-	if strings.Contains(out, "Connection mode:") {
-		t.Errorf("mode acted on an answer nobody gave; output was:\n%s", out)
-	}
-}
-
-// The setting is written to disk before the listener moves, so that a crash in
-// between leaves the config saying what the user asked for. A write that fails
-// therefore has to stop the whole thing rather than move the listener anyway.
-func TestConsoleModeStopsWhenTheSettingCannotBeSaved(t *testing.T) {
-	cfg := config.Default()
-	deps := modeDeps(t, cfg)
-	unwritableConfigDir(t)
-
-	out := consoleOutput(t, "mode\n2\n", deps)
-
-	if !strings.Contains(out, "Could not save the setting") {
-		t.Fatalf("mode did not report the failed save; output was:\n%s", out)
-	}
-	if strings.Contains(out, "Connection mode:") {
-		t.Error("the listener was moved after the setting could not be written down")
-	}
-}
-
-// Switching on with no certificate available: the mode is recorded and the
-// reason it is not actually running reaches the dashboard, rather than the user
-// being told remote access is on when nothing is listening.
-func TestConsoleModeSwitchingOnReportsWhatItCouldNotDo(t *testing.T) {
-	tempConfigDir(t)
-	cfg := config.Default()
-
-	out := consoleOutput(t, "mode\n2\n", modeDeps(t, cfg))
-
-	if !strings.Contains(out, "Connection mode: "+connectionModeName(true)) {
-		t.Fatalf("mode did not report the switch; output was:\n%s", out)
-	}
-	if !strings.Contains(out, "Could not create the TLS certificate") {
-		t.Errorf("the reason remote access is not running never reached the user; output was:\n%s", out)
-	}
-	if cfg.RemoteAccess == nil || !*cfg.RemoteAccess {
-		t.Error("the config does not record what the user asked for")
-	}
-}
+// ---- the command that asks a follow-up question ---------------------------
 
 func TestConsoleLangLeavesItAloneOnAnEmptyAnswer(t *testing.T) {
 	tempConfigDir(t)

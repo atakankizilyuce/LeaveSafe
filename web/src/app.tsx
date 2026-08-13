@@ -8,7 +8,6 @@ import { PinDialog } from './components/PinDialog';
 import { Position } from './components/Position';
 import { SettingsSheet } from './components/SettingsSheet';
 import { StateHeader } from './components/StateHeader';
-import { checkFingerprint, normalizeFingerprint } from './lib/fingerprint';
 import { captureAnchor } from './lib/geo';
 import { type SensorState, type ServerMessage, SYSTEM_NOTICE } from './lib/protocol';
 import { offerPushSubscription } from './lib/pushalerts';
@@ -21,7 +20,6 @@ import {
     armedSince,
     closeTransport,
     config,
-    fingerprintVerdict,
     hasToken,
     link,
     loadLog,
@@ -33,7 +31,6 @@ import {
     screen,
     send,
     sensors,
-    serverFingerprint,
     serverVersion,
     setToken,
     setTransport,
@@ -48,42 +45,18 @@ import { connectBluetooth, connectWebSocket } from './lib/transport';
 const PING_MS = 15000;
 const RECONNECT_MS = 3000;
 
-/**
- * How long to wait for the server's greeting before giving up.
- *
- * Only applies when the QR code named a certificate to check. Until the
- * greeting arrives the pairing key is held back, so a server that never sends
- * one leaves the phone waiting rather than talking — which is the safe way
- * round, but it has to end in a message instead of a spinner.
- */
-const HELLO_TIMEOUT_MS = 6000;
-
-/** A SHA-256 fingerprint is 32 bytes, so 64 hex characters once separators go. */
-const SHA256_HEX_LENGTH = 64;
-
 let pingTimer: number | null = null;
 
-/**
- * The fingerprint the QR code named, if it named one. Null for a key typed by
- * hand and for the plain-HTTP local path, where there is no certificate to
- * check and nothing is held back.
- */
-let expectedFingerprint: string | null = null;
-
-/** The key waiting on the fingerprint check, held rather than sent. */
+/** The key waiting on the socket to open, held rather than sent. */
 let pendingKey: string | null = null;
 
 /** The key the current connection is pairing with, kept so it can be stored. */
 let activeKey: string | null = null;
 
-let helloTimer: number | null = null;
-
 /**
  * Whether the pairing key has actually gone out on *this* connection.
  *
- * Without it the certificate check guarded nothing that mattered. It lives in
- * the `hello` branch, so a server that simply never greets skips it entirely —
- * and every other branch acted on whatever arrived. An `auth_ok` sent by
+ * Without it every branch acted on whatever arrived. An `auth_ok` sent by
  * something that was never asked anything flipped the page to the panel, and a
  * `pin_required` behind it put the disarm PIN dialog on screen, so the digits
  * guarding the alarm were typed straight into whatever had answered.
@@ -100,13 +73,6 @@ let authSent = false;
  * any other stranger.
  */
 let sessionLive = false;
-
-function clearHelloTimer() {
-    if (helloTimer !== null) {
-        window.clearTimeout(helloTimer);
-        helloTimer = null;
-    }
-}
 
 /**
  * Stops the heartbeat when the socket it was beating on goes away.
@@ -142,9 +108,9 @@ function afterPairing() {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').catch((err: Error) => {
             // Browsers refuse to register a worker on an origin with a
-            // certificate error, which is exactly what the laptop's
-            // self-signed certificate produces. Swallowing this made a
-            // notification path that never ran look like one that did.
+            // certificate error, and this page is served over plain HTTP on
+            // the local network. Swallowing this made a notification path that
+            // never ran look like one that did.
             console.warn('LeaveSafe: notifications are unavailable —', err.message);
         });
     }
@@ -168,15 +134,15 @@ function sendPendingKey() {
  * Whether this message may be acted on at all.
  *
  * Nothing but the handshake is acted on until this connection has proved
- * itself. The three that get through are the handshake: the greeting that
- * carries the certificate, the refusal that answers a key we sent, and the
- * acceptance — and that last one only if there was a key to accept.
+ * itself. The three that get through are the handshake: the greeting the laptop
+ * opens with, the refusal that answers a key we sent, and the acceptance — and
+ * that last one only if there was a key to accept.
  *
  * Everything past this point assumes a laptop on the other end. Before this
  * guard existed, anything that could answer the phone's socket could open the
  * panel, sound a spoofed alarm on the lock screen, and raise the PIN dialog to
  * collect the code that guards disarming — all without knowing the pairing key,
- * and without ever sending the greeting the fingerprint check reads.
+ * and without ever sending the greeting the handshake check reads.
  *
  * A refusal is only a refusal of something asked. Acted on unbidden, it was a
  * way for anything that could answer this socket to make the phone throw its
@@ -188,30 +154,6 @@ function sendPendingKey() {
 function trusted(msg: ServerMessage): boolean {
     if ((msg.type === 'auth_ok' || msg.type === 'auth_fail') && !authSent) return false;
     return msg.type === 'hello' || msg.type === 'auth_fail' || msg.type === 'auth_ok' || sessionLive;
-}
-
-function onHello(msg: ServerMessage) {
-    clearHelloTimer();
-    serverFingerprint.value = msg.cert_fp ?? null;
-
-    const verdict = checkFingerprint(expectedFingerprint, msg.cert_fp);
-    fingerprintVerdict.value = verdict;
-
-    if (verdict === 'mismatch') {
-        // The code was printed for a different certificate. Whatever is on the
-        // other end of this socket, it is not the laptop the user scanned — so
-        // it does not get the key.
-        pendingKey = null;
-        pairing.value = false;
-        pairError.value =
-            'This is not the laptop your code came from: it presented a different ' +
-            'certificate. The pairing key was not sent. Scan the code again from the ' +
-            'laptop itself.';
-        closeTransport();
-        return;
-    }
-
-    sendPendingKey();
 }
 
 /**
@@ -243,7 +185,7 @@ function onAuthOk(msg: ServerMessage) {
     sensors.value = msg.sensors ?? [];
     applyArmedState(msg);
 
-    if (activeKey) saveSession(activeKey, expectedFingerprint);
+    if (activeKey) saveSession(activeKey);
     pairing.value = false;
     pairError.value = null;
     screen.value = 'panel';
@@ -339,7 +281,9 @@ function handle(msg: ServerMessage) {
 
     switch (msg.type) {
         case 'hello':
-            onHello(msg);
+            // Nothing to act on: it names the version, which auth_ok carries
+            // too. It is let through trusted() because it is the laptop's
+            // opening word and refusing it would refuse the handshake.
             break;
 
         case 'auth_ok':
@@ -408,34 +352,8 @@ function handle(msg: ServerMessage) {
 function pairHandlers(key: string, over: 'websocket' | 'bluetooth') {
     return {
         onMessage: handle,
-        onOpen: () => {
-            // With a fingerprint to check, the key waits for the server to say
-            // which certificate it is serving. Sending it first and checking
-            // afterwards would mean the check protects nothing.
-            if (!expectedFingerprint) {
-                sendPendingKey();
-                return;
-            }
-            helloTimer = window.setTimeout(() => {
-                helloTimer = null;
-                // Measured against this connection, not against holding a token
-                // from an earlier one. A forged auth_ok used to set a token and
-                // so cancel this bail-out, which is the wrong way round: a
-                // server that never greets is precisely what this timer is here
-                // to give up on.
-                if (!sessionLive) {
-                    pendingKey = null;
-                    pairing.value = false;
-                    pairError.value =
-                        'The laptop did not identify itself, so the pairing key was not sent. ' +
-                        'It may be running an older version — rescan the code from a laptop ' +
-                        'running this one.';
-                    closeTransport();
-                }
-            }, HELLO_TIMEOUT_MS);
-        },
+        onOpen: sendPendingKey,
         onClose: () => {
-            clearHelloTimer();
             stopPinging();
             // A dialog the laptop asked for must not outlive the laptop. Left
             // standing across a reconnect, the digits typed into it afterwards
@@ -453,7 +371,6 @@ function pairHandlers(key: string, over: 'websocket' | 'bluetooth') {
             }
         },
         onError: (reason: string) => {
-            clearHelloTimer();
             pendingKey = null;
             pairing.value = false;
             if (!hasToken()) pairError.value = reason;
@@ -544,38 +461,21 @@ export function App() {
     useEffect(() => {
         loadLog();
 
-        // A scanned QR code lands here with the key in the fragment, and — when
-        // the laptop is serving HTTPS — the fingerprint of the certificate it
-        // is serving. The fragment is where they belong: the browser never
-        // sends it to the server, so the key is ours to hold back until the
-        // certificate has been checked.
+        // A scanned QR code lands here with the key in the fragment. The
+        // fragment is where it belongs: the browser never sends it to the
+        // server, so the key is ours to hold back until the laptop has said
+        // what it is.
         //
         // The query string is still read, because a code printed by an older
-        // build puts them there and refusing it would only strand the user —
+        // build puts it there and refusing it would only strand the user —
         // that request already carried the key, and declining to pair now does
         // not call it back. Fresh codes use the fragment.
         const params = new URLSearchParams(
             window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.search,
         );
         const fromQr = params.get('key');
-        const fp = params.get('fp');
-        // A fingerprint that does not survive normalisation is not a reason to
-        // carry on without one. Left as an empty string it reads as "nothing to
-        // check" further down, and the key would go out to a server nobody
-        // verified — a damaged scan silently downgrading the very check it was
-        // there to perform. Say so and let the user rescan instead.
-        const fpDamaged = fp !== null && normalizeFingerprint(fp).length !== SHA256_HEX_LENGTH;
-        if (fp && !fpDamaged) expectedFingerprint = normalizeFingerprint(fp);
-        if (fromQr || fp) {
-            window.history.replaceState({}, document.title, '/');
-        }
-        if (fpDamaged) {
-            pairError.value =
-                'That code did not scan cleanly — the certificate fingerprint in it is damaged, ' +
-                'so the pairing key was not sent. Scan the code again from the laptop itself.';
-            return;
-        }
         if (fromQr) {
+            window.history.replaceState({}, document.title, '/');
             setAutoKey(fromQr);
             window.setTimeout(() => pair(fromQr.replace(/\D/g, ''), 'websocket'), 400);
             return;
@@ -586,7 +486,6 @@ export function App() {
         // pairing back up rather than asking for the QR code again.
         const stored = loadSession();
         if (stored) {
-            expectedFingerprint = stored.fingerprint;
             window.setTimeout(() => pair(stored.key, 'websocket'), 100);
         }
     }, []);

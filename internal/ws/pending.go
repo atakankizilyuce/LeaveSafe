@@ -6,8 +6,8 @@ import "sync"
 //
 // The authentication deadline bounds how long one unpaired socket may live; it
 // says nothing about how many there may be. Only paired clients count against
-// max_sessions, so without a second limit anyone who can reach the port — with
-// remote access on, that is the internet — can hold sockets open in bulk,
+// max_sessions, so without a second limit anyone who can reach the port can
+// hold sockets open in bulk,
 // re-opening each as its deadline expires, and spend the machine's file
 // descriptors while the owner's phone gets nothing.
 //

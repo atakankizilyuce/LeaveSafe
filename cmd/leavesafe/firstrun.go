@@ -12,9 +12,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/config"
 )
 
-// The first screen anybody sees: which language to be asked questions in, and
-// then whether the phone reaches this machine over the local network or from
-// anywhere.
+// The first screen anybody sees: which language to be asked questions in.
 //
 // It is drawn rather than printed. The dashboard that follows is a set of boxed
 // panels, and a run that opens with loose lines and then snaps into a framed
@@ -33,26 +31,12 @@ const promptWidth = 64
 
 // language holds the wording for one language. There are two of these, and the
 // wording is small enough and stable enough that a table beats a translation
-// framework — the alternative is a dependency and a file format for eleven
-// strings.
+// framework — the alternative is a dependency and a file format for two strings.
 type language struct {
 	code string
 
 	langTitle  string
 	langChoice string
-
-	connTitle     string
-	wifiLabel     string
-	wifiDetail    string
-	wifiDetail2   string
-	remoteLabel   string
-	remoteDetail  string
-	remoteDetail2 string
-	currentMark   string
-	keepHint      string
-	choice        string
-	wifiChosen    string
-	remoteAsked   string
 }
 
 var turkish = language{
@@ -60,19 +44,6 @@ var turkish = language{
 
 	langTitle:  "DİL · LANGUAGE",
 	langChoice: "Seçiminiz / Your choice",
-
-	connTitle:     "BAĞLANTI",
-	wifiLabel:     "Wi-Fi",
-	wifiDetail:    "Telefon bu laptopla aynı ağda olur.",
-	wifiDetail2:   "Kurulum gerektirmez, her zaman çalışır.",
-	remoteLabel:   "Mobil veri",
-	remoteDetail:  "Telefon başka bir ağdan da bağlanır.",
-	remoteDetail2: "Router'ın port yönlendirmesi gerekir.",
-	currentMark:   "şu an bu",
-	keepHint:      "Enter mevcut ayarı korur",
-	choice:        "Seçiminiz",
-	wifiChosen:    "Wi-Fi seçildi — telefon bu ağdan bağlanacak",
-	remoteAsked:   "Mobil veri seçildi — dışarıdan erişim deneniyor",
 }
 
 var english = language{
@@ -80,19 +51,6 @@ var english = language{
 
 	langTitle:  "LANGUAGE · DİL",
 	langChoice: "Your choice / Seçiminiz",
-
-	connTitle:     "CONNECTION",
-	wifiLabel:     "Wi-Fi",
-	wifiDetail:    "Your phone is on the same network as this laptop.",
-	wifiDetail2:   "Nothing to set up, and it always works.",
-	remoteLabel:   "Mobile data",
-	remoteDetail:  "Your phone can reach it from another network too.",
-	remoteDetail2: "Needs port forwarding on your router.",
-	currentMark:   "current",
-	keepHint:      "Enter keeps the current setting",
-	choice:        "Your choice",
-	wifiChosen:    "Wi-Fi selected — your phone connects on this network",
-	remoteAsked:   "Mobile data selected — trying to reach it from outside",
 }
 
 // languageByCode returns the wording for a stored code, falling back to English
@@ -134,17 +92,6 @@ func promptLine(content string) string {
 	return "  │" + content + strings.Repeat(" ", pad) + "│"
 }
 
-// promptSplit puts left at the start of the row and right against the closing
-// border, which is where the "current" marker goes: reading down the numbers on
-// the left and the marker on the right is one glance rather than two.
-func promptSplit(left, right string) string {
-	gap := promptWidth - 2 - visLen(left) - visLen(right)
-	if gap < 1 {
-		return promptLine(left)
-	}
-	return "  │" + left + strings.Repeat(" ", gap) + right + "│"
-}
-
 // promptHeading draws the framed title every question opens with.
 func promptHeading(out io.Writer, title string) {
 	fmt.Fprintln(out)
@@ -154,16 +101,10 @@ func promptHeading(out io.Writer, title string) {
 	fmt.Fprintln(out, promptLine(""))
 }
 
-// promptOption draws one numbered choice: the number and its label on the first
-// row, the marker on the right when this is what the config already holds, and
-// the explanation dimmed underneath.
-func promptOption(out io.Writer, n int, label, mark string, detail ...string) {
-	head := fmt.Sprintf("    %s[%d]%s  %s", cBold, n, cReset, label)
-	if mark == "" {
-		fmt.Fprintln(out, promptLine(head))
-	} else {
-		fmt.Fprintln(out, promptSplit(head, fmt.Sprintf("%s← %s%s  ", cGreen, mark, cReset)))
-	}
+// promptOption draws one numbered choice: the number and its label on one row,
+// and the explanation dimmed underneath.
+func promptOption(out io.Writer, n int, label string, detail ...string) {
+	fmt.Fprintln(out, promptLine(fmt.Sprintf("    %s[%d]%s  %s", cBold, n, cReset, label)))
 	for _, line := range detail {
 		if line == "" {
 			continue
@@ -191,11 +132,6 @@ func promptClose(in *bufio.Scanner, out io.Writer, hint, question, def string) (
 	return strings.TrimSpace(in.Text()), true
 }
 
-// promptResult prints the confirmation line under a question.
-func promptResult(out io.Writer, text string) {
-	fmt.Fprintf(out, "\n    %s✓ %s%s\n", cGreen, text, cReset)
-}
-
 // ── The questions ────────────────────────────────────────────────────────
 
 // askLanguage puts the language question on screen and returns the chosen code.
@@ -208,8 +144,8 @@ func askLanguage(in io.Reader, out io.Writer) string {
 	scanner := bufio.NewScanner(in)
 
 	promptHeading(out, turkish.langTitle)
-	promptOption(out, 1, "Türkçe", "")
-	promptOption(out, 2, "English", "")
+	promptOption(out, 1, "Türkçe")
+	promptOption(out, 2, "English")
 
 	typed, ok := promptClose(scanner, out, "", turkish.langChoice, "1")
 	if !ok {
@@ -255,43 +191,5 @@ func parseLanguageChoice(typed string) (code string, ok bool) {
 		return "en", true
 	default:
 		return "", false
-	}
-}
-
-// askConnectionMode prints the connection-mode question and returns the chosen
-// setting. current is what the config holds, and it is the answer to a bare
-// Enter.
-//
-// It takes its reader and writer rather than reaching for os.Stdin so the
-// decision can be tested without a terminal — which matters more than usual
-// here, because getting the default wrong would silently switch off a setting
-// the user had turned on from their phone.
-func askConnectionMode(in io.Reader, out io.Writer, lang language, current bool) bool {
-	scanner := bufio.NewScanner(in)
-
-	def := "1"
-	wifiMark, remoteMark := lang.currentMark, ""
-	if current {
-		def = "2"
-		wifiMark, remoteMark = "", lang.currentMark
-	}
-
-	promptHeading(out, lang.connTitle)
-	promptOption(out, 1, lang.wifiLabel, wifiMark, lang.wifiDetail, lang.wifiDetail2)
-	promptOption(out, 2, lang.remoteLabel, remoteMark, lang.remoteDetail, lang.remoteDetail2)
-
-	typed, ok := promptClose(scanner, out, lang.keepHint, lang.choice, def)
-	if !ok {
-		// No answer at all — a closed or redirected stdin. The saved choice
-		// stands; it is the one thing here that is certainly not a guess.
-		return current
-	}
-	switch typed {
-	case "1":
-		return false
-	case "2":
-		return true
-	default:
-		return current
 	}
 }

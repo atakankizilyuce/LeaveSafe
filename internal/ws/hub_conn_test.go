@@ -60,36 +60,9 @@ func readHello(t *testing.T, ctx context.Context, conn *websocket.Conn) ServerMe
 	return msg
 }
 
-// The greeting is what lets a phone that arrived by QR code check it reached
-// the server the code was printed for, before it hands over the pairing key.
-func TestHelloCarriesTheCertificateFingerprint(t *testing.T) {
-	const fingerprint = "AA:BB:CC:DD"
-
-	hub := testHub(t)
-	hub.SetCertFingerprint(fingerprint)
-	srv := hubServer(t, hub)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL(srv), nil) //nolint:bodyclose // response body is not used
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close(websocket.StatusNormalClosure, "")
-
-	hello := readHello(t, ctx, conn)
-	if hello.CertFP != fingerprint {
-		t.Errorf("hello carried fingerprint %q, want %q", hello.CertFP, fingerprint)
-	}
-	if hello.Version != "test" {
-		t.Errorf("hello carried version %q, want %q", hello.Version, "test")
-	}
-}
-
-// On the plain-HTTP local path there is no certificate, and claiming a
-// fingerprint that does not exist would give the phone something meaningless to
-// compare against.
-func TestHelloOmitsTheFingerprintWithoutTLS(t *testing.T) {
+// The greeting names the version, which is what a phone shows before it has
+// paired and the only thing it is told at that point.
+func TestHelloCarriesTheVersion(t *testing.T) {
 	srv := hubServer(t, testHub(t))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -100,8 +73,8 @@ func TestHelloOmitsTheFingerprintWithoutTLS(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	if hello := readHello(t, ctx, conn); hello.CertFP != "" {
-		t.Errorf("hello carried fingerprint %q on a plain-HTTP server", hello.CertFP)
+	if hello := readHello(t, ctx, conn); hello.Version != "test" {
+		t.Errorf("hello carried version %q, want %q", hello.Version, "test")
 	}
 }
 

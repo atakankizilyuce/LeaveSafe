@@ -27,8 +27,8 @@ func TestAPhoneCanReconnectPastItsShare(t *testing.T) {
 
 // The per-address table is also the thing that must not grow without bound. A
 // stream of connections from changing sources leaves an entry behind for every
-// one of them when release does not name the same peer acquire did — which,
-// with remote access on, is memory an unauthenticated stranger gets to spend.
+// one of them when release does not name the same peer acquire did — which is
+// memory an unauthenticated stranger gets to spend.
 func TestReleasingLeavesNoAddressBehind(t *testing.T) {
 	hub := testHub(t)
 

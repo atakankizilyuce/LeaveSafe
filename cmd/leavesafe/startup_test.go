@@ -17,7 +17,6 @@ import (
 	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
-	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/state"
 	"github.com/leavesafe/leavesafe/internal/update"
@@ -44,7 +43,6 @@ func startedApp(t *testing.T, prepare func(*config.Config)) *app {
 	cfg.Port = 0
 	off := false
 	cfg.UpdateCheck = &off
-	cfg.RemoteAccess = &off
 	if prepare != nil {
 		prepare(cfg)
 	}
@@ -100,7 +98,6 @@ func TestAHeadlessStartKeepsThePairingKeyAcrossRestarts(t *testing.T) {
 	cfg.Port = 0
 	off := false
 	cfg.UpdateCheck = &off
-	cfg.RemoteAccess = &off
 
 	first, err := startApp(appOptions{cfg: cfg, headless: true, in: strings.NewReader("")})
 	if err != nil {
@@ -149,7 +146,6 @@ func TestStartupReportsARunThatEndedWhileArmed(t *testing.T) {
 	cfg.Port = 0
 	off := false
 	cfg.UpdateCheck = &off
-	cfg.RemoteAccess = &off
 
 	out := captureLog(t, func() {
 		a, err := startApp(appOptions{cfg: cfg, headless: true, in: strings.NewReader("")})
@@ -213,7 +209,6 @@ func TestServeReturnsCleanlyWhenTheProgramShutsItselfDown(t *testing.T) {
 	cfg.Port = 0
 	off := false
 	cfg.UpdateCheck = &off
-	cfg.RemoteAccess = &off
 
 	a, err := startApp(appOptions{cfg: cfg, headless: true, in: strings.NewReader("")})
 	if err != nil {
@@ -281,7 +276,6 @@ func TestAnInteractiveStartDrawsTheDashboardAndTakesTheLog(t *testing.T) {
 	cfg.Port = 0
 	off := false
 	cfg.UpdateCheck = &off
-	cfg.RemoteAccess = &off
 
 	screen, err := os.Create(filepath.Join(t.TempDir(), "screen"))
 	if err != nil {
@@ -331,7 +325,6 @@ func TestAPlainStartPrintsTheCodeWithoutTakingTheTerminal(t *testing.T) {
 	cfg.Port = 0
 	off := false
 	cfg.UpdateCheck = &off
-	cfg.RemoteAccess = &off
 
 	screen, err := os.Create(filepath.Join(t.TempDir(), "screen"))
 	if err != nil {
@@ -416,41 +409,34 @@ func TestAConfigWithNoPinIsLeftAlone(t *testing.T) {
 	}
 }
 
-// A headless start with no stored preference records one rather than asking, and
-// says which mode it settled on — there is no terminal to say it to a person,
-// but the log is what the user reads afterwards.
-func TestAHeadlessStartRecordsAConnectionModeRatherThanAsking(t *testing.T) {
+// A headless start has nobody to answer the language question, and blocking on
+// stdin there would hang a service forever. Every autostart entry this program
+// writes passes -headless, so no unattended start can reach the prompt.
+func TestAHeadlessStartDoesNotAskForALanguage(t *testing.T) {
 	tempConfigDir(t)
 	cfg := config.Default()
-	cfg.RemoteAccess = nil
+	cfg.Language = ""
 
-	out := captureLog(t, func() { chooseConnectionMode(cfg, true) })
+	ensureLanguageChoice(cfg, true)
 
-	if cfg.RemoteAccess == nil || *cfg.RemoteAccess {
-		t.Error("a headless start did not settle on the local network")
-	}
-	if !strings.Contains(out, "no terminal to ask") {
-		t.Errorf("the log does not say why it was not asked; output was:\n%s", out)
-	}
-	saved, err := config.Load()
-	if err != nil {
-		t.Fatalf("reload the config: %v", err)
-	}
-	if saved.RemoteAccess == nil {
-		t.Error("the choice was not written down, so every start would make it again")
+	if cfg.Language != "" {
+		t.Errorf("a headless start settled on language %q rather than leaving it unasked", cfg.Language)
 	}
 }
 
-func TestAHeadlessStartKeepsAStoredConnectionMode(t *testing.T) {
+// Nor is an interactive start asked twice. It is the one question whose right
+// answer does not change, so a stored one stands and stdin is never read —
+// which is also what keeps this test from blocking on a terminal it has not
+// got.
+func TestAnInteractiveStartKeepsAStoredLanguage(t *testing.T) {
 	tempConfigDir(t)
 	cfg := config.Default()
-	on := true
-	cfg.RemoteAccess = &on
+	cfg.Language = "tr"
 
-	chooseConnectionMode(cfg, true)
+	ensureLanguageChoice(cfg, false)
 
-	if cfg.RemoteAccess == nil || !*cfg.RemoteAccess {
-		t.Error("a stored preference for remote access was overwritten")
+	if cfg.Language != "tr" {
+		t.Errorf("the stored language became %q", cfg.Language)
 	}
 }
 
@@ -578,24 +564,6 @@ func TestLoadConfigSaysWhatItHadToCorrect(t *testing.T) {
 	}
 }
 
-// A headless start that cannot write its choice down still has to come up. The
-// choice is remade next time, which costs nothing; refusing to start would cost
-// the monitoring.
-func TestAHeadlessStartCarriesOnWhenItCannotRecordTheMode(t *testing.T) {
-	unwritableConfigDir(t)
-	cfg := config.Default()
-	cfg.RemoteAccess = nil
-
-	out := captureLog(t, func() { chooseConnectionMode(cfg, true) })
-
-	if cfg.RemoteAccess == nil {
-		t.Error("no mode was settled on")
-	}
-	if !strings.Contains(out, "Failed to save config") {
-		t.Errorf("the failed write was silent; output was:\n%s", out)
-	}
-}
-
 // An interactive start generates its key instead, because there is a screen to
 // show it on.
 func TestAnInteractiveStartGeneratesAKeyAndStoresItNowhere(t *testing.T) {
@@ -638,7 +606,6 @@ func TestAStartWithNowhereToWriteStillWatchesTheMachine(t *testing.T) {
 	cfg.Port = 0
 	off := false
 	cfg.UpdateCheck = &off
-	cfg.RemoteAccess = &off
 
 	var a *app
 	out := captureLog(t, func() {
@@ -776,44 +743,6 @@ func TestTheDashboardIsRepaintedWhenAPhoneComesOrGoes(t *testing.T) {
 	// is wired to something that does not panic on a count it did not expect.
 	a.clientsChanged(0, false)
 	a.clientsChanged(2, true)
-}
-
-// Turning remote access off pushes the result the same way turning it on does,
-// so the dashboard and every paired phone agree on what is running.
-func TestTurningRemoteAccessOffPublishesTheResult(t *testing.T) {
-	a := startedApp(t, nil)
-
-	a.setRemoteAccess(t.Context(), false)
-
-	if a.sb.remoteStatus != "" {
-		t.Errorf("remoteStatus = %q, want it empty with remote access off", a.sb.remoteStatus)
-	}
-}
-
-// A reachability answer arriving on its own has to land the same way a change
-// made from the console does — it is the only thing that turns "checking" into
-// an address a phone on another network can use.
-func TestAReachabilityAnswerReachesTheDashboard(t *testing.T) {
-	a := startedApp(t, nil)
-
-	a.publishRemoteState(remote.State{
-		Enabled:   true,
-		UPnP:      remote.UPnPOK,
-		Reach:     remote.ReachVerified,
-		CertFP:    "AA:BB:CC",
-		PublicURL: "https://198.51.100.4:9443",
-	})
-
-	if !strings.Contains(a.sb.remoteStatus, "ACTIVE") {
-		t.Errorf("remoteStatus = %q, want it to report remote access as active", a.sb.remoteStatus)
-	}
-	if got := a.sb.certFingerprint(); got != "AA:BB:CC" {
-		t.Errorf("certFingerprint = %q, want the one the state carried", got)
-	}
-	urls := a.sb.urlList()
-	if len(urls) == 0 || urls[0] != "https://198.51.100.4:9443" {
-		t.Errorf("the public address is not the one the QR code shows: %v", urls)
-	}
 }
 
 // A newer release marks the footer and nothing else. It is not an emergency, and

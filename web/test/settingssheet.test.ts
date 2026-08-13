@@ -37,8 +37,6 @@ function aConfig(overrides: Partial<AppConfig> = {}): AppConfig {
         input_threshold: 3,
         connection_mode: 'local',
         update_check: true,
-        remote_access: false,
-        remote_port: 9444,
         alarm: { escalation_enabled: false },
         pin_protection: { enabled: false },
         location: {
@@ -168,100 +166,6 @@ it('opens the release link in a tab that cannot reach back', () => {
     expect(link?.getAttribute('target')).toBe('_blank');
     expect(link?.getAttribute('rel')).toContain('noopener');
     expect(link?.getAttribute('rel')).toContain('noreferrer');
-});
-
-// ── Whether remote access is actually reachable ──────────────────────────────
-//
-// A user who turns this on and gets nothing has to be able to tell a router that
-// refused the port mapping from an internet provider that cannot offer one at
-// all. The two need entirely different responses — one is a page in the router's
-// admin, the other is nothing the user can do — so saying the wrong one sends
-// someone to spend an evening in a settings page that was never the problem.
-
-/** Opens the sheet with remote access on and the laptop reporting `state`. */
-function remoteState(state: AppConfig['remote_state']) {
-    open(aConfig({ remote_access: true, remote_state: state }));
-}
-
-it('says it is still checking before the answer is in', () => {
-    remoteState({ enabled: true, probing: true });
-
-    expect(host.textContent).toContain('Checking whether it can be reached');
-});
-
-it('names carrier-grade NAT as something nothing on the laptop can fix', () => {
-    remoteState({ enabled: true, upnp: 'cgnat' });
-
-    expect(host.textContent).toContain('carrier-grade NAT');
-    expect(host.textContent).toContain('The local network still works normally.');
-    expect(host.textContent).not.toContain("router's admin page");
-});
-
-it('sends the user to the router when the router is what refused', () => {
-    remoteState({ enabled: true, upnp: 'failed', manual_port: 9444 });
-
-    expect(host.textContent).toContain("router's admin page");
-    expect(host.textContent).toContain('9444');
-    expect(host.textContent).not.toContain('carrier-grade NAT');
-});
-
-// "Reachable at" is a claim. With the mapping refused the address is a
-// destination the user has to make work rather than one that does, and labelling
-// it the same way was the app asserting the opposite of what it had found out.
-it('does not call an address reachable when nothing will carry a connection to it', () => {
-    remoteState({ enabled: true, upnp: 'failed', manual_port: 9444, public_url: 'https://1.2.3.4:9444' });
-
-    expect(host.textContent).toContain('Will be reachable at');
-    expect(host.textContent).not.toContain('Reachable at');
-});
-
-it('calls it reachable once something has been seen to reach it', () => {
-    remoteState({ enabled: true, upnp: 'ok', reach: 'verified', public_url: 'https://1.2.3.4:9444' });
-
-    expect(host.textContent).toContain('Reachable at');
-    expect(host.textContent).toContain('https://1.2.3.4:9444');
-});
-
-// A mapping the router accepted is an agreement, not a delivered packet: the
-// laptop's own firewall can still drop the connection. This used to read
-// "Reachable at" on the strength of the agreement alone.
-it('will not call it reachable on the strength of a port mapping alone', () => {
-    remoteState({ enabled: true, upnp: 'ok', reach: 'unproven', public_url: 'https://1.2.3.4:9444' });
-
-    expect(host.textContent).toContain('Possibly reachable at');
-    expect(host.textContent).toContain('nothing could be confirmed to reach the laptop');
-    // Still offered, because it may well work — the check is the thing that
-    // failed, not necessarily the address.
-    expect(host.textContent).toContain('https://1.2.3.4:9444');
-});
-
-// A second router in front of the one holding the mapping. Unlike carrier-grade
-// NAT this is the user's to fix, so it says which box to go and fix it on.
-it('names the outer router when the mapping stops one hop short', () => {
-    remoteState({
-        enabled: true,
-        upnp: 'ok',
-        reach: 'blocked',
-        manual_port: 9444,
-        public_url: 'https://1.2.3.4:9444',
-    });
-
-    expect(host.textContent).toContain('itself behind another router');
-    expect(host.textContent).toContain('9444');
-    expect(host.textContent).not.toContain('Reachable at');
-});
-
-it('says nothing about a public address when there is none', () => {
-    remoteState({ enabled: true, upnp: 'ok' });
-
-    expect(host.textContent).toContain('No public address found.');
-});
-
-it('says nothing at all about reachability while remote access is off', () => {
-    open(aConfig({ remote_access: false }));
-
-    expect(host.textContent).not.toContain('No public address found.');
-    expect(host.textContent).not.toContain('Checking whether it can be reached');
 });
 
 // ── The upgrade command ──────────────────────────────────────────────────────

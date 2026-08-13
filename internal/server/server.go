@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -22,10 +20,8 @@ import (
 // Config holds server configuration.
 type Config struct {
 	Hub     *ws.Hub
-	Port    int              // 0 means pick a free port automatically
-	DevMode bool             // serve web assets from filesystem instead of embedded
-	TLSCert *tls.Certificate // non-nil enables HTTPS/WSS
-	CertFP  string           // SHA-256 fingerprint of the TLS certificate
+	Port    int  // 0 means pick a free port automatically
+	DevMode bool // serve web assets from filesystem instead of embedded
 }
 
 // Server is the HTTP server that serves the web UI and handles WebSocket connections.
@@ -34,21 +30,8 @@ type Server struct {
 	listener   net.Listener
 	port       int
 	hub        *ws.Hub
-	tlsCert    *tls.Certificate
-	certFP     string
 	devMode    bool
 	mux        *http.ServeMux
-
-	// The remote listener is a second front door onto the same application:
-	// TLS, on its own port, published to the internet. It is separate from the
-	// local one rather than a different mode for it, so that opening and
-	// closing it — which is what the connection mode toggle does — never
-	// disturbs a phone already connected over Wi-Fi.
-	remoteMu     sync.Mutex
-	remoteServer *http.Server
-	remoteLn     net.Listener
-	remotePort   int
-	remoteCertFP string
 }
 
 // New creates a new HTTP server.
@@ -56,8 +39,6 @@ func New(cfg Config) *Server {
 	s := &Server{
 		hub:     cfg.Hub,
 		port:    cfg.Port,
-		tlsCert: cfg.TLSCert,
-		certFP:  cfg.CertFP,
 		devMode: cfg.DevMode,
 	}
 
@@ -72,17 +53,15 @@ func New(cfg Config) *Server {
 		mux.Handle("/", http.FileServer(http.FS(web.StaticFiles())))
 	}
 	mux.HandleFunc("/ws", s.handleWebSocket)
-	// Kept on the struct so the remote listener can serve the same application
-	// rather than building a second, separately-wired copy of it.
 	s.mux = mux
 
 	s.httpServer = &http.Server{
-		Handler:           requireAddressHost(securityHeaders(mux, cfg.TLSCert != nil), cfg.DevMode),
+		Handler:           requireAddressHost(securityHeaders(mux), cfg.DevMode),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		// Without this a keep-alive connection is held for as long as the peer
-		// cares to hold it. With remote access on, the peer is the internet.
+		// cares to hold it.
 		IdleTimeout:    idleTimeout,
 		MaxHeaderBytes: maxHeaderBytes,
 	}
@@ -114,7 +93,7 @@ const (
 // Call this before URLs() or Start().
 func (s *Server) Listen() error {
 	// #nosec G102 -- binding to all interfaces is the point: the phone connects
-	// to this machine over the LAN (or via the UPnP mapping) to reach the alarm.
+	// to this machine over the LAN to reach the alarm.
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
 	if err != nil && s.port != 0 {
 		log.Warnf("Port %d busy, picking a free port", s.port)
@@ -130,16 +109,7 @@ func (s *Server) Listen() error {
 	}
 	s.port = addr.Port
 
-	if s.tlsCert != nil {
-		tlsCfg := &tls.Config{
-			Certificates: []tls.Certificate{*s.tlsCert},
-			MinVersion:   tls.VersionTLS12,
-		}
-		ln = tls.NewListener(ln, tlsCfg)
-		log.Infof("HTTPS server bound to port %d (TLS enabled)", s.port)
-	} else {
-		log.Infof("HTTP server bound to port %d", s.port)
-	}
+	log.Infof("HTTP server bound to port %d", s.port)
 
 	s.listener = ln
 	return nil
@@ -155,134 +125,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
-// StartRemote opens a TLS listener on port and serves the same application on
-// it. A port of 0 asks the OS for a free one. It returns the bound port.
-//
-// Calling it while a remote listener is already running is a no-op that returns
-// the running port: the startup path, the phone's settings screen and the
-// console command all drive this and none of them coordinates with the others.
-func (s *Server) StartRemote(cert tls.Certificate, certFP string, port int) (int, error) {
-	s.remoteMu.Lock()
-	defer s.remoteMu.Unlock()
-
-	if s.remoteLn != nil {
-		return s.remotePort, nil
-	}
-
-	// #nosec G102 -- binding to all interfaces is the point: this listener is
-	// the one the phone reaches from another network through the UPnP mapping.
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		return 0, fmt.Errorf("listen on the remote port: %w", err)
-	}
-	addr, ok := ln.Addr().(*net.TCPAddr)
-	if !ok {
-		_ = ln.Close()
-		return 0, fmt.Errorf("listen on the remote port: unexpected address type %T", ln.Addr())
-	}
-
-	tlsLn := tls.NewListener(ln, &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	})
-
-	srv := &http.Server{
-		// The handler chain is built separately from the local one because the
-		// tls flag differs: HSTS and the socket origin have to describe the
-		// listener actually answering, not the other one.
-		Handler:           requireAddressHost(securityHeaders(s.mux, true), s.devMode),
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-		MaxHeaderBytes:    maxHeaderBytes,
-	}
-
-	s.remoteServer = srv
-	s.remoteLn = tlsLn
-	s.remotePort = addr.Port
-	s.remoteCertFP = certFP
-
-	go func() {
-		if err := srv.Serve(tlsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Errorf("Remote listener stopped: %v", err)
-		}
-	}()
-
-	log.Infof("HTTPS server bound to port %d (remote access)", addr.Port)
-	return addr.Port, nil
-}
-
-// remoteShutdownGrace bounds how long a closing remote listener waits for
-// in-flight requests. A phone on the far end of a mobile connection is not
-// worth blocking the toggle on.
-const remoteShutdownGrace = 2 * time.Second
-
-// StopRemote closes the remote listener. It is safe to call when none is
-// running.
-//
-// Sockets already open on it are closed with it: a phone connected from another
-// network is exactly what turning remote access off is meant to cut. The local
-// listener is untouched, which is the whole reason the two are separate.
-func (s *Server) StopRemote() {
-	s.remoteMu.Lock()
-	srv, ln := s.remoteServer, s.remoteLn
-	s.remoteServer, s.remoteLn = nil, nil
-	s.remotePort, s.remoteCertFP = 0, ""
-	s.remoteMu.Unlock()
-
-	if srv == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), remoteShutdownGrace)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Warnf("Remote listener did not shut down cleanly: %v", err)
-		_ = ln.Close()
-	}
-	log.Info("Remote listener closed")
-}
-
-// RemotePort returns the port the remote listener is bound to, or 0 when it is
-// not running.
-func (s *Server) RemotePort() int {
-	s.remoteMu.Lock()
-	defer s.remoteMu.Unlock()
-	return s.remotePort
-}
-
-// RemoteCertFP returns the fingerprint of the certificate the remote listener
-// presents, empty when it is not running.
-func (s *Server) RemoteCertFP() string {
-	s.remoteMu.Lock()
-	defer s.remoteMu.Unlock()
-	return s.remoteCertFP
-}
-
-// URLs returns the HTTP(S) URLs clients can connect to.
+// URLs returns the URLs clients can connect to.
 func (s *Server) URLs() []string {
-	scheme := "http"
-	if s.tlsCert != nil {
-		scheme = "https"
-	}
-
 	ips := getLocalIPs()
 	urls := make([]string, 0, len(ips))
 
 	for _, ip := range ips {
-		urls = append(urls, fmt.Sprintf("%s://%s:%d", scheme, ip.String(), s.port))
+		urls = append(urls, fmt.Sprintf("http://%s:%d", ip.String(), s.port))
 	}
 	return urls
-}
-
-// IsTLS returns whether the server is using TLS.
-func (s *Server) IsTLS() bool {
-	return s.tlsCert != nil
-}
-
-// CertFingerprint returns the SHA-256 fingerprint of the TLS certificate.
-func (s *Server) CertFingerprint() string {
-	return s.certFP
 }
 
 // Port returns the bound port number.
@@ -447,26 +298,16 @@ func canonicalAddressHost(host string) (string, bool) {
 	return authority, true
 }
 
-// hstsMaxAge is how long a browser should refuse to talk to this origin over
-// plain HTTP. Six months, with no preload directive: preloading is for public
-// domains, and this is a laptop's address on somebody's LAN.
-const hstsMaxAge = 15552000 // 180 days in seconds
-
 // securityHeaders wraps a handler with response headers that pin down what the
 // served pages may do. The UI is self-contained — its own scripts, styles and
 // socket, plus the opt-in OpenStreetMap embed — so everything else is refused.
 //
-// tls reports whether the server is actually serving HTTPS. HSTS is only sent
-// in that case: sent over plain HTTP it is ignored by browsers per the spec,
-// and on the LAN-only path there is no HTTPS listener for a browser to be
-// upgraded to, so pinning the origin to HTTPS would lock the user out of their
-// own alarm until the pin expired.
-func securityHeaders(next http.Handler, tls bool) http.Handler {
+// HSTS is not among them. This server speaks plain HTTP on the local network
+// and has no HTTPS listener to upgrade a browser to, so pinning the origin
+// would lock the user out of their own alarm until the pin expired.
+func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		if tls {
-			h.Set("Strict-Transport-Security", fmt.Sprintf("max-age=%d", hstsMaxAge))
-		}
 		// The page needs none of these. Denying them means a bug in the UI, or
 		// anything that ever manages to inject into it, cannot quietly reach
 		// the camera, microphone or position of the phone holding it.
@@ -489,7 +330,7 @@ func securityHeaders(next http.Handler, tls bool) http.Handler {
 		// UI, which only ever dials its own origin, working exactly as before.
 		h.Set("Content-Security-Policy",
 			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
-				"img-src 'self' data:; connect-src 'self' "+socketOrigins(r, tls)+"; "+
+				"img-src 'self' data:; connect-src 'self' "+socketOrigins(r)+"; "+
 				"frame-src https://www.openstreetmap.org; "+
 				"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -503,26 +344,20 @@ func securityHeaders(next http.Handler, tls bool) http.Handler {
 // own host, and nothing else.
 //
 // The Host header is the address the browser actually asked for, which is the
-// address its socket has to match — this machine answers on several (every
-// local interface, plus the public one when remote access is on) and a
-// certificate or a config file would only name one of them.
+// address its socket has to match — this machine answers on every local
+// interface, and a config file would only name one of them.
 //
 // What goes into the header is the canonical form rather than the header as it
 // arrived. A request that names a host this server would never hand out gets the
 // schemes alone, which is the old behavior for a request with no Host at all and
 // no worse than it was: requireAddressHost has already refused that request, and
 // this stays correct even if these two are ever mounted apart.
-func socketOrigins(r *http.Request, tls bool) string {
+func socketOrigins(r *http.Request) string {
 	host, ok := canonicalAddressHost(r.Host)
 	if !ok || host == "" {
 		return "ws: wss:"
 	}
-	if tls {
-		return "wss://" + host
-	}
-	// Plain HTTP still allows wss:// to the same host so that turning on remote
-	// access does not require a stale page to be reloaded before it reconnects.
-	return "ws://" + host + " wss://" + host
+	return "ws://" + host
 }
 
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual

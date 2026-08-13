@@ -52,11 +52,11 @@ vi.mock('../src/lib/transport', () => ({
     bluetoothSupported: () => false,
 }));
 
-// The return-visit path: a stored key with no fingerprint, so the key goes out
+// The return-visit path: a stored key, so the key goes out
 // as soon as the socket opens. That is the shortest honest route to a connection
 // the handler will listen to at all.
 vi.mock('../src/lib/session', () => ({
-    loadSession: () => ({ key: '1111111111111116', fingerprint: '' }),
+    loadSession: () => ({ key: '1111111111111116' }),
     saveSession: vi.fn(),
     clearSession: vi.fn(),
 }));

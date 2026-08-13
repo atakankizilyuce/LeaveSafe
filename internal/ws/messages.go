@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/leavesafe/leavesafe/internal/config"
-	"github.com/leavesafe/leavesafe/internal/remote"
 )
 
 const (
@@ -31,8 +30,8 @@ const (
 
 const (
 	// MsgTypeHello is the first thing the server says on a new connection. It
-	// carries the certificate fingerprint so a client that arrived by QR code
-	// can check it before offering the pairing key.
+	// names the version, so a client knows what it reached before it offers the
+	// pairing key.
 	MsgTypeHello             = "hello"
 	MsgTypeAuthOK            = "auth_ok"
 	MsgTypeAuthFail          = "auth_fail"
@@ -143,9 +142,6 @@ type ServerMessage struct {
 	Config     *ConfigPayload   `json:"config,omitempty"`
 	Location   *LocationPayload `json:"location,omitempty"`
 	Update     *UpdatePayload   `json:"update,omitempty"`
-	// CertFP is the SHA-256 fingerprint of this server's TLS certificate,
-	// empty on the plain-HTTP local path where there is no certificate.
-	CertFP string `json:"cert_fp,omitempty"`
 	// PushKey is the public half of the key this laptop signs push messages
 	// with, which the phone needs before it can subscribe to anything.
 	//
@@ -172,30 +168,22 @@ type UpdatePayload struct {
 
 // ConfigPayload is a sanitized configuration for client exchange.
 type ConfigPayload struct {
-	Port                   int                  `json:"port"`
-	MaxSessions            int                  `json:"max_sessions"`
-	MaxAuthAttempts        int                  `json:"max_auth_attempts"`
-	LockoutSeconds         int                  `json:"lockout_seconds"`
-	HeartbeatSeconds       int                  `json:"heartbeat_seconds"`
-	DisconnectGraceSeconds int                  `json:"disconnect_grace_seconds"`
-	AutoArmOnLock          bool                 `json:"auto_arm_on_lock"`
-	InputThreshold         int                  `json:"input_threshold"`
-	ConnectionMode         string               `json:"connection_mode,omitempty"`
-	UpdateCheck            bool                 `json:"update_check"`
-	UpdateChannel          string               `json:"update_channel,omitempty"`
-	UpdateCheckHours       int                  `json:"update_check_hours,omitempty"`
-	Alarm                  config.AlarmConfig   `json:"alarm"`
-	PinProtection          PinProtectionPayload `json:"pin_protection"`
-	EnabledSensors         map[string]bool      `json:"enabled_sensors,omitempty"`
-	RemoteAccess           bool                 `json:"remote_access,omitempty"`
-	RemotePort             int                  `json:"remote_port,omitempty"`
-	// RemoteState is what remote access is actually doing. RemoteAccess above
-	// is what the user asked for, and the two differ whenever something went
-	// wrong — a router that refused a port mapping, an ISP behind carrier-grade
-	// NAT. Without this the phone has a switch it can flip and no way to see
-	// whether flipping it achieved anything.
-	RemoteState *remote.State         `json:"remote_state,omitempty"`
-	Location    LocationConfigPayload `json:"location"`
+	Port                   int                   `json:"port"`
+	MaxSessions            int                   `json:"max_sessions"`
+	MaxAuthAttempts        int                   `json:"max_auth_attempts"`
+	LockoutSeconds         int                   `json:"lockout_seconds"`
+	HeartbeatSeconds       int                   `json:"heartbeat_seconds"`
+	DisconnectGraceSeconds int                   `json:"disconnect_grace_seconds"`
+	AutoArmOnLock          bool                  `json:"auto_arm_on_lock"`
+	InputThreshold         int                   `json:"input_threshold"`
+	ConnectionMode         string                `json:"connection_mode,omitempty"`
+	UpdateCheck            bool                  `json:"update_check"`
+	UpdateChannel          string                `json:"update_channel,omitempty"`
+	UpdateCheckHours       int                   `json:"update_check_hours,omitempty"`
+	Alarm                  config.AlarmConfig    `json:"alarm"`
+	PinProtection          PinProtectionPayload  `json:"pin_protection"`
+	EnabledSensors         map[string]bool       `json:"enabled_sensors,omitempty"`
+	Location               LocationConfigPayload `json:"location"`
 }
 
 // PinProtectionPayload is the PIN config for client exchange.
@@ -257,14 +245,12 @@ func NewAlert(sensor, level, message string) ServerMessage {
 }
 
 // NewHello creates the greeting a fresh connection receives before it has
-// authenticated. It carries no secrets: the fingerprint is public by
-// definition, since it is derived from the certificate every connecting client
-// is handed anyway.
-func NewHello(certFP, version string) ServerMessage {
+// authenticated. It carries no secrets — only the version, so a phone can say
+// what it is talking to before it offers the pairing key.
+func NewHello(version string) ServerMessage {
 	return ServerMessage{
 		Type:      MsgTypeHello,
 		Version:   version,
-		CertFP:    certFP,
 		Timestamp: time.Now().Unix(),
 	}
 }

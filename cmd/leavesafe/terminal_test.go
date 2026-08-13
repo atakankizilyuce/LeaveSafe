@@ -10,7 +10,6 @@ import (
 	"golang.org/x/term"
 
 	"github.com/leavesafe/leavesafe/internal/monitor"
-	"github.com/leavesafe/leavesafe/internal/remote"
 )
 
 // The dashboard is a full-screen program drawn on a terminal somebody else was
@@ -18,7 +17,7 @@ import (
 // ends: taken on the alternate screen, given back whole.
 
 func TestTheDashboardDrawsOnTheAlternateScreen(t *testing.T) {
-	_, drawn := drawnDashboard(t, remote.State{})
+	_, drawn := drawnDashboard(t)
 
 	if !strings.HasPrefix(drawn, altScreenOn) {
 		t.Errorf("the dashboard did not switch to the alternate screen first; it began with %q",
@@ -99,7 +98,7 @@ func TestEnteringTwiceDrawsOnce(t *testing.T) {
 // Ctrl+Z lands on an alternate screen the terminal cleared on the way in, so
 // anything paint leaves out is gone until the program is restarted.
 func TestPaintRedrawsEverythingTheFirstDrawPutOnScreen(t *testing.T) {
-	sb, first := drawnDashboard(t, remote.State{})
+	sb, first := drawnDashboard(t)
 
 	var again syncBuffer
 	sb.out = &again
@@ -175,7 +174,7 @@ func TestHowARunDecidesWhatToPutOnScreen(t *testing.T) {
 // positioned against a terminal, and a headless run's output is a log file.
 func TestAHeadlessStatusBarDrawsNothing(t *testing.T) {
 	var out syncBuffer
-	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "", "")
+	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "")
 	sb.out = &out
 
 	sb.paint()
@@ -235,9 +234,9 @@ var errNoSize = errors.New("not a terminal")
 func TestPlainOutputStillPrintsSomethingToScan(t *testing.T) {
 	var out syncBuffer
 	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "1111 1111 1111 1116",
-		testRawKey, []string{"http://192.168.1.10:8080"}, "", "")
+		testRawKey, []string{"http://192.168.1.10:8080"}, "")
 
-	printPairingCode(&out, sb, testRawKey, "")
+	printPairingCode(&out, sb, testRawKey)
 
 	printed := out.String()
 	if !strings.Contains(printed, "█") && !strings.Contains(printed, "▀") {
@@ -262,9 +261,9 @@ func TestPlainOutputSaysWhenThereIsNoCodeToPrint(t *testing.T) {
 	var out syncBuffer
 	huge := "http://" + strings.Repeat("a", 4000) + ":8080"
 	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey,
-		[]string{huge}, "", "")
+		[]string{huge}, "")
 
-	printPairingCode(&out, sb, testRawKey, "")
+	printPairingCode(&out, sb, testRawKey)
 
 	if !strings.Contains(out.String(), "No QR code") {
 		t.Errorf("nothing said why there was no code; output was:\n%s", out.String())
@@ -275,9 +274,9 @@ func TestPlainOutputSaysWhenThereIsNoCodeToPrint(t *testing.T) {
 // heading promising a code that never follows.
 func TestPlainOutputPrintsNothingWithNoAddress(t *testing.T) {
 	var out syncBuffer
-	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "", "")
+	sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(), "key", testRawKey, nil, "")
 
-	printPairingCode(&out, sb, testRawKey, "")
+	printPairingCode(&out, sb, testRawKey)
 
 	if written := out.String(); written != "" {
 		t.Errorf("something was printed for a run with no address: %q", written)

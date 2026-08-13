@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"time"
 
@@ -20,9 +19,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
-	"github.com/leavesafe/leavesafe/internal/network"
 	"github.com/leavesafe/leavesafe/internal/push"
-	"github.com/leavesafe/leavesafe/internal/remote"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/state"
@@ -68,7 +65,6 @@ type app struct {
 	sb      *statusBar
 	sensors *monitor.Manager
 	alarm   *alarm.Alarm
-	remote  *remote.Controller
 
 	cancel context.CancelFunc
 	// closers are the files this start opened, closed in the order that makes
@@ -122,11 +118,9 @@ func startApp(opts appOptions) (*app, error) {
 
 	a.openLogFile()
 
-	// The local listener is plain HTTP and stays that way whether remote access
-	// is on or off. It opens once here and is never closed again, which is what
-	// lets the phone that turns remote access on stay connected while it
-	// happens — remote access is a second listener rather than a different mode
-	// for this one.
+	// The listener opens once here and is never closed again: everything that
+	// changes while the program runs changes around it rather than rebinding it,
+	// so a phone already connected stays connected.
 	a.srv = server.New(server.Config{Hub: hub, Port: listenPort(cfg.Port), DevMode: opts.devMode})
 	if err := a.srv.Listen(); err != nil {
 		return nil, fmt.Errorf("failed to bind port: %w", err)
@@ -135,14 +129,7 @@ func startApp(opts appOptions) (*app, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 
-	remoteState := a.startRemoteAccess(ctx, cfg)
-	// Announced to every connecting client, so a phone that arrived by QR code
-	// can check it reached the server the code was printed for before it offers
-	// the pairing key.
-	hub.SetCertFingerprint(remoteState.CertFP)
-	hub.SetRemoteState(remoteState)
-
-	a.sb = a.drawInterface(opts, authMgr, remoteState, keyPath)
+	a.sb = a.drawInterface(opts, authMgr, keyPath)
 	a.installPanicHandler()
 
 	a.alarm = alarm.New(cfg.Alarm)
@@ -165,9 +152,8 @@ func startApp(opts appOptions) (*app, error) {
 	a.superviseLoops(ctx, opts, consoleDeps{
 		hub: hub, sb: a.sb, localAlarm: a.alarm, authMgr: authMgr,
 		installMethod: installMethod, updateLedger: updateLedger,
-		srv: a.srv, remoteCtl: a.remote, cfg: cfg, quit: a.quit,
+		srv: a.srv, cfg: cfg, quit: a.quit,
 	})
-	a.wireRemoteChanges(ctx)
 	a.superviseUpdateCheck(ctx, cfg, installMethod, updateLedger)
 	a.superviseBluetooth(ctx, cfg)
 
@@ -200,10 +186,6 @@ func (a *app) shutdown() {
 	a.cancel()
 	a.alarm.Stop()
 	a.sensors.StopAll()
-	// Closes the remote listener and takes the router's port mapping back down
-	// with it. Leaving a mapping behind would leave a hole in the router
-	// pointing at a machine that is no longer listening.
-	a.remote.Disable()
 	if el := a.hub.EventLogger(); el != nil {
 		_ = el.Close()
 	}
@@ -374,64 +356,28 @@ func hooksAsTheyAre() log.LevelHooks {
 	return copied
 }
 
-// firewallHint is the command that lets a port in through this machine's own
-// firewall, which the remote controller shows when it could not confirm that
-// anything outside reaches this machine.
-//
-// It is a function rather than a closure so that it can be called by a test.
-// What it stands for is worth one: the host firewall is the likeliest reason a
-// correctly mapped port is still unreachable, and it is the only likely reason
-// that is on this machine rather than out on somebody else's network.
-func firewallHint(port int) string {
-	return network.FirewallCommand(runtime.GOOS, port)
-}
-
-// startRemoteAccess builds the remote controller and brings it up if the config
-// asks for it, returning whatever state that left it in.
-func (a *app) startRemoteAccess(ctx context.Context, cfg *config.Config) remote.State {
-	a.remote = remote.NewController(a.srv, config.ConfigDir(), cfg.RemotePort, remote.Deps{
-		Cert: server.GenerateOrLoadCert,
-		OpenPort: func(p int) (remote.PortMapping, error) {
-			return network.OpenPort(p)
-		},
-		PublicIP:     network.GetPublicIP,
-		Verify:       network.VerifyReachable,
-		FirewallHint: firewallHint,
-	})
-
-	if cfg.RemoteAccess != nil && *cfg.RemoteAccess {
-		if st := a.remote.Enable(ctx); st.Reason != "" {
-			log.Warn(st.Reason)
-		}
-	}
-	return a.remote.State()
-}
-
 // drawInterface puts the program on screen, or into the log when there is no
 // screen to put it on.
-func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager,
-	remoteState remote.State, keyPath string,
-) *statusBar {
+func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager, keyPath string) *statusBar {
 	if opts.headless || opts.plain {
 		sb := newHeadlessStatusBar(a.hub, a.sensors, authMgr.PairingKey(), authMgr.RawPairingKey(),
-			reachableURLs(a.srv, remoteState), remoteState.CertFP, keyPath)
+			a.srv.URLs(), keyPath)
 		mode := "headless"
 		if opts.plain {
 			mode = "without the dashboard"
 		}
-		logHeadlessStartup(sb, a.srv, remoteState.CertFP, mode)
+		logHeadlessStartup(sb, mode)
 		if opts.plain {
 			// Somebody is watching this one, and without a dashboard there is
 			// nowhere else a code to scan could appear. Printed rather than
-			// positioned, so it scrolls away with everything else — and printed
-			// again by setURLs if the addresses change, for the same reason.
+			// positioned, so it scrolls away with everything else.
 			sb.plainOut = opts.out
-			printPairingCode(opts.out, sb, authMgr.RawPairingKey(), remoteState.CertFP)
+			printPairingCode(opts.out, sb, authMgr.RawPairingKey())
 		}
 		return sb
 	}
 
-	sb := buildDashboard(opts.out, opts.in, a.srv, authMgr, a.hub, a.sensors, remoteState)
+	sb := buildDashboard(opts.out, opts.in, a.srv, authMgr, a.hub, a.sensors)
 	// The dashboard owns the terminal, so log lines have to be routed through it
 	// to land inside its scrolling region rather than on top of the QR code.
 	// Headless has no such constraint.
@@ -523,47 +469,6 @@ func (a *app) superviseLoops(ctx context.Context, opts appOptions, deps consoleD
 	safe.Supervise(ctx, "resize", func(c context.Context) {
 		watchResize(c, a.sb.paint)
 	})
-}
-
-// wireRemoteChanges routes every later change to remote access onto the
-// dashboard and every paired phone.
-func (a *app) wireRemoteChanges(ctx context.Context) {
-	// The connection mode can be changed from the phone or from the console
-	// while the program runs. Both end here, and both end by pushing the result
-	// onto the dashboard and every paired phone.
-	//
-	// Disabling first rather than branching makes it idempotent for the enable
-	// case too: a change of remote_port arrives as the same signal and has to
-	// rebind rather than return the port already in use.
-	a.hub.SetRemoteToggle(func(enable bool) { a.setRemoteAccess(ctx, enable) })
-
-	// Reachability arrives on its own, up to a minute after Enable returned, and
-	// it has to land on the dashboard and every paired phone the same way a
-	// change made from the console does.
-	a.remote.SetOnUpdate(a.publishRemoteState)
-
-	// The startup state has to reach the dashboard the same way a later change
-	// does, or the first draw and every draw after it would come from different
-	// code.
-	a.publishRemoteState(a.remote.State())
-}
-
-// setRemoteAccess turns remote access on or off.
-//
-// Disabling first rather than branching makes it idempotent for the enable case
-// too: a change of remote_port arrives as the same signal and has to rebind
-// rather than return the port already in use.
-func (a *app) setRemoteAccess(ctx context.Context, enable bool) {
-	st := a.remote.Disable()
-	if enable {
-		st = a.remote.Enable(ctx)
-	}
-	a.publishRemoteState(st)
-}
-
-// publishRemoteState puts one state onto the dashboard and every paired phone.
-func (a *app) publishRemoteState(st remote.State) {
-	applyRemoteState(a.sb, a.hub, a.srv, st)
 }
 
 // superviseUpdateCheck asks GitHub for a newer release, repeatedly.

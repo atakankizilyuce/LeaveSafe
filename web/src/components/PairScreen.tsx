@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { shortFingerprint } from '../lib/fingerprint';
 import { groupKey } from '../lib/format';
-import { fingerprintVerdict, pairError, pairing, serverFingerprint } from '../lib/store';
+import { pairError, pairing } from '../lib/store';
 import { bluetoothSupported } from '../lib/transport';
 import { Icon } from './Icons';
 
@@ -85,42 +84,7 @@ export function PairScreen({ onPair, initialKey }: Props) {
                 )}
 
                 {pairError.value && <p class="pair-error">{pairError.value}</p>}
-
-                <CertificateNote />
             </div>
         </main>
-    );
-}
-
-/**
- * The certificate the phone is talking to, on the phone's own screen.
- *
- * The laptop's certificate is self-signed, so the browser warns about it and
- * asks the user to accept. Until now the fingerprint to check that warning
- * against was printed on the laptop — the one place nobody is looking while
- * holding a phone. It travels in the QR code now, so the comparison can happen
- * where the decision is made.
- */
-function CertificateNote() {
-    const fp = serverFingerprint.value;
-    if (!fp) return null;
-
-    const verdict = fingerprintVerdict.value;
-    return (
-        <div class="pair-cert readout" data-verdict={verdict}>
-            <div class="pair-cert-head">
-                {verdict === 'match'
-                    ? 'Certificate matches the code you scanned'
-                    : 'Certificate on this connection'}
-            </div>
-            <div class="pair-cert-fp figure">{shortFingerprint(fp)}</div>
-            {verdict !== 'match' && (
-                <p class="pair-cert-hint">
-                    Your browser will warn that this certificate is untrusted — it is self-signed. Check that
-                    the value above matches the one in that warning, and the one the laptop shows for{' '}
-                    <code>cert</code>.
-                </p>
-            )}
-        </div>
     );
 }

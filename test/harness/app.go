@@ -5,7 +5,6 @@
 package harness
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -29,9 +28,6 @@ type Options struct {
 	Pin string
 	// EnabledSensors seeds the sensor enable-map in the config file.
 	EnabledSensors map[string]bool
-	// RemoteAccess seeds remote_access, the mode that exposes the port beyond
-	// the local network.
-	RemoteAccess bool
 	// MaxAuthAttempts overrides max_auth_attempts. Zero keeps the default of 5.
 	MaxAuthAttempts int
 	// LocationEnabled turns on location tracking. Only the phone anchor is
@@ -41,11 +37,6 @@ type Options struct {
 	// LocationGeolocateKey seeds the geolocation API key, so a test can prove
 	// it is never handed back to a paired client.
 	LocationGeolocateKey string
-	// BreakTLSSetup plants an ordinary file where the app must create its TLS
-	// directory, so certificate setup fails the way a permission problem or a
-	// stray file would. Used to prove that remote access refuses to fall back
-	// to cleartext.
-	BreakTLSSetup bool
 }
 
 // App is a running leavesafe process.
@@ -191,12 +182,6 @@ func StartIn(t *testing.T, home string, opts Options) *App {
 		writeSeedConfig(t, configDir, opts)
 	}
 
-	if opts.BreakTLSSetup {
-		if err := os.WriteFile(filepath.Join(configDir, "tls"), []byte("not a directory"), 0o600); err != nil {
-			t.Fatalf("plant blocking tls file: %v", err)
-		}
-	}
-
 	app := &App{
 		t:         t,
 		port:      opts.Port,
@@ -237,7 +222,6 @@ func StartIn(t *testing.T, home string, opts Options) *App {
 // caller's options, so the process never blocks on stdin.
 func writeSeedConfig(t *testing.T, dir string, opts Options) {
 	t.Helper()
-	remote := opts.RemoteAccess
 	maxAuthAttempts := opts.MaxAuthAttempts
 	if maxAuthAttempts == 0 {
 		maxAuthAttempts = 5
@@ -252,7 +236,6 @@ func writeSeedConfig(t *testing.T, dir string, opts Options) {
 		"auto_arm_on_lock":         false,
 		"input_threshold":          1,
 		"connection_mode":          "wifi",
-		"remote_access":            &remote,
 		"alarm": map[string]any{
 			"escalation_enabled": false,
 			"levels": []map[string]any{
@@ -321,37 +304,16 @@ func (a *App) waitUntilServing() {
 }
 
 // probeClient is used only for the liveness probe above.
-//
-// The certificate LeaveSafe serves is self-signed by design, and the harness is
-// asking "are you answering yet", not "do I trust you" — the tests that care
-// about the certificate check it themselves.
-var probeClient = &http.Client{
-	Timeout: 2 * time.Second,
-	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- liveness probe, not a trust decision
-	},
-}
+var probeClient = &http.Client{Timeout: 2 * time.Second}
 
 // probeOnce asks for the dashboard page and reports whether anything answered.
-//
-// Both schemes are tried because the harness does not get to assume which one
-// is in force: remote access serves HTTPS, but it also falls back to plain HTTP
-// when certificate setup fails, and the suite deliberately exercises that
-// fallback. Discovering the scheme keeps this from encoding a copy of the app's
-// own decision, which could then drift out of step with it.
 func (a *App) probeOnce() error {
-	var firstErr error
-	for _, scheme := range []string{"http", "https"} {
-		resp, err := probeClient.Get(fmt.Sprintf("%s://127.0.0.1:%d/", scheme, a.port))
-		if err == nil {
-			_ = resp.Body.Close()
-			return nil
-		}
-		if firstErr == nil {
-			firstErr = err
-		}
+	resp, err := probeClient.Get(fmt.Sprintf("http://127.0.0.1:%d/", a.port))
+	if err != nil {
+		return err
 	}
-	return firstErr
+	_ = resp.Body.Close()
+	return nil
 }
 
 // waitForKey recovers the pairing key from the dashboard the process renders.

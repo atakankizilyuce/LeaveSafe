@@ -113,8 +113,6 @@ type Config struct {
 	PinProtection  PinProtection   `json:"pin_protection"`
 	ConnectionMode string          `json:"connection_mode,omitempty"`
 	EnabledSensors map[string]bool `json:"enabled_sensors,omitempty"`
-	RemoteAccess   *bool           `json:"remote_access,omitempty"`
-	RemotePort     int             `json:"remote_port,omitempty"`
 	Location       Location        `json:"location"`
 }
 
@@ -145,7 +143,6 @@ func Default() *Config {
 			},
 		},
 		ConnectionMode: "wifi",
-		RemotePort:     9443,
 		PinProtection: PinProtection{
 			Enabled: false,
 		},
@@ -295,7 +292,6 @@ func (c *Config) clampNumbers(v *adjustments) {
 	clampInt := v.clampInt
 
 	clampInt("port", &c.Port, 0, 65535, 0)
-	clampInt("remote_port", &c.RemotePort, 0, 65535, 9443)
 	clampInt("max_sessions", &c.MaxSessions, 1, 100, 3)
 	clampInt("max_auth_attempts", &c.MaxAuthAttempts, 1, 1000, 5)
 	// An hour of lockout is already far past the point where a stranger gives

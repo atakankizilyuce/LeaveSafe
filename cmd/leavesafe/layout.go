@@ -49,8 +49,8 @@ const (
 // It is one value rather than a handful of fields on the status bar because
 // the dashboard is repainted in pieces, and a piece drawn against a layout the
 // screen no longer has is exactly how two status grids ended up on one screen:
-// remote access added an address, the grid grew a row, and the piece was
-// painted at the rows the old one occupied. Holding the layout the screen was
+// the window was resized, the grid moved, and the piece was painted at the rows
+// the old one occupied. Holding the layout the screen was
 // drawn with makes that comparable — see statusBar.layoutHolds.
 type layout struct {
 	termW, termH int
