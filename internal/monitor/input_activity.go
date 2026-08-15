@@ -18,13 +18,21 @@ type activityWatch struct {
 	alerted   bool
 }
 
+// activityQuietSeconds is the idle reading at or above which the machine counts
+// as left alone. Below it, somebody is at the keyboard.
+//
+// Named because Windows has no idle clock to read — it answers with the tick of
+// the last input instead — and the number that turns its answer into one of
+// these has to be this number rather than a second copy of it.
+const activityQuietSeconds = 2.0
+
 // sample records one idle reading and reports whether it completes an alert.
 //
 // A negative reading means ioreg could not be asked at all, which is not
 // evidence of anyone touching the machine — so it counts as quiet rather than
 // as activity.
 func (w *activityWatch) sample(idleSeconds float64) bool {
-	if idleSeconds < 0 || idleSeconds >= 2 {
+	if idleSeconds < 0 || idleSeconds >= activityQuietSeconds {
 		w.busy = 0
 		w.quiet++
 		if w.alerted && w.quiet >= 5 {

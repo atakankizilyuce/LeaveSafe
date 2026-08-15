@@ -10,12 +10,17 @@ import (
 
 // PowerSensor monitors the charger/AC power state on macOS.
 type PowerSensor struct {
-	lastOnAC    bool
-	initialized bool
+	watch stateWatch[bool]
+
+	// read is how the charger is asked and every is how often. Both are filled
+	// in by the constructor; a test replaces them to drive the loop without the
+	// hardware, and without waiting two seconds for every reading.
+	read  func() (bool, error)
+	every time.Duration
 }
 
 func NewPowerSensor() *PowerSensor {
-	return &PowerSensor{}
+	return &PowerSensor{read: isOnACPower, every: 2 * time.Second}
 }
 
 func (s *PowerSensor) Name() string        { return "power" }
@@ -27,14 +32,22 @@ func (s *PowerSensor) Available() bool {
 }
 
 func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	onAC, err := isOnACPower()
+	// Where the charger is now is the baseline, and it is read rather than
+	// assumed. Assuming it would put "Charger disconnected!" on the phone of anybody
+	// who armed a machine that was already that way.
+	//
+	// A first reading that cannot be taken is reported rather than worked
+	// around: the supervisor records the failure and the panel shows the gap,
+	// which is the whole difference between a sensor that is not watching and
+	// one that says it is.
+	s.watch.forget()
+	onAC, err := s.read()
 	if err != nil {
 		return err
 	}
-	s.lastOnAC = onAC
-	s.initialized = true
+	s.watch.sample(onAC)
 
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(s.every)
 	defer ticker.Stop()
 
 	for {
@@ -42,30 +55,20 @@ func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			onAC, err := isOnACPower()
+			onAC, err := s.read()
 			if err != nil {
+				// One unreadable poll is not the hardware moving.
 				continue
 			}
-			if onAC != s.lastOnAC {
-				if !onAC {
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertCritical,
-						Message: "Charger disconnected!",
-					}
-				} else {
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertWarning,
-						Message: "Charger reconnected",
-					}
-				}
-				s.lastOnAC = onAC
+			if !s.watch.sample(onAC) {
+				continue
+			}
+			if !sendAlert(ctx, alerts, chargerAlert(onAC)) {
+				return nil
 			}
 		}
 	}
 }
-
 func (s *PowerSensor) Stop() error { return nil }
 
 func isOnACPower() (bool, error) {

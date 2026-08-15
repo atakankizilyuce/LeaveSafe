@@ -11,12 +11,20 @@ import (
 
 // LidSensor monitors the laptop lid state on macOS.
 type LidSensor struct {
-	lastOpen    bool
-	initialized bool
+	watch stateWatch[bool]
+
+	// read is how the lid is asked and every is how often. Both are filled
+	// in by the constructor; a test replaces them to drive the loop without the
+	// hardware, and without waiting two seconds for every reading.
+	read  func(context.Context) (bool, error)
+	every time.Duration
 }
 
 func NewLidSensor() *LidSensor {
-	return &LidSensor{}
+	return &LidSensor{
+		read:  func(context.Context) (bool, error) { return isLidOpenDarwin() },
+		every: 2 * time.Second,
+	}
 }
 
 func (s *LidSensor) Name() string        { return "lid" }
@@ -31,14 +39,22 @@ func (s *LidSensor) Available() bool {
 }
 
 func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	open, err := isLidOpenDarwin()
+	// Where the lid is now is the baseline, and it is read rather than
+	// assumed. Assuming it would put "Lid closed!" on the phone of anybody
+	// who armed a machine that was already that way.
+	//
+	// A first reading that cannot be taken is reported rather than worked
+	// around: the supervisor records the failure and the panel shows the gap,
+	// which is the whole difference between a sensor that is not watching and
+	// one that says it is.
+	s.watch.forget()
+	open, err := s.read(ctx)
 	if err != nil {
 		return err
 	}
-	s.lastOpen = open
-	s.initialized = true
+	s.watch.sample(open)
 
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(s.every)
 	defer ticker.Stop()
 
 	for {
@@ -46,30 +62,20 @@ func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			open, err := isLidOpenDarwin()
+			open, err := s.read(ctx)
 			if err != nil {
+				// One unreadable poll is not the hardware moving.
 				continue
 			}
-			if open != s.lastOpen {
-				if !open {
-					alerts <- Alert{
-						Sensor:  "lid",
-						Level:   AlertCritical,
-						Message: "Lid closed!",
-					}
-				} else {
-					alerts <- Alert{
-						Sensor:  "lid",
-						Level:   AlertWarning,
-						Message: "Lid opened",
-					}
-				}
-				s.lastOpen = open
+			if !s.watch.sample(open) {
+				continue
+			}
+			if !sendAlert(ctx, alerts, lidAlert(open)) {
+				return nil
 			}
 		}
 	}
 }
-
 func (s *LidSensor) Stop() error { return nil }
 
 func isLidOpenDarwin() (bool, error) {
