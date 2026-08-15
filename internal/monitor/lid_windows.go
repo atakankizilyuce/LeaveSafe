@@ -62,39 +62,12 @@ func (s *LidSensor) Available() bool {
 func (s *LidSensor) AvailabilityKnown() bool { return s.known.Load() }
 
 func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	// Where the lid is now is the baseline, and it is read rather than assumed.
-	// Assuming it was open is what used to raise "Lid closed!" on the phone of
-	// anybody who armed a laptop that was already shut on a dock.
-	//
-	// A lid that cannot be read at all is not a reason to refuse to watch: the
-	// query is a PowerShell call that can time out on a busy machine, and the
-	// next poll settles the baseline instead.
-	s.watch.forget()
-	if open, err := s.read(ctx); err == nil {
-		s.watch.sample(open)
-	}
-
-	ticker := time.NewTicker(s.every)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			open, err := s.read(ctx)
-			if err != nil {
-				// One unreadable poll is not the lid moving.
-				continue
-			}
-			if !s.watch.sample(open) {
-				continue
-			}
-			if !sendAlert(ctx, alerts, lidAlert(open)) {
-				return nil
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: lidAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
 
 func (s *LidSensor) Stop() error { return nil }

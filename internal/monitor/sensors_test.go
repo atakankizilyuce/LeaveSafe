@@ -22,7 +22,7 @@ func onCharger(t *testing.T, script *readings[bool]) (*PowerSensor, chan Alert) 
 	t.Helper()
 	power := NewPowerSensor()
 	power.every = pollFast
-	power.read = script.next
+	power.read = script.asked
 	alerts, _, _ := watching(t, power)
 	return power, alerts
 }
@@ -93,7 +93,7 @@ func TestASensorThatCannotTakeItsFirstReadingSaysSo(t *testing.T) {
 	// failure is what puts the gap in cover on the screen.
 	power := NewPowerSensor()
 	power.every = pollFast
-	power.read = scriptedSteps(refuses[bool]()).next
+	power.read = scriptedSteps(refuses[bool]()).asked
 
 	_, _, done := watching(t, power)
 
@@ -200,7 +200,7 @@ func polling(t *testing.T) map[string]Sensor {
 
 	power := NewPowerSensor()
 	power.every = pollFast
-	power.read = scripted(true).next
+	power.read = scripted(true).asked
 
 	lid := NewLidSensor()
 	lid.every = pollFast
@@ -266,7 +266,7 @@ func TestASensorNobodyIsListeningToCanStillBeDisarmed(t *testing.T) {
 	// interrupt — a machine that could not be told to stop watching.
 	power := NewPowerSensor()
 	power.every = pollFast
-	power.read = scripted(true, false, true, false, true).next
+	power.read = scripted(true, false, true, false, true).asked
 
 	full := make(chan Alert) // nobody reads this
 	ctx, cancel := context.WithCancel(context.Background())

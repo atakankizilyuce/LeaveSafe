@@ -31,43 +31,14 @@ func (s *ScreenSensor) DisplayName() string { return "Screen/Display" }
 func (s *ScreenSensor) Available() bool     { return true }
 
 func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	// Where the display is now is the baseline, and it is read rather than
-	// assumed. Assuming it would put "Screen turned off!" on the phone of anybody
-	// who armed a machine that was already that way.
-	//
-	// A first reading that cannot be taken is reported rather than worked
-	// around: the supervisor records the failure and the panel shows the gap,
-	// which is the whole difference between a sensor that is not watching and
-	// one that says it is.
-	s.watch.forget()
-	on, err := s.read(ctx)
-	if err != nil {
-		return err
-	}
-	s.watch.sample(on)
-
-	ticker := time.NewTicker(s.every)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			on, err := s.read(ctx)
-			if err != nil {
-				// One unreadable poll is not the hardware moving.
-				continue
-			}
-			if !s.watch.sample(on) {
-				continue
-			}
-			if !sendAlert(ctx, alerts, screenAlert(on)) {
-				return nil
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: screenAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
+
 func (s *ScreenSensor) Stop() error { return nil }
 
 func isScreenOnDarwin() (bool, error) {

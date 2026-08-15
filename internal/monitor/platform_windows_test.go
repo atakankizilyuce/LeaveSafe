@@ -54,7 +54,7 @@ func TestAQueryIsCalledOffWhenTheSensorIsDisarmed(t *testing.T) {
 	// The lid and the screen are read by starting PowerShell, which takes long
 	// enough that disarming has to interrupt it rather than wait for it. The
 	// context these are handed is the sensor's own, so a disarm reaches them.
-	stopped, cancel := context.WithCancel(context.Background())
+	disarmed, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	for name, ask := range map[string]func(context.Context) (bool, error){
@@ -63,11 +63,11 @@ func TestAQueryIsCalledOffWhenTheSensorIsDisarmed(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			start := time.Now()
-			_, err := ask(stopped)
+			_, err := ask(disarmed)
 			took := time.Since(start)
 
 			if err == nil {
-				t.Error("a query run under a cancelled context came back with an answer")
+				t.Error("a query run after the sensor was disarmed came back with an answer")
 			}
 			if took > 5*time.Second {
 				t.Errorf("a disarmed sensor sat on its query for %s", took)

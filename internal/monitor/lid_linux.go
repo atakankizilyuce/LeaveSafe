@@ -37,43 +37,14 @@ func (s *LidSensor) Available() bool {
 }
 
 func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	// Where the lid is now is the baseline, and it is read rather than
-	// assumed. Assuming it would put "Lid closed!" on the phone of anybody
-	// who armed a machine that was already that way.
-	//
-	// A first reading that cannot be taken is reported rather than worked
-	// around: the supervisor records the failure and the panel shows the gap,
-	// which is the whole difference between a sensor that is not watching and
-	// one that says it is.
-	s.watch.forget()
-	open, err := s.read(ctx)
-	if err != nil {
-		return err
-	}
-	s.watch.sample(open)
-
-	ticker := time.NewTicker(s.every)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			open, err := s.read(ctx)
-			if err != nil {
-				// One unreadable poll is not the hardware moving.
-				continue
-			}
-			if !s.watch.sample(open) {
-				continue
-			}
-			if !sendAlert(ctx, alerts, lidAlert(open)) {
-				return nil
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: lidAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
+
 func (s *LidSensor) Stop() error { return nil }
 
 func isLidOpenLinux() (bool, error) {

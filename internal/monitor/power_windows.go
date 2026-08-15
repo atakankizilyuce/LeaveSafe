@@ -39,12 +39,15 @@ type PowerSensor struct {
 	// read is how the charger is asked and every is how often. Both are filled
 	// in by the constructor; a test replaces them to drive the loop without a
 	// laptop, and without waiting two seconds for every reading.
-	read  func() (bool, error)
+	read  func(context.Context) (bool, error)
 	every time.Duration
 }
 
 func NewPowerSensor() *PowerSensor {
-	return &PowerSensor{read: readOnAC, every: 2 * time.Second}
+	return &PowerSensor{
+		read:  func(context.Context) (bool, error) { return readOnAC() },
+		every: 2 * time.Second,
+	}
 }
 
 func (s *PowerSensor) Name() string        { return "power" }
@@ -57,37 +60,12 @@ func (s *PowerSensor) Available() bool {
 }
 
 func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	// This may be a restart. What the charger did while the loop was down
-	// happened on a machine nobody was watching, and is not an event now.
-	s.watch.forget()
-
-	onAC, err := s.read()
-	if err != nil {
-		return err
-	}
-	s.watch.sample(onAC)
-
-	ticker := time.NewTicker(s.every)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			onAC, err := s.read()
-			if err != nil {
-				// One unreadable poll is not an event. The next one decides.
-				continue
-			}
-			if !s.watch.sample(onAC) {
-				continue
-			}
-			if !sendAlert(ctx, alerts, chargerAlert(onAC)) {
-				return nil
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: chargerAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
 
 func (s *PowerSensor) Stop() error { return nil }
@@ -113,7 +91,7 @@ func onACFrom(line byte) (bool, error) {
 	case acOnline:
 		return true, nil
 	default:
-		return false, fmt.Errorf("Windows would not say whether the charger is in (ACLineStatus %d)", line)
+		return false, fmt.Errorf("the charger's state was not reported (ACLineStatus %d)", line)
 	}
 }
 
