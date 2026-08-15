@@ -11,8 +11,13 @@ import (
 
 // LidSensor monitors the laptop lid state on Windows.
 type LidSensor struct {
-	lastOpen    bool
-	initialized bool
+	watch stateWatch[bool]
+
+	// read is how the lid is asked and every is how often. Both are filled in
+	// by the constructor; a test replaces them to drive the loop without a
+	// laptop, and without waiting two seconds for every reading.
+	read  func(context.Context) (bool, error)
+	every time.Duration
 
 	// availableOnce guards the one WMI query behind Available, which several
 	// goroutines reach: the status broadcast on the heartbeat, and the hub when
@@ -25,7 +30,7 @@ type LidSensor struct {
 }
 
 func NewLidSensor() *LidSensor {
-	return &LidSensor{}
+	return &LidSensor{read: isLidOpenWindows, every: 2 * time.Second}
 }
 
 func (s *LidSensor) Name() string        { return "lid" }
@@ -57,39 +62,12 @@ func (s *LidSensor) Available() bool {
 func (s *LidSensor) AvailabilityKnown() bool { return s.known.Load() }
 
 func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	s.lastOpen = true
-	s.initialized = true
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			open, err := isLidOpenWindows(ctx)
-			if err != nil {
-				continue
-			}
-			if open != s.lastOpen {
-				if !open {
-					alerts <- Alert{
-						Sensor:  "lid",
-						Level:   AlertCritical,
-						Message: "Lid closed!",
-					}
-				} else {
-					alerts <- Alert{
-						Sensor:  "lid",
-						Level:   AlertWarning,
-						Message: "Lid opened",
-					}
-				}
-				s.lastOpen = open
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: lidAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
 
 func (s *LidSensor) Stop() error { return nil }

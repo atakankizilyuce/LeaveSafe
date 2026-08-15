@@ -10,12 +10,20 @@ import (
 
 // PowerSensor monitors the charger/AC power state on macOS.
 type PowerSensor struct {
-	lastOnAC    bool
-	initialized bool
+	watch stateWatch[bool]
+
+	// read is how the charger is asked and every is how often. Both are filled
+	// in by the constructor; a test replaces them to drive the loop without the
+	// hardware, and without waiting two seconds for every reading.
+	read  func(context.Context) (bool, error)
+	every time.Duration
 }
 
 func NewPowerSensor() *PowerSensor {
-	return &PowerSensor{}
+	return &PowerSensor{
+		read:  func(context.Context) (bool, error) { return isOnACPower() },
+		every: 2 * time.Second,
+	}
 }
 
 func (s *PowerSensor) Name() string        { return "power" }
@@ -27,43 +35,12 @@ func (s *PowerSensor) Available() bool {
 }
 
 func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	onAC, err := isOnACPower()
-	if err != nil {
-		return err
-	}
-	s.lastOnAC = onAC
-	s.initialized = true
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			onAC, err := isOnACPower()
-			if err != nil {
-				continue
-			}
-			if onAC != s.lastOnAC {
-				if !onAC {
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertCritical,
-						Message: "Charger disconnected!",
-					}
-				} else {
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertWarning,
-						Message: "Charger reconnected",
-					}
-				}
-				s.lastOnAC = onAC
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: chargerAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
 
 func (s *PowerSensor) Stop() error { return nil }

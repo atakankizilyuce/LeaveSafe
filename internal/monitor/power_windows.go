@@ -24,13 +24,30 @@ type systemPowerStatus struct {
 	BatteryFullLifeTime uint32
 }
 
+// What GetSystemPowerStatus puts in ACLineStatus. Anything else — 255 is the
+// documented one — means Windows would not say, which is not the same as the
+// charger being out and must never be reported as it.
+const (
+	acOffline byte = 0
+	acOnline  byte = 1
+)
+
 // PowerSensor monitors the charger/AC power state on Windows.
 type PowerSensor struct {
-	lastACState byte
+	watch stateWatch[bool]
+
+	// read is how the charger is asked and every is how often. Both are filled
+	// in by the constructor; a test replaces them to drive the loop without a
+	// laptop, and without waiting two seconds for every reading.
+	read  func(context.Context) (bool, error)
+	every time.Duration
 }
 
 func NewPowerSensor() *PowerSensor {
-	return &PowerSensor{lastACState: 255} // 255 = unknown initial state
+	return &PowerSensor{
+		read:  func(context.Context) (bool, error) { return readOnAC() },
+		every: 2 * time.Second,
+	}
 }
 
 func (s *PowerSensor) Name() string        { return "power" }
@@ -43,47 +60,40 @@ func (s *PowerSensor) Available() bool {
 }
 
 func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	// Get initial state
-	status, err := getPowerStatus()
-	if err != nil {
-		return err
-	}
-	s.lastACState = status.ACLineStatus
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			status, err := getPowerStatus()
-			if err != nil {
-				continue
-			}
-			if status.ACLineStatus != s.lastACState {
-				switch status.ACLineStatus {
-				case 0:
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertCritical,
-						Message: "Charger disconnected!",
-					}
-				case 1:
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertWarning,
-						Message: "Charger reconnected",
-					}
-				}
-				s.lastACState = status.ACLineStatus
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: chargerAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
 
 func (s *PowerSensor) Stop() error { return nil }
+
+// readOnAC reports whether the charger is in.
+//
+// A reading Windows would not answer — 255 is the documented one — is returned
+// as an error rather than as "unplugged". It is not evidence of anything, and
+// the loop already knows what to do with a poll it could not take: nothing.
+func readOnAC() (bool, error) {
+	status, err := getPowerStatus()
+	if err != nil {
+		return false, err
+	}
+	return onACFrom(status.ACLineStatus)
+}
+
+// onACFrom reads what Windows put in ACLineStatus.
+func onACFrom(line byte) (bool, error) {
+	switch line {
+	case acOffline:
+		return false, nil
+	case acOnline:
+		return true, nil
+	default:
+		return false, fmt.Errorf("the charger's state was not reported (ACLineStatus %d)", line)
+	}
+}
 
 func getPowerStatus() (*systemPowerStatus, error) {
 	var status systemPowerStatus

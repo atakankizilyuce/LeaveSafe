@@ -10,11 +10,17 @@ import (
 
 // ScreenSensor monitors the display/screen state on Windows.
 type ScreenSensor struct {
-	lastOn bool
+	watch stateWatch[bool]
+
+	// read is how the display is asked and every is how often. Both are filled
+	// in by the constructor; a test replaces them to drive the loop without a
+	// display, and without waiting two seconds for every reading.
+	read  func(context.Context) (bool, error)
+	every time.Duration
 }
 
 func NewScreenSensor() *ScreenSensor {
-	return &ScreenSensor{lastOn: true}
+	return &ScreenSensor{read: isScreenOnWindows, every: 2 * time.Second}
 }
 
 func (s *ScreenSensor) Name() string        { return "screen" }
@@ -22,36 +28,12 @@ func (s *ScreenSensor) DisplayName() string { return "Screen/Display" }
 func (s *ScreenSensor) Available() bool     { return true }
 
 func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			on, err := isScreenOnWindows(ctx)
-			if err != nil {
-				continue
-			}
-			if on != s.lastOn {
-				if !on {
-					alerts <- Alert{
-						Sensor:  "screen",
-						Level:   AlertWarning,
-						Message: "Screen turned off!",
-					}
-				} else {
-					alerts <- Alert{
-						Sensor:  "screen",
-						Level:   AlertWarning,
-						Message: "Screen turned on",
-					}
-				}
-				s.lastOn = on
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: screenAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
 
 func (s *ScreenSensor) Stop() error { return nil }

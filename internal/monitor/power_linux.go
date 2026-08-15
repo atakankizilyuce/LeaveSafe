@@ -4,6 +4,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,13 +13,36 @@ import (
 
 // PowerSensor monitors the charger/AC power state on Linux.
 type PowerSensor struct {
-	supplyPath  string
-	lastOnAC    bool
-	initialized bool
+	supplyPath string
+	watch      stateWatch[bool]
+
+	// read is how the charger is asked and every is how often. Both are filled
+	// in by the constructor; a test replaces them to drive the loop without the
+	// hardware, and without waiting two seconds for every reading.
+	read  func(context.Context) (bool, error)
+	every time.Duration
 }
 
 func NewPowerSensor() *PowerSensor {
-	return &PowerSensor{}
+	s := &PowerSensor{every: 2 * time.Second}
+	s.read = func(context.Context) (bool, error) { return s.readOnAC() }
+	return s
+}
+
+// readOnAC finds the machine's mains supply the first time it is asked, and
+// reads it from then on.
+//
+// A machine with nothing under /sys/class/power_supply is answered with an
+// error rather than with "unplugged": there is no charger to watch, and saying
+// there is one that has just come out would be an alarm about a desktop.
+func (s *PowerSensor) readOnAC() (bool, error) {
+	if s.supplyPath == "" {
+		s.supplyPath = findPowerSupplyPath()
+		if s.supplyPath == "" {
+			return false, errors.New("no power supply to watch under /sys/class/power_supply")
+		}
+	}
+	return isACOnline(s.supplyPath)
 }
 
 func (s *PowerSensor) Name() string        { return "power" }
@@ -34,50 +58,12 @@ func (s *PowerSensor) Available() bool {
 }
 
 func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	if s.supplyPath == "" {
-		s.supplyPath = findPowerSupplyPath()
-		if s.supplyPath == "" {
-			return nil
-		}
-	}
-
-	onAC, err := isACOnline(s.supplyPath)
-	if err != nil {
-		return err
-	}
-	s.lastOnAC = onAC
-	s.initialized = true
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			onAC, err := isACOnline(s.supplyPath)
-			if err != nil {
-				continue
-			}
-			if onAC != s.lastOnAC {
-				if !onAC {
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertCritical,
-						Message: "Charger disconnected!",
-					}
-				} else {
-					alerts <- Alert{
-						Sensor:  "power",
-						Level:   AlertWarning,
-						Message: "Charger reconnected",
-					}
-				}
-				s.lastOnAC = onAC
-			}
-		}
-	}
+	return poll{
+		every: s.every,
+		read:  s.read,
+		alert: chargerAlert,
+		watch: &s.watch,
+	}.run(ctx, alerts)
 }
 
 func (s *PowerSensor) Stop() error { return nil }
