@@ -1,6 +1,6 @@
 module github.com/leavesafe/leavesafe
 
-go 1.25.12
+go 1.25.13
 
 require (
 	github.com/coder/websocket v1.8.15
