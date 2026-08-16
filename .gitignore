@@ -432,6 +432,23 @@ FodyWeavers.xsd
 # the repository, and the key must never be committed.
 test/sandbox/linuxvm/.work/
 
+# Nothing in this project is signed or served over TLS from the repository, so
+# a key, a certificate or a keystore appearing in the tree is an accident every
+# time. Ignored by extension rather than by name: the accident is never called
+# secret.pem. `.env` is already covered above; the variants that carry a real
+# machine's values are not, and .env.example is kept so the shape stays
+# documented.
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.ppk
+id_rsa*
+id_ed25519*
+.env.*
+!.env.example
+
 # Agent scratch: plans, specs and brainstorming notes are how a change was
 # arrived at, not what it does. The code, the tests and the README say what the
 # project is; a dated plan file only says what someone intended in a session.
@@ -440,6 +457,17 @@ docs/superpowers/
 plans/
 specs/
 .claude/
+
+# How one machine's agent is wired to SonarQube: a local command name and the
+# project key, written by `sonar integrate claude`. The token it uses lives in
+# the operating system's keychain and never appears here — but the file still
+# describes one developer's setup rather than the project, and it names a
+# Windows executable, so committing it would break everyone else's.
+.mcp.json
+
+# The scanner's working directory. It is written wherever an analysis is run by
+# hand, and report-task.txt inside it points at that one run on the server.
+.scannerwork/
 # Snapshots and console dumps a browser-driving agent leaves behind while it
 # checks the phone UI. They describe one run, not the project.
 .playwright-mcp/
