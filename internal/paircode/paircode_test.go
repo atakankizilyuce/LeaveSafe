@@ -158,6 +158,44 @@ func TestRefusesWhatCannotBeEncoded(t *testing.T) {
 	}
 }
 
+// The seven key bytes hold sixteen digits and no more.
+//
+// Nothing this program issues can reach the bound — a sixteen-digit key stops
+// at 9999999999999999 — which is the reason to have the check and a test for
+// it rather than a comment. Without them the only thing between a longer key
+// and its top bits falling off is a length check somewhere else in the file,
+// and a code built from a truncated key is a working code for a *different*
+// key that nothing would report.
+func TestAKeyTooLargeForItsBytesIsRefused(t *testing.T) {
+	// Seventeen digits: the right shape, past the bound.
+	if _, err := Encode("10.0.0.7", 9443, "99999999999999999"); err == nil {
+		t.Error("a key too large to carry was encoded anyway")
+	}
+}
+
+func TestEveryKeySixteenDigitsCanSpellSurvivesTheRoundTrip(t *testing.T) {
+	// The two ends of the range and the value one below the bound, which is
+	// where a truncation would first show.
+	for _, key := range []string{
+		"0000000000000000",
+		"9999999999999999",
+		"9999999999999998",
+		"1000000000000000",
+	} {
+		code, err := Encode("10.0.0.7", 9443, key)
+		if err != nil {
+			t.Fatalf("Encode(%q) = %v", key, err)
+		}
+		_, _, got, err := Decode(code)
+		if err != nil {
+			t.Fatalf("Decode(%q) = %v", code, err)
+		}
+		if got != key {
+			t.Errorf("round trip of %q gave %q", key, got)
+		}
+	}
+}
+
 // Two machines on the same network differ by one octet, and two codes that
 // looked alike would be two codes somebody pairs the wrong one with.
 func TestNeighbouringAddressesLookDifferent(t *testing.T) {

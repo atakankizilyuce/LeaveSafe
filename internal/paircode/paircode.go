@@ -21,6 +21,7 @@ package paircode
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -33,8 +34,17 @@ import (
 // U is left out to keep an accidental obscenity from appearing in a code.
 const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
+// keyBytes is how many bytes the pairing key takes. Sixteen decimal digits
+// reach 9999999999999999, which is under 2^54, so seven hold any of them.
+const keyBytes = 7
+
+// maxKeyValue is the largest number keyDigits digits can spell. The seven key
+// bytes are sized for it, and keyNumber refuses anything above it rather than
+// letting the top of a larger number fall off unnoticed.
+const maxKeyValue = 9999999999999999
+
 // payloadBytes is the address, the port and the key.
-const payloadBytes = 4 + 2 + 7
+const payloadBytes = 4 + 2 + keyBytes
 
 // codeChars is what payloadBytes takes in base32, rounded up: 13*8 = 104 bits,
 // and 104/5 is 20.8.
@@ -59,9 +69,10 @@ func Encode(host string, port int, key string) (string, error) {
 		return "", fmt.Errorf("%w: %q is not an IPv4 address", ErrNotACode, host)
 	}
 
-	if port < 0 || port > 65535 {
+	if port < 0 || port > math.MaxUint16 {
 		return "", fmt.Errorf("%w: port %d is out of range", ErrNotACode, port)
 	}
+	p := uint16(port)
 
 	digits, err := keyNumber(key)
 	if err != nil {
@@ -70,10 +81,13 @@ func Encode(host string, port int, key string) (string, error) {
 
 	payload := make([]byte, payloadBytes)
 	copy(payload[0:4], v4)
-	payload[4] = byte(port >> 8)
-	payload[5] = byte(port)
-	for i := 6; i >= 0; i-- {
-		payload[6+i] = byte(digits)
+	payload[4] = byte(p >> 8)
+	payload[5] = byte(p & 0xff)
+	// Least significant byte last, so the bytes read in the order the digits do.
+	// keyNumber has already established that the number fits in these, which is
+	// the whole reason that check is there rather than assumed.
+	for i := keyBytes - 1; i >= 0; i-- {
+		payload[6+i] = byte(digits & 0xff)
 		digits >>= 8
 	}
 
@@ -116,6 +130,18 @@ func keyNumber(key string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%w: a key is digits only", ErrNotACode)
 	}
+	// The bound the seven key bytes rest on, stated rather than assumed.
+	//
+	// Sixteen decimal digits cannot exceed this, so the check cannot fire for
+	// any key this program issues — which is exactly why it is worth writing
+	// down. Without it the only thing standing between a longer key and seven
+	// bytes silently dropping its top is the length check above, and a code
+	// built from a truncated key is a code for a different key that nothing
+	// would report. Raise keyDigits and this fails loudly instead.
+	if n > maxKeyValue {
+		return 0, fmt.Errorf("%w: a key of %d digits does not fit in %d bytes",
+			ErrNotACode, keyDigits, keyBytes)
+	}
 	return n, nil
 }
 
@@ -132,6 +158,7 @@ func encode32(payload []byte) string {
 	var bits uint
 
 	for _, b := range payload {
+		// b is already a byte, so widening it is exact.
 		buffer = buffer<<8 | uint16(b)
 		bits += 8
 		for bits >= 5 {
@@ -147,6 +174,22 @@ func encode32(payload []byte) string {
 	return string(out)
 }
 
+// valueOf is one character's place in the alphabet, as the five-bit value it
+// stands for.
+//
+// A table rather than strings.IndexRune so the result is a byte from the start.
+// Narrowing an int afterwards is the shape static analysis flags — rightly, in
+// the general case — and writing it this way removes the question instead of
+// answering it in a comment.
+func valueOf(c rune) (byte, bool) {
+	for i := 0; i < len(alphabet); i++ {
+		if rune(alphabet[i]) == c {
+			return byte(i), true
+		}
+	}
+	return 0, false
+}
+
 func decode32(typed string) ([]byte, error) {
 	cleaned := clean(typed)
 	if len(cleaned) != codeChars {
@@ -159,15 +202,15 @@ func decode32(typed string) ([]byte, error) {
 	var bits uint
 
 	for _, c := range cleaned {
-		value := strings.IndexRune(alphabet, c)
-		if value < 0 {
+		value, ok := valueOf(c)
+		if !ok {
 			return nil, fmt.Errorf("%w: %q is not a character a code uses", ErrNotACode, c)
 		}
 		buffer = buffer<<5 | uint16(value)
 		bits += 5
 		if bits >= 8 {
 			bits -= 8
-			payload = append(payload, byte(buffer>>bits))
+			payload = append(payload, byte((buffer>>bits)&0xff))
 		}
 	}
 
