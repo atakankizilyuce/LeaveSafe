@@ -16,6 +16,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/auth"
 	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/endpoint"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/safe"
 	"github.com/leavesafe/leavesafe/internal/state"
@@ -895,5 +896,99 @@ func TestADevelopmentBuildSaysWhyItWillNeverCheck(t *testing.T) {
 
 	if !strings.Contains(out, "development build") {
 		t.Errorf("a development build said nothing about not checking; output was:\n%s", out)
+	}
+}
+
+// A client on this machine has the pairing key beside it in the config
+// directory and no way to know which port to spend it on: the port defaults to
+// zero and the operating system picks a free one at every start. So the address
+// is written down, and these hold that in place — it is the difference between
+// opening the machine you are sitting at and being asked to read an address off
+// its own screen.
+
+func TestAStartSaysWhereItIsListening(t *testing.T) {
+	a := startedApp(t, nil)
+
+	where, found, err := endpoint.Read(config.ConfigDir())
+	if err != nil {
+		t.Fatalf("reading the endpoint: %v", err)
+	}
+	if !found {
+		t.Fatal("a running program published no address")
+	}
+
+	if where.Port != a.srv.Port() {
+		t.Errorf("published port %d, listening on %d", where.Port, a.srv.Port())
+	}
+	if where.PID != os.Getpid() {
+		t.Errorf("published pid %d, running as %d", where.PID, os.Getpid())
+	}
+
+	// The published port is the claim; a connection is the proof.
+	conn, err := net.DialTimeout("tcp",
+		net.JoinHostPort("127.0.0.1", strconv.Itoa(where.Port)), 2*time.Second)
+	if err != nil {
+		t.Fatalf("nothing is listening on the published port: %v", err)
+	}
+	_ = conn.Close()
+}
+
+func TestStoppingTakesTheAddressBackDown(t *testing.T) {
+	// What a crash leaves behind is a port that refuses connections, which a
+	// client finds out by trying. What a clean stop must not leave behind is a
+	// file still claiming one.
+	tempConfigDir(t)
+	cfg := config.Default()
+	cfg.Port = 0
+	off := false
+	cfg.UpdateCheck = &off
+
+	a, err := startApp(appOptions{cfg: cfg, headless: true, out: os.Stdout, in: strings.NewReader("")})
+	if err != nil {
+		t.Fatalf("startApp: %v", err)
+	}
+	if _, found, _ := endpoint.Read(config.ConfigDir()); !found {
+		t.Fatal("nothing was published while it was running")
+	}
+
+	a.shutdown()
+	a.close()
+	safe.SetPanicHandler(nil)
+
+	if _, found, _ := endpoint.Read(config.ConfigDir()); found {
+		t.Error("the address is still published after the program stopped")
+	}
+}
+
+func TestAStartThatCannotWriteTheAddressStillStarts(t *testing.T) {
+	// The alarm is the product. Refusing to arm a machine because a
+	// convenience file could not be written would be the wrong trade, so this
+	// is a warning and the program carries on.
+	tempConfigDir(t)
+	// A directory where the file goes: the rename cannot replace it.
+	if err := os.MkdirAll(endpoint.Path(config.ConfigDir()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Port = 0
+	off := false
+	cfg.UpdateCheck = &off
+
+	a, err := startApp(appOptions{cfg: cfg, headless: true, out: os.Stdout, in: strings.NewReader("")})
+	if err != nil {
+		t.Fatalf("a start that could not write the address gave up: %v", err)
+	}
+	t.Cleanup(func() {
+		a.shutdown()
+		a.close()
+		safe.SetPanicHandler(nil)
+	})
+
+	if a.srv.Port() == 0 {
+		t.Error("the server did not come up")
+	}
+	if _, found, _ := endpoint.Read(config.ConfigDir()); found {
+		t.Error("something was published where nothing could be written")
 	}
 }

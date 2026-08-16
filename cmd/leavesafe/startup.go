@@ -17,6 +17,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/auth"
 	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/endpoint"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/push"
@@ -125,6 +126,7 @@ func startApp(opts appOptions) (*app, error) {
 	if err := a.srv.Listen(); err != nil {
 		return nil, fmt.Errorf("failed to bind port: %w", err)
 	}
+	a.publishEndpoint(version)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
@@ -228,6 +230,38 @@ func (a *app) close() {
 	for _, closer := range a.closers {
 		_ = closer()
 	}
+}
+
+// publishEndpoint writes down which port the listener took.
+//
+// The port is not knowable from outside this process — it defaults to zero and
+// the operating system picks a free one at every start — so a client running as
+// the same user has the pairing key sitting beside it in the config directory
+// and no idea where to spend it. Writing the address down is what lets it open
+// the machine it is already on without asking anybody to read an address off a
+// screen.
+//
+// A failure here costs that convenience and nothing else: the siren, the local
+// network and every connected phone are unaffected. The same trade as the push
+// key above — refusing to start an alarm system because a file could not be
+// written helps nobody.
+func (a *app) publishEndpoint(version string) {
+	dir := config.ConfigDir()
+	err := endpoint.Publish(dir, endpoint.Endpoint{
+		Port:      a.srv.Port(),
+		PID:       os.Getpid(),
+		Version:   version,
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		log.Warnf("Could not write down where this is listening: %v", err)
+		return
+	}
+
+	// Withdrawn on the way out, by the path that runs whether or not the start
+	// ever got as far as serving. What a crash leaves behind is a port that
+	// refuses connections rather than a file that keeps claiming one.
+	a.closers = append(a.closers, func() error { return endpoint.Withdraw(dir) })
 }
 
 // migratePlaintextPin hashes a cleartext PIN left by an older version and
