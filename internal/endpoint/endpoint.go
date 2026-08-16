@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -57,6 +58,18 @@ type Endpoint struct {
 // Path is where the endpoint file lives for a given config directory.
 func Path(dir string) string { return filepath.Join(dir, FileName) }
 
+// Publish reaches the filesystem through these so that what it does when the
+// filesystem says no is something a test can see. A disk that fills between the
+// create and the write, and a config directory that has stopped being writable,
+// are the failures the cleanup below exists for, and neither is something a
+// test can arrange on all three platforms. Only the tests replace them, the way
+// internal/alarm does with the calls that reach a sound card.
+var (
+	marshalFn    = json.MarshalIndent
+	createTempFn = os.CreateTemp
+	chmodFn      = os.Chmod
+)
+
 // Publish writes where this run is listening.
 //
 // Atomic, because a client reading a half-written file would get a port that
@@ -66,12 +79,12 @@ func Publish(dir string, e Endpoint) error {
 		return fmt.Errorf("endpoint: preparing %s: %w", dir, err)
 	}
 
-	body, err := json.MarshalIndent(e, "", "  ")
+	body, err := marshalFn(e, "", "  ")
 	if err != nil {
 		return fmt.Errorf("endpoint: encoding: %w", err)
 	}
 
-	tmp, err := os.CreateTemp(dir, FileName+".*")
+	tmp, err := createTempFn(dir, FileName+".*")
 	if err != nil {
 		return fmt.Errorf("endpoint: creating a temporary file: %w", err)
 	}
@@ -83,7 +96,7 @@ func Publish(dir string, e Endpoint) error {
 		_ = os.Remove(name)
 		return err
 	}
-	if err := os.Chmod(name, fileMode); err != nil {
+	if err := chmodFn(name, fileMode); err != nil {
 		_ = os.Remove(name)
 		return fmt.Errorf("endpoint: setting permissions: %w", err)
 	}
@@ -94,7 +107,11 @@ func Publish(dir string, e Endpoint) error {
 	return nil
 }
 
-func writeAndClose(f *os.File, body []byte) error {
+// writeAndClose takes the narrow interface rather than the file it is always
+// given, because a close that fails after a write that worked is a real answer
+// — it is where a filesystem that buffers reports that the bytes never landed —
+// and asking a real file for one is not something a test can do.
+func writeAndClose(f io.WriteCloser, body []byte) error {
 	if _, err := f.Write(body); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("endpoint: writing: %w", err)

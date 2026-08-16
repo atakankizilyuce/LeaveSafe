@@ -1,9 +1,11 @@
 package endpoint
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -195,5 +197,181 @@ func TestPublishingWhereItCannotWriteSaysSo(t *testing.T) {
 
 	if err := Publish(filepath.Join(notADir, "under"), Endpoint{Port: 1}); err == nil {
 		t.Error("writing under a file was reported as having worked")
+	}
+}
+
+// What follows is the filesystem saying no. Publishing is allowed to fail —
+// the caller logs it and the alarm, the local network and every connected phone
+// carry on — but it is not allowed to fail quietly, and it is not allowed to
+// leave a temporary file in the directory a client reads. One left behind stays
+// there for the life of the installation.
+
+// namesIn is what the config directory holds, for tests that care that a
+// failure left nothing behind.
+func namesIn(t *testing.T, dir string) []string {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// failedWith checks that publishing failed, and said which step did.
+func failedWith(t *testing.T, err error, step string) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatalf("%s failed and publishing reported that it had worked", step)
+	}
+	if !strings.Contains(err.Error(), step) {
+		t.Errorf("the error does not say that %s failed: %v", step, err)
+	}
+}
+
+func TestAnEndpointThatCannotBeEncodedIsNotPublished(t *testing.T) {
+	previous := marshalFn
+	t.Cleanup(func() { marshalFn = previous })
+	marshalFn = func(any, string, string) ([]byte, error) {
+		return nil, errors.New("nothing to say")
+	}
+
+	dir := t.TempDir()
+	failedWith(t, Publish(dir, Endpoint{Port: 9443}), "encoding")
+	if names := namesIn(t, dir); len(names) != 0 {
+		t.Errorf("the directory holds %v", names)
+	}
+}
+
+func TestATemporaryFileThatCannotBeCreatedIsReported(t *testing.T) {
+	// A config directory that has stopped being writable — someone else's
+	// permissions, or a disk with nothing left on it.
+	previous := createTempFn
+	t.Cleanup(func() { createTempFn = previous })
+	createTempFn = func(string, string) (*os.File, error) {
+		return nil, errors.New("read-only file system")
+	}
+
+	dir := t.TempDir()
+	failedWith(t, Publish(dir, Endpoint{Port: 9443}), "creating a temporary file")
+	if names := namesIn(t, dir); len(names) != 0 {
+		t.Errorf("the directory holds %v", names)
+	}
+}
+
+func TestAWriteThatFailsTakesTheTemporaryFileWithIt(t *testing.T) {
+	// The disk filling up between the create and the write. The file is handed
+	// back already closed, which is what every write to it failing looks like
+	// from inside Publish.
+	previous := createTempFn
+	t.Cleanup(func() { createTempFn = previous })
+	createTempFn = func(dir, pattern string) (*os.File, error) {
+		f, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		if err := f.Close(); err != nil {
+			return nil, err
+		}
+		return f, nil
+	}
+
+	dir := t.TempDir()
+	failedWith(t, Publish(dir, Endpoint{Port: 9443}), "writing")
+	if names := namesIn(t, dir); len(names) != 0 {
+		t.Errorf("a failed write left %v behind", names)
+	}
+}
+
+func TestPermissionsThatCannotBeSetTakeTheTemporaryFileWithThem(t *testing.T) {
+	// Owner-only is not a nicety here: it is the reason the file is safe to
+	// write on a shared machine. A file that could not be restricted must not
+	// be left where a client would read it.
+	previous := chmodFn
+	t.Cleanup(func() { chmodFn = previous })
+	chmodFn = func(string, os.FileMode) error {
+		return errors.New("not permitted")
+	}
+
+	dir := t.TempDir()
+	failedWith(t, Publish(dir, Endpoint{Port: 9443}), "setting permissions")
+	if names := namesIn(t, dir); len(names) != 0 {
+		t.Errorf("a file nobody could restrict was left as %v", names)
+	}
+}
+
+func TestARenameThatFailsTakesTheTemporaryFileWithIt(t *testing.T) {
+	// A directory standing where the endpoint file goes. Nothing puts one
+	// there, which is the point: the rename is the last step, and a failure in
+	// it must still end with a directory holding no temporary files.
+	dir := t.TempDir()
+	inTheWay := Path(dir)
+	if err := os.MkdirAll(filepath.Join(inTheWay, "occupied"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	failedWith(t, Publish(dir, Endpoint{Port: 9443}), "writing")
+	if names := namesIn(t, dir); len(names) != 1 || names[0] != FileName {
+		t.Errorf("a failed rename left %v behind", names)
+	}
+}
+
+// stuckCloser writes but will not close, the way a filesystem that buffers
+// reports at the last moment that the bytes never landed.
+type stuckCloser struct{ written int }
+
+func (s *stuckCloser) Write(p []byte) (int, error) {
+	s.written += len(p)
+	return len(p), nil
+}
+
+func (*stuckCloser) Close() error { return errors.New("the disk had the last word") }
+
+func TestACloseThatFailsAfterAGoodWriteIsStillAFailure(t *testing.T) {
+	// The bytes were accepted and then lost. Reporting this as a success would
+	// publish a port that was never written down.
+	f := &stuckCloser{}
+	err := writeAndClose(f, []byte("{}\n"))
+
+	failedWith(t, err, "closing")
+	if f.written == 0 {
+		t.Error("the body was never written")
+	}
+}
+
+func TestAnEndpointThatCannotBeReadIsAnError(t *testing.T) {
+	// Not the same as nothing running, and not the same as nonsense in the
+	// file. Something is at that path and this program cannot see it, which is
+	// the one case a client should be told about rather than shown as "off".
+	dir := t.TempDir()
+	if err := os.MkdirAll(Path(dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	_, found, err := Read(dir)
+	if err == nil {
+		t.Fatal("a path that could not be read was reported as nothing running")
+	}
+	if found {
+		t.Error("something unreadable was reported as a live endpoint")
+	}
+}
+
+func TestWithdrawingSomethingThatWillNotGoIsReported(t *testing.T) {
+	// A missing file is fine on the way out; a file that refuses to go is not,
+	// because what is left behind outlives the program that wrote it.
+	dir := t.TempDir()
+	stuck := Path(dir)
+	if err := os.MkdirAll(filepath.Join(stuck, "occupied"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Withdraw(dir); err == nil {
+		t.Error("a file that could not be removed was reported as gone")
 	}
 }
