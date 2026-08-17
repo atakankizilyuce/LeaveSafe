@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/eventlog"
 	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
+	"github.com/leavesafe/leavesafe/internal/paircode"
 	"github.com/leavesafe/leavesafe/internal/qr"
 	"github.com/leavesafe/leavesafe/internal/server"
 	"github.com/leavesafe/leavesafe/internal/state"
@@ -167,6 +169,51 @@ func (sb *statusBar) keyText() string {
 	return sb.key
 }
 
+// pairCode is the short code the application's own pairing field takes, built
+// from the address the QR box is currently showing.
+//
+// Two things go to a phone from this screen and they are not alternatives. The
+// QR opens this machine's web client in a browser, which is the path for a
+// phone with nothing installed. The code is typed into the application, which
+// is the path for a phone that has it — and it exists because that field used
+// to ask for an address and sixteen digits separately.
+//
+// Empty when there is nothing to build one from: no address reported yet, or an
+// address that is a host name or IPv6 and cannot be carried. Nothing on screen
+// beats a code that pairs with nothing.
+func (sb *statusBar) pairCode() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.pairCodeLocked()
+}
+
+// pairCodeLocked is [pairCode] for a caller that already holds the mutex.
+//
+// gridLines is such a caller — refresh takes the lock and paints inside it — and
+// a sync.Mutex is not reentrant, so taking it again there would hang the
+// dashboard on every repaint rather than fail in a way anybody could see.
+func (sb *statusBar) pairCodeLocked() string {
+	idx := sb.qrURLIdx
+	if idx < 0 || idx >= len(sb.urls) {
+		return ""
+	}
+
+	u, err := url.Parse(sb.urls[idx])
+	if err != nil {
+		return ""
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		return ""
+	}
+
+	code, err := paircode.Encode(u.Hostname(), port, sb.rawKey)
+	if err != nil {
+		return ""
+	}
+	return code
+}
+
 // setKey records a freshly rotated pairing key for the dashboard to draw.
 func (sb *statusBar) setKey(key string) {
 	sb.mu.Lock()
@@ -269,6 +316,15 @@ func (sb *statusBar) gridLines() []string {
 
 	lines = append(lines, midSep)
 	lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Key      %s%s%s", cYellow, cReset, cBold, sb.key, cReset)))
+
+	// What the application's pairing field takes: one string carrying the
+	// address and the key together, so nobody types two things. Drawn only
+	// when there is an address to build it from — see pairCode.
+	if code := sb.pairCodeLocked(); code != "" {
+		lines = append(lines, sb.boxLine(
+			fmt.Sprintf("  %s●%s  Code     %s%s%s", cYellow, cReset, cBold, code, cReset),
+		))
+	}
 
 	maxURLVis := w - 2 - visLen("  ●  URL      ")
 	for _, url := range sb.urls {
