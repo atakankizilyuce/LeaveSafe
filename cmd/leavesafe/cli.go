@@ -75,6 +75,9 @@ Flags:
                       dashboard, leaving the terminal as you found it. Chosen
                       automatically when output is redirected to a file or pipe
   -headless           Run with no terminal interface at all, for autostart
+  -managed            Started by the LeaveSafe desktop application, which ships
+                      this binary and decides its version. Such a copy does not
+                      check for updates: the application does that
   -version            Print the version and exit
   -h, -help           Show this help
 

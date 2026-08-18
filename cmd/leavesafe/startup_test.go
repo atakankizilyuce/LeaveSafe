@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net"
 	"os"
@@ -880,6 +881,41 @@ func TestAStartSaysNothingAboutAReleaseAlreadyInstalled(t *testing.T) {
 
 	if strings.Contains(out, "is available") {
 		t.Errorf("a start offered the version it is already running; output was:\n%s", out)
+	}
+}
+
+// A copy the desktop application installed is one whose version that application
+// decides: it ships the binary and replaces it. Asking GitHub daily would be a
+// question with no action behind it, and SECURITY.md is explicit about what the
+// check discloses — so a managed copy does not ask.
+func TestAManagedCopyDoesNotAskAboutReleases(t *testing.T) {
+	a := startedApp(t, nil)
+	asRelease(t, "v1.2.0")
+	ledger := update.NewLedger(config.ConfigDir())
+	if err := ledger.Save(update.Record{LastSeenLatest: "v99.0.0"}); err != nil {
+		t.Fatalf("seed ledger: %v", err)
+	}
+
+	// Cancelled before it is handed over: the supervised loop ends at once, so
+	// what is left to observe is the announcement, which is the part a managed
+	// copy must not make either.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	managed := captureLog(t, func() {
+		a.superviseUpdateCheck(ctx, config.Default(), update.MethodUnknown, ledger, true)
+	})
+	if strings.Contains(managed, "99.0.0") {
+		t.Errorf("a managed copy announced a release anyway; output was:\n%s", managed)
+	}
+
+	// The same call without the flag, so the silence above is the flag rather
+	// than the fixture.
+	unmanaged := captureLog(t, func() {
+		a.superviseUpdateCheck(ctx, config.Default(), update.MethodUnknown, ledger, false)
+	})
+	if !strings.Contains(unmanaged, "99.0.0") {
+		t.Errorf("an unmanaged copy said nothing; output was:\n%s", unmanaged)
 	}
 }
 

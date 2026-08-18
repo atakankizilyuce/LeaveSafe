@@ -43,6 +43,11 @@ type appOptions struct {
 	// the console loop runs and the pairing code is printed once.
 	plain   bool
 	devMode bool
+	// managed says this copy was installed and is started by the LeaveSafe
+	// desktop application, which ships the binary and decides which version it
+	// is. It changes one thing: this copy does not ask GitHub about releases.
+	// See superviseUpdateCheck.
+	managed bool
 	// out is where the dashboard is drawn. Unused on a headless start, which
 	// has no terminal to draw on.
 	out *os.File
@@ -156,7 +161,7 @@ func startApp(opts appOptions) (*app, error) {
 		installMethod: installMethod, updateLedger: updateLedger,
 		srv: a.srv, cfg: cfg, quit: a.quit,
 	})
-	a.superviseUpdateCheck(ctx, cfg, installMethod, updateLedger)
+	a.superviseUpdateCheck(ctx, cfg, installMethod, updateLedger, opts.managed)
 	a.superviseBluetooth(ctx, cfg)
 
 	return a, nil
@@ -512,9 +517,18 @@ func (a *app) superviseLoops(ctx context.Context, opts appOptions, deps consoleD
 // most in need of a fix are the least likely to hear about one. Nothing here can
 // delay arming — it runs on its own supervised loop, behind its own timeout, and
 // a failure goes no further than the debug log.
+// A managed copy asks nothing. The desktop application ships the binary and
+// decides which version it is, so a daily question to GitHub would have no
+// action behind it and would offer an upgrade command that does not apply to
+// this copy. SECURITY.md sets out what the check discloses; disclosing it for
+// nothing is the part worth avoiding.
 func (a *app) superviseUpdateCheck(ctx context.Context, cfg *config.Config,
-	method update.Method, ledger *update.Ledger,
+	method update.Method, ledger *update.Ledger, managed bool,
 ) {
+	if managed {
+		return
+	}
+
 	a.sayWhatIsAlreadyKnown(ledger, method)
 
 	watcher := update.Watcher{
