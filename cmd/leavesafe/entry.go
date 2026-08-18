@@ -32,6 +32,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	headless := flag.Bool("headless", false, "run without the terminal dashboard, for autostart")
 	plain := flag.Bool("plain", false, "log to the terminal instead of drawing the full-screen dashboard")
+	managed := flag.Bool("managed", false, "started by the LeaveSafe desktop application, which owns this copy's version")
 	flag.Usage = printUsage
 	flag.Parse()
 
@@ -62,6 +63,7 @@ func main() {
 		headless: *headless,
 		plain:    plainRun,
 		devMode:  *devMode,
+		managed:  *managed,
 		out:      os.Stdout,
 		in:       os.Stdin,
 	})
