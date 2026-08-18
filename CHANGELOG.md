@@ -9,7 +9,41 @@ For a security tool, "notable" is read generously: anything that changes what
 LeaveSafe watches, what it reports, or what it trusts belongs here even when the
 diff is small.
 
-## [Unreleased]
+## [1.4.0] - 2026-08-18
+
+### Added
+
+- **The listener writes down which port it took.** `endpoint.json` in the config
+  directory names the port, the process id and the version, written when the
+  listener binds and removed when the program stops cleanly. The port moves at
+  every start unless it was configured, so anything on this machine that wants
+  to reach LeaveSafe used to have no way of knowing where it was. The desktop
+  application reads this file to find the copy running underfoot.
+
+- **A short pairing code beside the QR.** The address and the key together, in
+  something a person can read out and type, for the times a camera is not the
+  way in.
+
+- **`-managed`, for a copy the desktop application owns.** That application
+  ships this binary and decides which version it is, so a copy started with this
+  flag does not ask GitHub about releases: the question would have nothing
+  behind it, and the upgrade command it would print does not apply to a copy
+  somebody else installed.
+
+### Fixed
+
+- **Sensors are asked whether they actually work.** Every sensor now reports its
+  own availability rather than being assumed to work, and two that were claiming
+  to watch something they could not were fixed. A sensor that lies about
+  covering a machine is worse than one that admits it cannot.
+
+## [1.3.2] and earlier
+
+Everything below shipped in v1.3.2 or one of the releases before it. It was
+written under an `[Unreleased]` heading that was never turned over at tagging
+time, so the heading is corrected here rather than the entries being sorted into
+the five releases they came from — which the history no longer says precisely
+enough to be worth guessing at.
 
 ### Added
 
