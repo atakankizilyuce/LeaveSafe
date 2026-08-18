@@ -896,7 +896,7 @@ func TestAManagedCopyDoesNotAskAboutReleases(t *testing.T) {
 		t.Fatalf("seed ledger: %v", err)
 	}
 
-	// Cancelled before it is handed over: the supervised loop ends at once, so
+	// Canceled before it is handed over: the supervised loop ends at once, so
 	// what is left to observe is the announcement, which is the part a managed
 	// copy must not make either.
 	ctx, cancel := context.WithCancel(context.Background())
