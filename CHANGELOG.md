@@ -9,6 +9,23 @@ For a security tool, "notable" is read generously: anything that changes what
 LeaveSafe watches, what it reports, or what it trusts belongs here even when the
 diff is small.
 
+## [Unreleased]
+
+### Security
+
+- **The laptop now proves it holds the pairing key, instead of only asking.**
+  The greeting carries a random challenge; the phone answers it with an HMAC
+  over the pairing key rather than sending the key itself, and demands an answer
+  to a challenge of its own before it believes anything it is told. `endpoint.json`
+  is writable by anything running as the same user, so until now whatever
+  rewrote it could harvest the key on the first connection and — far worse for
+  an alarm panel — answer `auth_ok` itself and report "armed, all sensors fine"
+  while the real machine sat unwatched. Both proofs are bound to both
+  challenges, so neither half can be replayed onto another connection. A wrong
+  proof is refused exactly as a wrong key is, in the same words and against the
+  same lockout. Apps already released still send the key in plaintext and keep
+  working for now.
+
 ## [1.4.0] - 2026-08-18
 
 ### Added

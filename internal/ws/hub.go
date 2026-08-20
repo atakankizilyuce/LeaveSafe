@@ -511,6 +511,21 @@ func (h *Hub) RemoveExternalClient(client *Client) {
 	h.removeClient(client)
 }
 
+// greet mints this connection's half of the pairing challenge and sends the
+// greeting carrying it.
+//
+// The nonce is recorded on the client rather than derived later because it has
+// to be the same number for the whole connection and a different one on the
+// next: a proof is only worth anything if it answers a challenge this daemon
+// chose and has not used before.
+//
+// Like authenticated and pendingHeld, serverNonce is touched only on the
+// connection's own goroutine, so it needs no lock.
+func (h *Hub) greet(client *Client) {
+	client.serverNonce = newNonce()
+	client.send(NewHello(h.version, client.serverNonce))
+}
+
 // HandleConnection handles a new WebSocket connection. remoteAddr is the peer
 // address reported by the HTTP server; pairing attempts are rate-limited
 // against it.
@@ -543,11 +558,11 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 	}()
 
 	// Identify the server before asking for anything, so a client knows what it
-	// is talking to before it sends the pairing key rather than after.
+	// is talking to before it offers anything rather than after.
 	h.mu.RLock()
 	deadlineAfter := h.authDeadline
 	h.mu.RUnlock()
-	client.send(NewHello(h.version))
+	h.greet(client)
 
 	// Until the client authenticates, every read shares one absolute deadline,
 	// so a peer cannot keep a socket open forever by dribbling out unauthenticated
@@ -1217,8 +1232,55 @@ func (h *Hub) PinRequired() bool {
 	return h.pinEnabled && h.pinHash != ""
 }
 
+// refusedKey is what a proof that does not verify is judged against.
+//
+// The auth manager owns the whole failure path — the per-address counter, the
+// lockout it turns into, the wording the client is told, the single event-log
+// line — and reproducing any of that here would let the two drift apart until a
+// refused proof and a refused key were distinguishable. So a proof that fails
+// is turned into a key that cannot pass, and the existing path does the rest. A
+// pairing key is always sixteen digits, so the empty string is never one.
+const refusedKey = ""
+
+// authKey returns what this auth message should be judged against: key when the
+// client has shown it is entitled to it, refusedKey when it has not.
+//
+// A message carrying a proof is judged by the proof and nothing else, even when
+// it also carries a key: the key field is the weaker of the two and must not be
+// able to rescue a connection that could not answer the challenge.
+func (h *Hub) authKey(client *Client, msg ClientMessage, key string) string {
+	if msg.Proof == "" {
+		// Transitional. Released apps still send the pairing key in plaintext,
+		// and breaking every one of them is not this change's job. Delete this
+		// branch — and the Key field with it — once every supported app answers
+		// the greeting's challenge instead, at which point the key stops
+		// crossing the wire at all and anything that can read the socket or
+		// rewrite endpoint.json stops being able to harvest it.
+		return msg.Key
+	}
+
+	// A connection that was never greeted holds no challenge, and a nonce that
+	// is not the shape this protocol produces is not one either. Neither case
+	// describes a proof this daemon could have asked for.
+	if client.serverNonce == "" || !validNonce(msg.Nonce) {
+		return refusedKey
+	}
+	if !proofHolds(key, proofRoleClient, client.serverNonce, msg.Nonce, msg.Proof) {
+		return refusedKey
+	}
+	return key
+}
+
 func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
-	token, remaining, err := h.authManager.Authenticate(client.remoteAddr, msg.Key)
+	// One read of the pairing key for the whole exchange. Rotation replaces it
+	// while connections are live, and reading it twice would let this daemon
+	// check the client's proof against one key and then answer with another,
+	// leaving an app unable to tell a rotation apart from an impostor. Read
+	// once, a rotation mid-handshake simply fails the pairing — which is what a
+	// phone holding a key that no longer works should be told.
+	key := h.authManager.RawPairingKey()
+
+	token, remaining, err := h.authManager.Authenticate(client.remoteAddr, h.authKey(client, msg, key))
 	if err != nil {
 		client.send(NewAuthFail(err.Error(), remaining))
 		// An attempt made against an address that is already locked out is not
@@ -1259,6 +1321,16 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 
 	infos := h.GetSensorInfos()
 	authOK := NewAuthOK(token, infos, h.version, h.IsArmed(), h.ArmedAt())
+	// The laptop's half of the challenge, and the reason this exchange exists.
+	// endpoint.json is writable by anything running as this user, so the app
+	// cannot tell the daemon from an impostor that claimed the port by where it
+	// connected; it can tell them apart by which one can answer with the
+	// pairing key. Only a client that offered a nonce of its own can be
+	// answered — a released app that sent the key gets the auth_ok it always
+	// got, with no proof in it.
+	if msg.Proof != "" {
+		authOK.Proof = handshakeProof(key, proofRoleServer, client.serverNonce, msg.Nonce)
+	}
 	if notifier := h.pushNotifier(); notifier != nil {
 		authOK.PushKey = notifier.PublicKey()
 	}

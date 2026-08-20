@@ -30,8 +30,8 @@ const (
 
 const (
 	// MsgTypeHello is the first thing the server says on a new connection. It
-	// names the version, so a client knows what it reached before it offers the
-	// pairing key.
+	// names the version, so a client knows what it reached, and carries the
+	// challenge the client has to answer before it is paired.
 	MsgTypeHello             = "hello"
 	MsgTypeAuthOK            = "auth_ok"
 	MsgTypeAuthFail          = "auth_fail"
@@ -57,9 +57,17 @@ const (
 
 // ClientMessage represents a message from the phone to the laptop.
 type ClientMessage struct {
-	Type     string          `json:"type"`
-	Key      string          `json:"key,omitempty"`
-	Token    string          `json:"token,omitempty"`
+	Type string `json:"type"`
+	// Key is the pairing key in plaintext, and only released apps still send
+	// it. A current app answers the greeting's challenge with Nonce and Proof
+	// instead, so the key never crosses the wire at all.
+	Key   string `json:"key,omitempty"`
+	Token string `json:"token,omitempty"`
+	// Nonce on an auth message is the client's half of the pairing challenge
+	// and Proof is its answer to the server's half, both hex-encoded.
+	// handshakeProof spells out what is signed and why both nonces are in it.
+	Nonce    string          `json:"nonce,omitempty"`
+	Proof    string          `json:"proof,omitempty"`
 	Pin      string          `json:"pin,omitempty"`
 	Sensors  map[string]bool `json:"sensors,omitempty"`
 	Sensor   string          `json:"sensor,omitempty"`
@@ -125,9 +133,16 @@ type LocationConfigPayload struct {
 
 // ServerMessage represents a message from the laptop to the phone.
 type ServerMessage struct {
-	Type              string                  `json:"type"`
-	Token             string                  `json:"token,omitempty"`
-	Version           string                  `json:"version,omitempty"`
+	Type    string `json:"type"`
+	Token   string `json:"token,omitempty"`
+	Version string `json:"version,omitempty"`
+	// Nonce on a hello is this connection's challenge, one per connection and
+	// never reused. Proof on an auth_ok is the laptop's answer to the client's
+	// challenge — the field that lets an app tell this daemon apart from
+	// anything else that could have claimed its port. Neither appears on any
+	// other message.
+	Nonce             string                  `json:"nonce,omitempty"`
+	Proof             string                  `json:"proof,omitempty"`
 	Reason            string                  `json:"reason,omitempty"`
 	RemainingAttempts int                     `json:"remaining_attempts,omitempty"`
 	Sensors           []SensorInfo            `json:"sensors,omitempty"`
@@ -245,12 +260,18 @@ func NewAlert(sensor, level, message string) ServerMessage {
 }
 
 // NewHello creates the greeting a fresh connection receives before it has
-// authenticated. It carries no secrets — only the version, so a phone can say
-// what it is talking to before it offers the pairing key.
-func NewHello(version string) ServerMessage {
+// authenticated. It carries no secrets — the version, so a phone can say what
+// it is talking to, and this connection's challenge, which is a random number
+// and worth nothing to anyone who does not hold the pairing key.
+//
+// The nonce is what makes the greeting more than an introduction: the client
+// answers it with a proof instead of the key, and demands one back. See
+// handshakeProof.
+func NewHello(version, nonce string) ServerMessage {
 	return ServerMessage{
 		Type:      MsgTypeHello,
 		Version:   version,
+		Nonce:     nonce,
 		Timestamp: time.Now().Unix(),
 	}
 }

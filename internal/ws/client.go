@@ -35,6 +35,12 @@ type Client struct {
 	handling      sync.Mutex
 	authenticated bool
 	token         string
+	// serverNonce is this connection's half of the pairing challenge, minted
+	// once when the greeting goes out and never reused for another connection.
+	// A client's proof is checked against it, so a connection that was never
+	// greeted holds none and no proof can be believed on it — which is the
+	// case for transports with no accept step of their own, such as BLE.
+	serverNonce string
 	// pendingHeld records that this client is occupying one of the slots
 	// reserved for sockets that have not paired yet, so the slot is given back
 	// exactly once — on pairing or on disconnect, whichever comes first.
