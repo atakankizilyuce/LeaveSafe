@@ -449,14 +449,16 @@ id_ed25519*
 .env.*
 !.env.example
 
-# Agent scratch: plans, specs and brainstorming notes are how a change was
-# arrived at, not what it does. The code, the tests and the README say what the
-# project is; a dated plan file only says what someone intended in a session.
-docs/superpowers/
+# Working process.
+#
+# The specs, designs and plans under docs/ stay in the repository: they are
+# the only record of why the code is shaped the way it is, and keeping them
+# out is what makes a project impossible for anybody but its author to pick
+# up. What stays local is the day's own notes and the agent configuration of
+# the machine the work happened on.
 .superpowers/
-plans/
-specs/
 .claude/
+where-we-left-off*.md
 
 # How one machine's agent is wired to SonarQube: a local command name and the
 # project key, written by `sonar integrate claude`. The token it uses lives in
