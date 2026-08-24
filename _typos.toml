@@ -2,6 +2,12 @@
 extend-exclude = [
   "go.sum",
   "dist/",
+  # The specs and plans are working notes, written in Turkish. An English
+  # spell checker reading them is only ever going to be wrong: "blok" is the
+  # Turkish word, not a misspelling of "block", and "'nin" is a suffix rather
+  # than a word at all. They describe how the code was arrived at and are not
+  # shipped to anybody, so there is nothing here for a typo to break.
+  "docs/superpowers/",
 ]
 
 # Long runs of base64url are keys and ciphertext, not prose. RFC 8291's worked
