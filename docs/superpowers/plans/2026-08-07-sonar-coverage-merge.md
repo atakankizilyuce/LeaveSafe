@@ -16,7 +16,7 @@
 - Every action in `ci.yml` is pinned to a full SHA; in new steps **copy the existing SHAs verbatim** rather than writing a version tag.
 - Workflow comments are in English and in the detailed, explanatory register of the existing ci.yml.
 - `sonar-project.properties` **does not change** in this plan.
-- `docs/superpowers/` is in gitignore, so this plan and its spec are not committed.
+- `docs/superpowers/` was in gitignore when this was written, so the plan and its spec were not committed. That decision was reversed on 2026-08-22: both live in the repository now, because a plan nobody but its author can read is a plan that explains nothing.
 
 ---
 
