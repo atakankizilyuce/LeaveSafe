@@ -2,13 +2,6 @@
 extend-exclude = [
   "go.sum",
   "dist/",
-  # The specs and plans this program was built from, kept as they were written
-  # — partly in Turkish, and quoting terminal output and coverage profiles
-  # verbatim. An English spell checker reading "blok" or "parametre" as a
-  # misspelling is right about the language and wrong about the file: these are
-  # a record of decisions already taken, and correcting their prose would edit
-  # history rather than fix a typo.
-  "docs/superpowers/",
 ]
 
 # Long runs of base64url are keys and ciphertext, not prose. RFC 8291's worked
@@ -27,3 +20,7 @@ AttributePermissionsWriteable = "AttributePermissionsWriteable"
 Pn = "Pn"
 # schtasks spells its output-format flag "/fo", which reads as a typo for "of".
 fo = "fo"
+# "unparseable" is the spelling the update design uses throughout for input the
+# ledger cannot read. Both spellings are current English; the dictionary happens
+# to prefer the other one.
+unparseable = "unparseable"

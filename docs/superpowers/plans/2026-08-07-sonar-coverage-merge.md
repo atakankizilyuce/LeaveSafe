@@ -1,38 +1,38 @@
-# Üç Platformun Coverage Profilini Sonar'a Taşıma — Implementation Plan
+# Carrying Three Platforms' Coverage Profiles to Sonar — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** macOS ve Windows test leg'lerinin ürettiği ama şu anda atılan coverage profillerini Sonar'a ulaştırmak, böylece platforma özel dosyalar için zaten yazılmış testlerin sayılmasını sağlamak.
+**Goal:** Get the coverage profiles that the macOS and Windows test legs produce, and currently throw away, through to Sonar, so that the tests already written for platform-specific files are counted.
 
-**Architecture:** Test matrisinin üç leg'i de profilini platform adıyla artifact olarak yükler. Sonar job'ı üçünü de indirir ve blok sayaçlarını toplayarak tek bir `coverage.out`'a birleştirir. Birleştirme Sonar'a bırakılmaz; `sonar-project.properties` hiç değişmez.
+**Architecture:** All three legs of the test matrix upload their profile as an artifact named after the platform. The sonar job downloads all three and merges them into a single `coverage.out` by summing the per-block counters. The merge is not left to Sonar; `sonar-project.properties` does not change at all.
 
 **Tech Stack:** GitHub Actions, `go test -coverprofile`, `go tool cover`, awk.
 
 ## Global Constraints
 
-- Repo commit stili **conventional commit değil**: sentence-case, imperative, betimleyici tek satır. Örnek: `Keep the hook's count safe from a goroutine still logging`. `feat:`/`fix:` öneki kullanma.
-- Commit mesajlarına AI attribution ekleme (`Co-Authored-By`, `Generated with…` vb. yok).
-- Commit mesajı, branch adı, PR başlığı/gövdesi hiçbirine Claude Code session linki koyma.
-- `ci.yml` içindeki tüm action'lar tam SHA ile pinlenmiş; yeni adımlarda **var olan SHA'ları birebir kopyala**, sürüm etiketiyle yazma.
-- Workflow yorumları İngilizce ve mevcut ci.yml'nin ayrıntılı açıklayıcı üslubunda olmalı.
-- `sonar-project.properties` bu planda **değişmiyor**.
-- `docs/superpowers/` gitignore'da — bu plan ve spec commit edilmez.
+- The repository's commit style is **not conventional commits**: sentence case, imperative, a single descriptive line. For example: `Keep the hook's count safe from a goroutine still logging`. Do not use a `feat:`/`fix:` prefix.
+- Do not add AI attribution to commit messages (no `Co-Authored-By`, no `Generated with...`).
+- Do not put a Claude Code session link in a commit message, a branch name, or a PR title or body.
+- Every action in `ci.yml` is pinned to a full SHA; in new steps **copy the existing SHAs verbatim** rather than writing a version tag.
+- Workflow comments are in English and in the detailed, explanatory register of the existing ci.yml.
+- `sonar-project.properties` **does not change** in this plan.
+- `docs/superpowers/` is in gitignore, so this plan and its spec are not committed.
 
 ---
 
-### Task 1: Merge mantığını yerelde kanıtla
+### Task 1: Prove the merge logic locally
 
-Bu görev repo'ya hiçbir şey yazmaz. Amacı, CI'a koyacağımız awk'ın gerçekten birleşim (union) ürettiğini ve `go tool cover`'ın çıktısını okuyabildiğini görmek. Merge yanlışsa portable dosyaların coverage'ı düşer ve bunu CI'da fark etmek çok geç olur.
+This task writes nothing into the repository. Its purpose is to see that the awk we are about to put into CI really does produce a union, and that `go tool cover` can read its output. If the merge is wrong, the coverage of portable files drops, and noticing that in CI would be far too late.
 
 **Files:**
-- Create (scratch, repo dışı): `$SCRATCH/merge-coverage.sh`, `$SCRATCH/verify-merge.py`
+- Create (scratch, outside the repo): `$SCRATCH/merge-coverage.sh`, `$SCRATCH/verify-merge.py`
 
 **Interfaces:**
-- Produces: Task 2'nin `ci.yml`'ye gömeceği awk programı, birebir aynı metin.
+- Produces: the awk program that Task 2 will embed in `ci.yml`, character for character the same text.
 
-- [ ] **Step 1: İki örtüşen profil üret**
+- [ ] **Step 1: Produce two overlapping profiles**
 
-Repo kökünde çalıştır.
+Run this at the repository root.
 
 ```bash
 SCRATCH="C:/Users/ataka/AppData/Local/Temp/claude/C--workSpace-LeaveSafe/4b0ce090-c164-4e16-9743-e701a9c77311/scratchpad"
@@ -42,9 +42,9 @@ go test ./internal/config/... ./internal/state/... \
   -count=1 -coverpkg=./... -covermode=atomic -coverprofile="$SCRATCH/part-b.out"
 ```
 
-İki profil de aynı portable dosyaları farklı sayaçlarla içerir — CI'daki üç platform profilinin portable dosyalarda yaptığının aynısı.
+Both profiles contain the same portable files with different counters, which is exactly what the three platform profiles in CI do for portable files.
 
-- [ ] **Step 2: Merge scriptini yaz**
+- [ ] **Step 2: Write the merge script**
 
 `$SCRATCH/merge-coverage.sh`:
 
@@ -63,9 +63,9 @@ out=$1; shift
 } > "$out"
 ```
 
-Profil satırı `<import-path>/file.go:122.24,163.2 1 29` biçiminde: `$1` blok konumu, `$2` statement sayısı, `$3` çalışma sayacı. Anahtar `$1 $2`, sayaçlar toplanır, ilk görülme sırası korunur.
+A profile line has the form `<import-path>/file.go:122.24,163.2 1 29`: `$1` is the block position, `$2` the statement count, `$3` the execution counter. The key is `$1 $2`, the counters are summed, and first-seen order is preserved.
 
-- [ ] **Step 3: Doğrulama scriptini yaz**
+- [ ] **Step 3: Write the verification script**
 
 `$SCRATCH/verify-merge.py`:
 
@@ -84,59 +84,59 @@ def load(path):
 a, b, m = (load(p) for p in sys.argv[1:4])
 covered = lambda d: {k for k, v in d.items() if v > 0}
 
-assert set(m) == set(a) | set(b), 'BLOK KAYBI VEYA FAZLASI'
-assert not [k for k in m if m[k] != a.get(k, 0) + b.get(k, 0)], 'SAYAC TOPLAMI YANLIS'
-assert covered(m) == covered(a) | covered(b), 'KAPSANAN KUME BIRLESIM DEGIL'
+assert set(m) == set(a) | set(b), 'BLOCKS LOST OR GAINED'
+assert not [k for k in m if m[k] != a.get(k, 0) + b.get(k, 0)], 'COUNTER SUM IS WRONG'
+assert covered(m) == covered(a) | covered(b), 'COVERED SET IS NOT THE UNION'
 
 print('blocks: a=%d b=%d union=%d merged=%d' % (len(a), len(b), len(set(a) | set(b)), len(m)))
 print('covered: a=%d b=%d union=%d merged=%d'
       % (len(covered(a)), len(covered(b)), len(covered(a) | covered(b)), len(covered(m))))
-print('OK: blok kumesi ve kapsanan kume tam olarak birlesim')
+print('OK: block set and covered set are exactly the union')
 ```
 
-- [ ] **Step 4: Merge et ve doğrula**
+- [ ] **Step 4: Merge and verify**
 
 ```bash
 bash "$SCRATCH/merge-coverage.sh" "$SCRATCH/merged.out" "$SCRATCH/part-a.out" "$SCRATCH/part-b.out"
 python "$SCRATCH/verify-merge.py" "$SCRATCH/part-a.out" "$SCRATCH/part-b.out" "$SCRATCH/merged.out"
 ```
 
-Beklenen: üç assert de geçer, son satır `OK: blok kumesi ve kapsanan kume tam olarak birlesim`.
+Expected: all three asserts pass, and the last line is `OK: block set and covered set are exactly the union`.
 
-Bir assert patlarsa Task 2'ye geçme — awk yanlış demektir ve CI'da coverage düşer.
+If an assert fails, do not move on to Task 2. It means the awk is wrong and coverage will drop in CI.
 
-Not: `part-a.out` satır sayısı benzersiz blok sayısından fazla çıkar. Bu normal; `go test` her test binary'si için tekrarlı blok basar ve `go tool cover` da bunları toplayarak okur. Script aynı davranışı üretiyor.
+Note: `part-a.out` will have more lines than it has unique blocks. That is normal; `go test` emits repeated blocks for each test binary and `go tool cover` reads them by summing. The script reproduces the same behaviour.
 
-- [ ] **Step 5: `go tool cover` çıktıyı okuyabiliyor mu**
+- [ ] **Step 5: Can `go tool cover` read the output**
 
-Repo kökünden (scratch dizininden değil — `go tool cover` kaynak ağacını ve `go.mod`'u bulmak zorunda):
+From the repository root, not from the scratch directory, because `go tool cover` has to find the source tree and `go.mod`:
 
 ```bash
 go tool cover -func="$SCRATCH/merged.out" | tail -1
 ```
 
-Beklenen: `total: (statements) NN.N%` biçiminde tek satır, hata yok.
+Expected: a single line of the form `total: (statements) NN.N%`, with no error.
 
-- [ ] **Step 6: Commit yok**
+- [ ] **Step 6: No commit**
 
-Bu görev scratch'te kaldı, repo'da değişiklik yok. `git status` temiz olmalı.
+This task stayed in scratch and changed nothing in the repository. `git status` should be clean.
 
 ---
 
-### Task 2: `ci.yml`'de üç profili topla ve birleştir
+### Task 2: Collect and merge the three profiles in `ci.yml`
 
 **Files:**
-- Modify: `.github/workflows/ci.yml:120-128` (test matrisi), `:141-163` (coverage adımları), `:503-506` (sonar job'ın indirmesi)
+- Modify: `.github/workflows/ci.yml:120-128` (the test matrix), `:141-163` (the coverage steps), `:503-506` (the sonar job's download)
 
 **Interfaces:**
-- Consumes: Task 1'de doğrulanmış awk programı.
-- Produces: sonar job'ın çalışma dizininde kök `coverage.out`. `sonar-project.properties`'teki `sonar.go.coverage.reportPaths=coverage.out` bunu okur ve değişmez.
+- Consumes: the awk program verified in Task 1.
+- Produces: a `coverage.out` at the root of the sonar job's working directory. The `sonar.go.coverage.reportPaths=coverage.out` in `sonar-project.properties` reads it, and does not change.
 
-Test job'ıyla sonar job'ı **tek commit'te** değişmeli. Artifact adı değişip sonar job'ı eski adı aramaya devam ederse branch'te CI kırık kalır.
+The test job and the sonar job have to change in **a single commit**. If the artifact name changes while the sonar job goes on looking for the old one, CI stays broken on the branch.
 
-- [ ] **Step 1: Matrise `label` alanı ekle**
+- [ ] **Step 1: Add a `label` field to the matrix**
 
-`.github/workflows/ci.yml:120-128`, mevcut hâli:
+`.github/workflows/ci.yml:120-128`, as it stands:
 
 ```yaml
       matrix:
@@ -150,7 +150,7 @@ Test job'ıyla sonar job'ı **tek commit'te** değişmeli. Artifact adı değiş
             race: ""
 ```
 
-Yenisi:
+The new version:
 
 ```yaml
       matrix:
@@ -167,27 +167,27 @@ Yenisi:
             label: windows
 ```
 
-`matrix.os` yerine ayrı bir `label` var çünkü dosya adı `coverage-ubuntu-latest.out` yerine `coverage-linux.out` olsun istiyoruz; `lint` job'ı da zaten `goos` ile aynı deseni izliyor.
+There is a separate `label` rather than reusing `matrix.os` because we want the file called `coverage-linux.out` instead of `coverage-ubuntu-latest.out`; the `lint` job already follows the same pattern with `goos`.
 
-- [ ] **Step 2: Linux özetinin hangi platformu anlattığını söyle**
+- [ ] **Step 2: Say which platform the Linux summary describes**
 
-`.github/workflows/ci.yml:146`, mevcut satır:
+`.github/workflows/ci.yml:146`, the current line:
 
 ```yaml
           echo "### Coverage: $total" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-Yenisi:
+The new version:
 
 ```yaml
           echo "### Coverage (linux leg only): $total" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-Bu adım Linux'a özel ve öyle kalıyor. Üç platformun birleşik gerçek sayısı Step 5'te sonar job'ında basılacak; ikisi karışmasın.
+This step is Linux-specific and stays that way. The real combined figure for all three platforms is printed in the sonar job in Step 5; the two should not be confused for one another.
 
-- [ ] **Step 3: Profili platform adıyla yeniden adlandır ve her leg'de yükle**
+- [ ] **Step 3: Rename the profile after the platform and upload it on every leg**
 
-`.github/workflows/ci.yml:155-163`, mevcut hâli:
+`.github/workflows/ci.yml:155-163`, as it stands:
 
 ```yaml
       - name: Upload coverage report
@@ -201,7 +201,7 @@ Bu adım Linux'a özel ve öyle kalıyor. Üç platformun birleşik gerçek say�
           retention-days: 14
 ```
 
-Yenisi (yeniden adlandırma, `Coverage HTML report` adımından **sonra** gelmeli — o adım hâlâ `coverage.out` okuyor):
+The new version. The rename has to come **after** the `Coverage HTML report` step, because that step still reads `coverage.out`:
 
 ```yaml
       # Every leg produces a profile, but only for the files its GOOS compiles.
@@ -231,11 +231,11 @@ Yenisi (yeniden adlandırma, `Coverage HTML report` adımından **sonra** gelmel
           retention-days: 14
 ```
 
-`shell: bash` şart: Windows runner'ında varsayılan kabuk PowerShell ve `mv` orada aynı şey değil.
+`shell: bash` is required: the default shell on the Windows runner is PowerShell, where `mv` is not the same thing.
 
-- [ ] **Step 4: Sonar job'ının indirme adımını üç profile çevir**
+- [ ] **Step 4: Turn the sonar job's download step into three profiles**
 
-`.github/workflows/ci.yml:503-506`, mevcut hâli:
+`.github/workflows/ci.yml:503-506`, as it stands:
 
 ```yaml
       - name: Fetch the coverage profile from the Linux test run
@@ -244,7 +244,7 @@ Yenisi (yeniden adlandırma, `Coverage HTML report` adımından **sonra** gelmel
           name: coverage-report
 ```
 
-Yenisi:
+The new version:
 
 ```yaml
       - name: Set up Go
@@ -259,13 +259,13 @@ Yenisi:
           merge-multiple: true
 ```
 
-`merge-multiple: true` üç artifact'ın içeriğini aynı dizine, yani repo köküne açar. Profil satırlarındaki yollar import path olduğu için dosyanın nerede durduğu önemsiz; ama kök seviyesinde tutmak `sonar.exclusions`'daki kök-eşleşmeli desenleri de bozmuyor.
+`merge-multiple: true` unpacks the contents of all three artifacts into the same directory, which is the repository root. The paths in the profile lines are import paths, so where the file sits does not matter; but keeping it at root level also leaves the root-matching patterns in `sonar.exclusions` intact.
 
-`Set up Go` yeni: Step 5 `go tool cover` çalıştırıyor ve sonar job'ında bugün Go yok.
+`Set up Go` is new: Step 5 runs `go tool cover`, and there is no Go in the sonar job today.
 
-- [ ] **Step 5: Birleştirme adımını ekle**
+- [ ] **Step 5: Add the merge step**
 
-Step 4'teki indirme adımından hemen sonra, `Fetch the phone interface's coverage` adımından önce:
+Immediately after the download step from Step 4, and before the `Fetch the phone interface's coverage` step:
 
 ```yaml
       - name: Merge the three profiles into the one Sonar reads
@@ -296,23 +296,23 @@ Step 4'teki indirme adımından hemen sonra, `Fetch the phone interface's covera
           echo "### Coverage across all three platforms: $total" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-Bir leg profil üretmemişse awk eksik dosyada durur ve job kırmızı olur. Sessizce düşük coverage raporlamaktansa bu tercih edilir.
+If a leg has produced no profile, awk stops on the missing file and the job goes red. That is preferable to silently reporting low coverage.
 
-- [ ] **Step 6: YAML'ı doğrula**
+- [ ] **Step 6: Validate the YAML**
 
 ```bash
 python -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml')); print('yaml ok')"
 ```
 
-Beklenen: `yaml ok`.
+Expected: `yaml ok`.
 
-- [ ] **Step 7: Eski artifact adına atıf kalmadığını doğrula**
+- [ ] **Step 7: Check that no reference to the old artifact name is left**
 
 ```bash
 grep -n "coverage-report\|coverage\.out\|coverage\.html" .github/workflows/ci.yml
 ```
 
-Beklenen: `name: coverage-report` (tireli, sonek yok) **hiç geçmemeli**; yalnız `coverage-report-${{ matrix.label }}` ve `pattern: coverage-report-*` görünmeli.
+Expected: `name: coverage-report` (hyphenated, no suffix) must **not appear at all**; only `coverage-report-${{ matrix.label }}` and `pattern: coverage-report-*` should show up.
 
 - [ ] **Step 8: Commit**
 
@@ -324,16 +324,16 @@ git commit -m "Let the macOS and Windows coverage reach Sonar instead of being t
 
 ---
 
-### Task 3: PR'ı aç ve gerçek Sonar sonucunu doğrula
+### Task 3: Open the PR and verify the real Sonar result
 
-Bu görevin çıktısı kod değil, kanıt. Değişikliğin işe yarayıp yaramadığı tahminle değil Sonar'a bakarak anlaşılır.
+The output of this task is not code but evidence. Whether the change worked is something you establish by looking at Sonar, not by guessing.
 
-**Files:** yok.
+**Files:** none.
 
 **Interfaces:**
-- Consumes: Task 2'nin commit'i.
+- Consumes: the commit from Task 2.
 
-- [ ] **Step 1: Push et ve PR aç**
+- [ ] **Step 1: Push and open the PR**
 
 ```bash
 git push -u origin ci/merge-platform-coverage
@@ -360,21 +360,21 @@ EOF
 )"
 ```
 
-- [ ] **Step 2: CI'ın yeşil olmasını bekle**
+- [ ] **Step 2: Wait for CI to go green**
 
 ```bash
 gh pr checks --watch
 ```
 
-Beklenen: `test` üç leg'de de geçer, `sonar` geçer.
+Expected: `test` passes on all three legs, and `sonar` passes.
 
-`sonar` job'ı "Artifact not found" ile patlarsa Task 2 Step 3 ile Step 4 uyuşmuyor demektir — artifact adı ile `pattern` birbirini tutmuyor.
+If the `sonar` job fails with "Artifact not found", then Step 3 and Step 4 of Task 2 disagree: the artifact name and the `pattern` do not match each other.
 
-- [ ] **Step 3: Birleşik toplamı step summary'de gör**
+- [ ] **Step 3: See the combined total in the step summary**
 
-Sonar job'ının özetinde `### Coverage across all three platforms: NN.N%` satırı olmalı ve Linux leg'inin `### Coverage (linux leg only): …` satırından **yüksek** olmalı.
+The sonar job's summary should carry the line `### Coverage across all three platforms: NN.N%`, and it should be **higher** than the Linux leg's `### Coverage (linux leg only): ...` line.
 
-- [ ] **Step 4: Sonar'da beş ölçütü kontrol et**
+- [ ] **Step 4: Check the five criteria in Sonar**
 
 ```bash
 curl -s "https://sonarcloud.io/api/measures/component?component=atakankizilyuce_LeaveSafe&metricKeys=coverage,line_coverage,uncovered_lines"
@@ -392,28 +392,28 @@ for c in json.load(sys.stdin)['components']:
 "
 ```
 
-Ölçütler:
+The criteria:
 
-1. Genel `coverage` **artmış** olmalı — başlangıç %73.8, beklenen ~%74.8-75.1.
-2. `internal/location/parse_windows.go` %0 → ~%100.
-3. `internal/monitor/parse_windows.go` %0 → ~%100.
-4. `internal/monitor/parse_darwin.go` %0'dan çıkmış olmalı.
-5. Hiçbir portable dosyanın coverage'ı düşmemeli.
+1. Overall `coverage` must have **risen** — 73.8% at the start, ~74.8-75.1% expected.
+2. `internal/location/parse_windows.go` from 0% to ~100%.
+3. `internal/monitor/parse_windows.go` from 0% to ~100%.
+4. `internal/monitor/parse_darwin.go` must have come off 0%.
+5. No portable file's coverage may have fallen.
 
-- [ ] **Step 5: Coverage düşerse ne yapılır**
+- [ ] **Step 5: What to do if coverage falls**
 
-Genel coverage düştüyse veya bir portable dosya gerilediyse merge birleşim üretmiyor demektir. Merge etme; şu sırayla bak:
+If overall coverage fell, or a portable file went backwards, the merge is not producing a union. Do not merge; look at these in order:
 
-1. Sonar job log'unda `go tool cover -func` toplamı Linux'unkinden yüksek mi? Değilse hata awk'ta, Sonar'da değil — Task 1'i o üç gerçek profille tekrar koş (artifact'ları `gh run download` ile indir).
-2. Toplam yüksek ama Sonar düşük gösteriyorsa sorun `sonar.exclusions` tarafındadır; `coverage.html`'in sonar job'ının çalışma dizinine sızmadığını doğrula (`ls coverage.html` boş dönmeli).
+1. In the sonar job log, is the `go tool cover -func` total higher than the Linux one? If it is not, the fault is in the awk rather than in Sonar — run Task 1 again against those three real profiles (download the artifacts with `gh run download`).
+2. If the total is higher but Sonar reports lower, the problem is on the `sonar.exclusions` side; verify that `coverage.html` has not leaked into the sonar job's working directory (`ls coverage.html` should come back empty).
 
-- [ ] **Step 6: Ölçütler karşılandıysa merge**
+- [ ] **Step 6: Merge once the criteria are met**
 
-Beş ölçüt de sağlandığında PR merge edilebilir. Sonuç sayısını PR'a yorum olarak yaz — Aşama 1'in başlangıç noktası bu olacak.
+When all five criteria hold, the PR can be merged. Write the resulting figure into the PR as a comment — that will be the starting point for phase 1.
 
 ---
 
-## Kapsam dışı
+## Out of scope
 
-Aşama 1-3 ayrı PR'lar. Ölçülen boşluk ve tavan tahmini spec'te:
+Phases 1-3 are separate PRs. The measured gap and the ceiling estimate are in the spec:
 `docs/superpowers/specs/2026-08-07-sonar-coverage-merge-design.md`

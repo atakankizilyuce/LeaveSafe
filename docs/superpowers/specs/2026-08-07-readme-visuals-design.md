@@ -22,7 +22,7 @@ Both pictures at the top of the README are wrong, and one of them is broken.
 4. The text block ends near `x 640` and the orbit starts at `x 800`. Five
    hundred units of the banner carry nothing.
 
-**`demo.gif`.** It is not merely choppy, it is mis-assembled. Frames were
+**`demo.gif`.** It is not merely choppy, it is misassembled. Frames were
 captured full-page against a page whose height changes with state, then pasted
 into a fixed 320x693 canvas, so the content drifts vertically between frames.
 The GIF is then diff-encoded with disposal `1` (do not dispose), so nothing ever
