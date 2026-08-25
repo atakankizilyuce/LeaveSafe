@@ -100,6 +100,38 @@ than a fake pass — what no CI environment can reach is listed in
 Run the layers locally with `make test-e2e`, `make test-realtrigger` and
 `make test-sandbox`; plain `make test` stays fast and touches no hardware.
 
+## The rule the dashboard is held to
+
+The dashboard takes the terminal over: raw mode, the alternate screen, and a
+scrolling region pinned under its header. That is a bargain with the person who
+typed the command, and it has one term:
+
+> **Ctrl+C must work at every instant the dashboard is on screen.**
+
+It is not one feature among several. In raw mode nothing turns Ctrl+C into a
+signal on the program's behalf — the keystroke arrives as a byte, and if this
+program is not reading, nobody is. A user who cannot press it is left killing
+the process from another window, and what that leaves behind is a terminal still
+in raw mode with no echo and no line editing. The same is true of Ctrl+Z.
+
+Two things follow, and both have been broken once:
+
+- **The goroutine that reads the keyboard reads the keyboard and nothing
+  else.** It does not run commands. It does not wait on the network, the disk,
+  a hash or a sensor. Anything a console command does, it does somewhere else —
+  see `typedLines.pump` in `cmd/leavesafe/input.go`. Reading and running were
+  one goroutine once, and a slow command was a terminal nobody could get out of.
+
+- **Nothing on the arming path may cost the sum of its parts.** Arming is
+  allowed to wait for an answer it needs, but it waits for the slowest of them,
+  not for all of them added up, and it does not ask again for what is already
+  settled — see `Manager.availabilityFor` in `internal/monitor`. Six sensors
+  each allowed twenty seconds is two minutes.
+
+`cmd/leavesafe/console_deafness_test.go` and the arming tests in
+`internal/monitor/availability_test.go` are what keep both true. Neither passes
+against the code they were written for.
+
 ## Cutting a release
 
 [`releasing.md`](releasing.md) is the order to do it in: what to rehearse before
