@@ -20,6 +20,12 @@ import (
 // structural. Put it behind an interface sensors opt into and the next sensor
 // with a slow probe reintroduces the bug by forgetting to implement it.
 
+// availabilityTask is the prefix every one of these probes is named
+// under, and the name is what a panic in one is reported as. Written
+// once because all three callers below have to agree on it: a probe
+// named differently in one of them is a crash nobody can place.
+const availabilityTask = "sensor-availability:"
+
 // AvailableNow reports whether s can work here, without ever waiting to find
 // out. known is false while the answer is still being worked out, and the first
 // caller to find it missing starts the work in the background.
@@ -42,7 +48,7 @@ func (m *Manager) AvailableNow(s Sensor) (available, known bool) {
 	m.probing[name] = true
 	m.mu.Unlock()
 
-	safe.Go("sensor-availability:"+name, func() { m.probe(s) })
+	safe.Go(availabilityTask+name, func() { m.probe(s) })
 	return false, false
 }
 
@@ -94,7 +100,7 @@ func (m *Manager) availabilityFor(sensors []Sensor) map[string]bool {
 	for _, s := range unsettled {
 		wg.Add(1)
 		sensor := s
-		safe.Go("sensor-availability:"+sensor.Name(), func() {
+		safe.Go(availabilityTask+sensor.Name(), func() {
 			defer wg.Done()
 			m.probe(sensor)
 		})
@@ -122,7 +128,7 @@ func (m *Manager) PrimeAvailability() {
 	for _, s := range m.Sensors() {
 		wg.Add(1)
 		sensor := s
-		safe.Go("sensor-availability:"+sensor.Name(), func() {
+		safe.Go(availabilityTask+sensor.Name(), func() {
 			defer wg.Done()
 			m.probe(sensor)
 		})
