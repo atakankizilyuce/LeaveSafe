@@ -4,19 +4,7 @@ package main
 
 import "os"
 
-// maximizeConsole does nothing away from Windows, and the emptiness is the
-// point rather than an omission.
-func maximizeConsole() {
-	// On Windows the program is usually started by double-clicking it, which
-	// opens a console window at whatever size Windows felt like, so the other
-	// half of this pair asks for it to be maximized and the log becomes
-	// readable. Everywhere else the program is started from a terminal the user
-	// already opened and already sized. Resizing that terminal for them would be
-	// taking something over, not helping.
-}
-
-// takeConsole does nothing away from Windows, and the emptiness is the point
-// here too.
+// takeConsole does nothing away from Windows, and the emptiness is the point.
 //
 // A Unix terminal acts on the escape sequences the dashboard is drawn with
 // because that is what a terminal is, and nothing it does with the mouse holds
