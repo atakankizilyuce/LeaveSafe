@@ -46,6 +46,11 @@ func powershellOutput(ctx context.Context, timeout time.Duration, script string)
 	// to trust on a call it makes every couple of seconds while armed.
 	//
 	// #nosec G204 -- script is a constant defined in this package, never user input
-	return exec.CommandContext(ctx,
-		syspath.PowerShell(), "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	cmd := exec.CommandContext(ctx,
+		syspath.PowerShell(), "-NoProfile", "-NonInteractive", "-Command", script)
+	// And no window for it. Started without a console of its own — from the
+	// autostart entry — this is what stops a PowerShell window opening on the
+	// user's desktop every couple of seconds. See syspath.HideWindow.
+	syspath.HideWindow(cmd)
+	return cmd.Output()
 }

@@ -78,6 +78,9 @@ func runSchtasks(args ...string) (string, error) {
 	//
 	// #nosec G204 -- arguments are literals and this program's own path, never user input
 	cmd := exec.Command(syspath.System32("schtasks.exe"), args...)
+	// And no window for it. See syspath.HideWindow.
+	syspath.HideWindow(cmd)
+
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

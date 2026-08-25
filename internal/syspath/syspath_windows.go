@@ -3,8 +3,10 @@
 package syspath
 
 import (
+	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"golang.org/x/sys/windows"
 )
@@ -50,4 +52,27 @@ func System32(name string) string {
 // PowerShell returns the absolute path to Windows PowerShell.
 func PowerShell() string {
 	return resolve("WindowsPowerShell", "v1.0", "powershell.exe")
+}
+
+// HideWindow tells Windows to give a helper process no console window of its
+// own.
+//
+// Every helper this program runs — PowerShell for the lid and the display,
+// netsh for the Wi-Fi scan, schtasks for the autostart entry — writes its
+// answer down a pipe and is meant to be seen by nobody. Without this it is seen
+// anyway, and only sometimes, which is what made it hard to place: a child
+// inherits its parent's console when there is one, so started from a terminal
+// nothing shows. Started from the autostart entry there is no console to
+// inherit, so Windows makes one — a window that opens, takes the foreground and
+// closes again.
+//
+// That happens once per sensor when the program starts and every couple of
+// seconds for as long as the machine is armed. What it costs is not a flicker:
+// it is every click the user was making when a window took the focus off what
+// they were clicking on.
+func HideWindow(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NO_WINDOW
 }

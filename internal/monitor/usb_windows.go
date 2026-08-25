@@ -58,6 +58,9 @@ while ($true) {
 	// resolved from the Windows directory; neither comes from user input.
 	cmd := exec.CommandContext(ctx,
 		syspath.PowerShell(), "-NoProfile", "-NonInteractive", "-Command", script)
+	// And no window for it — this one for as long as the sensor watches. See
+	// syspath.HideWindow.
+	syspath.HideWindow(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

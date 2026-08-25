@@ -31,8 +31,12 @@ func scanAccessPoints(ctx context.Context) ([]AccessPoint, error) {
 	//
 	// #nosec G204 -- the arguments are literals and the executable is resolved
 	// from the Windows directory; neither comes from user input.
-	out, err := exec.CommandContext(ctx, syspath.System32("netsh.exe"),
-		"wlan", "show", "networks", "mode=bssid").Output()
+	cmd := exec.CommandContext(ctx, syspath.System32("netsh.exe"),
+		"wlan", "show", "networks", "mode=bssid")
+	// And no window for it. See syspath.HideWindow.
+	syspath.HideWindow(cmd)
+
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("netsh wlan show networks: %w", err)
 	}
