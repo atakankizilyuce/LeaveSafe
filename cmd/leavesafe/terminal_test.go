@@ -52,6 +52,39 @@ func TestRestoreGivesTheWholeTerminalBack(t *testing.T) {
 // shutdown and then the deferred close, and a log.Fatal reaches it through
 // logrus's exit handler instead. A second call must not write escapes into a
 // terminal the shell has already taken back.
+// Giving the terminal back is only half of it. The program keeps talking for a
+// moment afterwards — the sensors say they stopped, the server says it closed —
+// and those lines used to be drawn the way the dashboard draws them: onto a
+// screen it no longer had. The repaint behind one of them painted the whole
+// status grid across the shell the user had just been given back, and left
+// their cursor on whichever row the input row had been.
+func TestNothingIsDrawnOnTheTerminalAfterItIsHandedBack(t *testing.T) {
+	screen := &syncBuffer{}
+	sb := &statusBar{
+		out: screen, hub: testHub(t), sensorMgr: monitor.NewManager(),
+		key: testKey, rawKey: testRawKey,
+		urls: []string{"http://192.168.1.10:8080"},
+		line: &inputLine{},
+	}
+	sb.paint()
+
+	sb.handBack()
+	before := screen.String()
+	sb.writeLine("  Sensor stopped")
+	sb.refresh()
+	after := strings.TrimPrefix(screen.String(), before)
+
+	if !strings.Contains(after, "Sensor stopped") {
+		t.Errorf("the line was swallowed rather than printed plainly; what was written was %q", after)
+	}
+	if strings.ContainsRune(after, '\033') {
+		t.Errorf("an escape reached the terminal after it was handed back: %q", after)
+	}
+	if strings.Contains(after, "STATUS") {
+		t.Errorf("the status grid was repainted over the user's shell: %q", after)
+	}
+}
+
 func TestRestoreIsIdempotent(t *testing.T) {
 	var out syncBuffer
 	s := &screen{}
