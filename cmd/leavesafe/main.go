@@ -113,6 +113,18 @@ type statusBar struct {
 	rawKey string
 	urls   []string
 
+	// handedBack says the terminal is no longer the dashboard's to draw on.
+	//
+	// Shutting down gives it back before a word is printed, and the program
+	// then keeps talking for a moment: the sensors say they stopped, the
+	// server says it closed, a panic on the way out says so. Every one of
+	// those goes through this writer, and drawn as the dashboard draws them
+	// they carried the escapes that put the log back where the dashboard kept
+	// it — and the repaint behind them painted the whole status grid over the
+	// shell the user had just been handed back, leaving their cursor on a row
+	// the dashboard chose.
+	handedBack bool
+
 	// headless drops every drawing operation. Started from an autostart entry
 	// there is no terminal to draw on: the cursor-positioning escapes would go
 	// into a log file as garbage, and the QR code would be a wall of blocks
@@ -459,7 +471,7 @@ func (sb *statusBar) maskLine(on bool) {
 // moved: a phone connecting, an address arriving, the key being rotated, the
 // window being resized under all of it.
 func (sb *statusBar) repaint(piece func()) {
-	if sb.headless {
+	if sb.headless || sb.handedBack {
 		return
 	}
 	if !sb.layoutHolds() {
@@ -523,6 +535,23 @@ func (sb *statusBar) refresh() {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	sb.doRedrawGrid()
+}
+
+// handBack stops the dashboard drawing, for the moment the terminal stopped
+// being the dashboard's.
+//
+// It does not stop the program talking — the shutdown has things to say and the
+// user is entitled to read them. It makes them ordinary lines: no absolute
+// positioning, no cursor store, no repaint, printed one under the other into
+// the shell the way any other command's output is.
+func (sb *statusBar) handBack() {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	sb.handedBack = true
+	// The log's position lived in the terminal's cursor store while there was
+	// an input row below it. There is no input row now, and no store to put
+	// anything back from.
+	sb.line = nil
 }
 
 func (sb *statusBar) writeLine(format string, args ...interface{}) {
@@ -878,7 +907,7 @@ func (sb *statusBar) paint() {
 // doPaint is paint with the lock already held, which is how the drawing helpers
 // below expect to be called: none of them takes it.
 func (sb *statusBar) doPaint() {
-	if sb.headless {
+	if sb.headless || sb.handedBack {
 		return
 	}
 

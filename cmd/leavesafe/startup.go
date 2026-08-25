@@ -188,6 +188,12 @@ func (a *app) shutdown() {
 	// pinned a scrolling region across an alternate screen, and every word
 	// written from here belongs to the user's own terminal.
 	terminalScreen.restore()
+	// And the dashboard is told so, in the same breath. Everything below still
+	// logs — the sensors stopping, the server closing — and until this was here
+	// those lines were drawn the way the dashboard draws, onto a screen it no
+	// longer had: the status grid repainted across the user's shell with their
+	// cursor left on whichever row the input row had been.
+	a.sb.handBack()
 	fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
 
 	a.cancel()
