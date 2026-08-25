@@ -26,6 +26,32 @@ diff is small.
   same lockout. Apps already released still send the key in plaintext and keep
   working for now.
 
+### Fixed
+
+- **The dashboard no longer stops answering the keyboard.** Reading the keyboard
+  and running the command the keyboard asked for were the same goroutine, so for
+  as long as a command took, nothing was reading what was typed. On the
+  dashboard the keyboard is in raw mode, where nothing turns Ctrl+C into a
+  signal on the program's behalf — so a slow command was a terminal with no
+  echo, no commands, no Ctrl+C and no Ctrl+Z. The only way out was to kill the
+  process from another window, which left that terminal in raw mode afterwards.
+
+  `arm` was the one that did it. Since 1.4.0 every sensor is asked whether it
+  can actually work here, and arming asked all of them from scratch, one after
+  another, on the goroutine reading the keyboard. Six sensors each allowed
+  twenty seconds on Windows is two minutes of a screen that answers nothing.
+
+  Both halves are fixed. The keyboard now has a goroutine that does nothing but
+  read it, and answers Ctrl+C and Ctrl+Z on the spot whatever else is running.
+  And arming reuses the answers already settled at startup, asking only what is
+  genuinely unknown and asking it all at once — so the worst case is one probe
+  rather than the sum of them, and in the ordinary case there is nothing to wait
+  for at all.
+
+- **The status grid gets its bottom border back.** The pairing-code row added in
+  1.4.0 was drawn without being counted, so the layout gave the grid one row less
+  than it needed and clipped the last one off in every window.
+
 ## [1.4.0] - 2026-08-18
 
 ### Added
