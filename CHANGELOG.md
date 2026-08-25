@@ -48,6 +48,32 @@ diff is small.
   rather than the sum of them, and in the ordinary case there is nothing to wait
   for at all.
 
+- **Windows: the console is asked to act on the escapes the dashboard is drawn
+  with.** Acting on them is a console setting, and it is off by default on the
+  console conhost opens — which is the console a double-clicked executable gets.
+  Without it the dashboard was not a dashboard: it was a window filling with
+  `<ESC>[2J<ESC>[H` as fast as the program could write it, over a screen that
+  had just been maximized. Windows Terminal turns the setting on for its own,
+  which is why this was invisible wherever the program was started by typing its
+  name. The setting is asked for on the way in and put back byte for byte on the
+  way out.
+
+- **Windows: clicking the window no longer stops the program.** Quick edit mode
+  is on by default, and it means a click starts a selection — and a console with
+  a selection in it holds up every write the program makes until the selection
+  is cleared. So the program stopped, and what the user saw was a full-screen
+  window that froze because they clicked on it, with nothing in the log to say
+  so because the log is a write too. Quick edit is switched off while the
+  dashboard is on screen and switched back on when it leaves.
+
+- **Quitting leaves the shell as it found it.** Shutting down hands the terminal
+  back before it prints a word, and then the program keeps talking for a moment
+  — the sensors saying they stopped, the server saying it closed. Those lines
+  were still being drawn the way the dashboard draws them, onto a screen it no
+  longer had: the repaint behind one of them painted the whole status grid
+  across the shell the user had just been given back, and left their cursor on
+  whichever row the input row had been. They are ordinary lines now.
+
 - **The status grid gets its bottom border back.** The pairing-code row added in
   1.4.0 was drawn without being counted, so the layout gave the grid one row less
   than it needed and clipped the last one off in every window.
