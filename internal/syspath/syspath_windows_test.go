@@ -4,9 +4,13 @@ package syspath
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 // The whole point of this package is that the answer does not come from
@@ -78,5 +82,39 @@ func TestTheResolvedToolsAreReallyThere(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("%s resolved to %q, which is not there: %v", name, path, err)
 		}
+	}
+}
+
+// A helper that writes its answer down a pipe should never be seen. Without
+// this flag it is seen whenever there is no console for it to inherit — which
+// is the autostart entry, where the user is sitting at their desktop using
+// something else while a window opens in front of it every couple of seconds.
+func TestAHelperIsGivenNoWindowOfItsOwn(t *testing.T) {
+	cmd := exec.Command(System32("netsh.exe"), "wlan", "show", "networks")
+
+	HideWindow(cmd)
+
+	if cmd.SysProcAttr == nil {
+		t.Fatal("the child was left to whatever Windows does by default")
+	}
+	if cmd.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW == 0 {
+		t.Errorf("creation flags are %#x, which still lets Windows open a window",
+			cmd.SysProcAttr.CreationFlags)
+	}
+}
+
+// The flags a caller already set are kept. Nothing sets any today, and a helper
+// that quietly dropped them would be a trap for whatever does first.
+func TestHidingAWindowKeepsTheFlagsAlreadyAskedFor(t *testing.T) {
+	cmd := exec.Command(System32("netsh.exe"))
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
+
+	HideWindow(cmd)
+
+	if cmd.SysProcAttr.CreationFlags&windows.CREATE_NEW_PROCESS_GROUP == 0 {
+		t.Error("a flag the caller asked for was dropped")
+	}
+	if cmd.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW == 0 {
+		t.Error("the window flag was not added")
 	}
 }
