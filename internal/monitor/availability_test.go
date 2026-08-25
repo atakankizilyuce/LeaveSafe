@@ -176,3 +176,48 @@ func TestArmingKeepsTheAnswersItPaidFor(t *testing.T) {
 		t.Errorf("the sensor was asked %d times for one arm", asked)
 	}
 }
+
+// Arming waits for the answers it needs, and that is deliberate. What it must
+// not do is wait for the sum of them: asked one after another, six sensors each
+// allowed twenty seconds is two minutes — and on the terminal that is two
+// minutes with nobody reading the keyboard, which is a dashboard the user
+// cannot type at and cannot Ctrl+C out of.
+func TestArmingAsksTheSensorsItDoesNotKnowAllAtOnce(t *testing.T) {
+	const each = 200 * time.Millisecond
+
+	mgr := NewManager()
+	for _, name := range []string{"power", "lid", "usb", "screen", "network", "input"} {
+		mgr.Register(newSlow(name, true, each))
+		mgr.Enable(name)
+	}
+
+	start := time.Now()
+	mgr.StartEnabled()
+	took := time.Since(start)
+	t.Cleanup(mgr.StopAll)
+
+	if took > 3*each {
+		t.Errorf("arming took %s to ask six sensors, which is one after another rather than side by side", took)
+	}
+}
+
+// And having been told once, it does not ask again. The answer is settled for
+// the run — that is what the cache is for — so a second arm costs nothing, and
+// on Windows "nothing" is the difference between arming and starting PowerShell
+// six more times.
+func TestArmingDoesNotAskAgainWhatIsAlreadySettled(t *testing.T) {
+	mgr := NewManager()
+	lid := newSlow("lid", true, 0)
+	mgr.Register(lid)
+	mgr.Enable("lid")
+
+	mgr.PrimeAvailability()
+	mgr.StartEnabled()
+	mgr.StopAll()
+	mgr.StartEnabled()
+	t.Cleanup(mgr.StopAll)
+
+	if asked := lid.asked.Load(); asked != 1 {
+		t.Errorf("the sensor was asked %d times across a prime and two arms, want once", asked)
+	}
+}

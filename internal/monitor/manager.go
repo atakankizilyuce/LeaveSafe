@@ -124,25 +124,16 @@ func (m *Manager) Disable(name string) {
 // Arming is the one caller allowed to wait for an availability answer: it is a
 // deliberate act with a person behind it, and starting the right set of sensors
 // is worth a pause in a way that answering a socket is not. But it waits
-// *outside* the lock. Asking under it meant a twenty-second WMI query on Windows
-// held the manager's mutex for the duration, and every status broadcast and
-// pairing reply queued behind the arm that triggered it.
+// *outside* the lock, and only for what is not already known — see
+// availabilityFor. Asking under the lock meant a twenty-second WMI query on
+// Windows held the manager's mutex for the duration, and asking every sensor
+// from scratch, one after another, meant the goroutine that typed `arm` was
+// gone for the sum of them.
 func (m *Manager) StartEnabled() {
-	sensors := m.Sensors()
-	available := make(map[string]bool, len(sensors))
-	for _, s := range sensors {
-		available[s.Name()] = s.Available()
-	}
+	available := m.availabilityFor(m.Sensors())
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	// The answers are worth keeping: they are the same ones AvailableNow hands
-	// to the panel, and arming has just paid for them.
-	for name, ok := range available {
-		m.availability[name] = ok
-		delete(m.probing, name)
-	}
 
 	for _, s := range m.sensors {
 		if !m.enabled[s.Name()] || !available[s.Name()] {
