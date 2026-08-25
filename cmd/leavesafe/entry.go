@@ -20,7 +20,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -49,11 +48,7 @@ func main() {
 
 	log.SetFormatter(consoleLogFormatter())
 
-	plainRun, drawing := planTerminal(*headless, *plain, os.Stdout)
-	if drawing {
-		maximizeConsole()
-		time.Sleep(200 * time.Millisecond)
-	}
+	plainRun, _ := planTerminal(*headless, *plain, os.Stdout)
 
 	cfg := loadConfig()
 	ensureLanguageChoice(cfg, *headless)
