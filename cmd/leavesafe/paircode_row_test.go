@@ -117,3 +117,35 @@ func TestTheCodeStaysOutOfTheLog(t *testing.T) {
 		t.Error("the pairing code, which carries the key, was written to the log")
 	}
 }
+
+// The grid is drawn at absolute rows and clipped to the height the layout gave
+// it, so its height and its contents have to be worked out from the same
+// answer. They were not: the code row was added to the lines without being
+// added to the count, and every window drew a status grid with its bottom
+// border cut off.
+func TestTheGridIsAsTallAsTheLinesItDraws(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		urls []string
+	}{
+		{"one address, with a code", []string{"http://192.168.1.24:9443"}},
+		{"two addresses, with a code", []string{"http://192.168.1.24:9443", "http://10.0.0.7:9443"}},
+		{"a host name, which carries no code", []string{"http://laptop.local:9443"}},
+		{"no address at all", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sb := newHeadlessStatusBar(testHub(t), monitor.NewManager(),
+				testKey, testRawKey, tc.urls, "")
+			sb.qrURLIdx = 0
+
+			lines := sb.gridLines()
+			if got := sb.gridHeight(); got != len(lines) {
+				t.Errorf("the layout was told the grid is %d rows and it draws %d: "+
+					"the last %d would be clipped", got, len(lines), len(lines)-got)
+			}
+			if len(lines) > 0 && !strings.HasPrefix(lines[len(lines)-1], "└") {
+				t.Errorf("the grid does not end on its bottom border: %q", lines[len(lines)-1])
+			}
+		})
+	}
+}

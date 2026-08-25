@@ -272,7 +272,15 @@ func (sb *statusBar) boxLine(content string) string {
 func (sb *statusBar) gridHeight() int {
 	// Border, title, separator, state, clients, sensors; then a separator, the
 	// key, an address apiece and the bottom border.
-	return 6 + 2 + len(sb.urls) + 1
+	rows := 6 + 2 + len(sb.urls) + 1
+	// And the pairing code, when there is one to draw. Counted here because
+	// gridLines draws it on the same condition: the row was added to the grid
+	// without being added to its height, so the layout gave the grid one row
+	// less than it needed and drawGrid cut the bottom border off every window.
+	if sb.pairCodeLocked() != "" {
+		rows++
+	}
+	return rows
 }
 
 func (sb *statusBar) gridLines() []string {
