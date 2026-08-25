@@ -48,6 +48,27 @@ diff is small.
   rather than the sum of them, and in the ordinary case there is nothing to wait
   for at all.
 
+- **Windows: LeaveSafe no longer takes the screen over when it starts.**
+  Started by double-clicking the executable, it asked Windows to maximize the
+  console — so the program opened, filled the screen and took the foreground,
+  and the machine read as locked. That was written when the dashboard had one
+  fixed size and did not fit in anything smaller; the layout has adapted to the
+  window it is in for several versions now, and says so out loud when a window
+  is too narrow for the QR code. So the program no longer resizes anybody's
+  window, its own included. The 200 ms every start waited for that resize to
+  settle is gone with it.
+
+- **Windows: helper processes no longer open a window in front of whatever you
+  are doing.** PowerShell for the lid and the display, netsh for the Wi-Fi scan,
+  schtasks for the autostart entry — each writes its answer down a pipe and is
+  meant to be seen by nobody. A child inherits its parent's console when there
+  is one, so started from a terminal nothing showed; started from the autostart
+  entry there is no console to inherit, so Windows made one. A window opened,
+  took the foreground and closed again — once per sensor at startup and every
+  couple of seconds for as long as the machine was armed. What that costs is not
+  a flicker: it is every click that landed somewhere else because a window took
+  the focus mid-click. They are given no window now.
+
 - **Windows: the console is asked to act on the escapes the dashboard is drawn
   with.** Acting on them is a console setting, and it is off by default on the
   console conhost opens — which is the console a double-clicked executable gets.
