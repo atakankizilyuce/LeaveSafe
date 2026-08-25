@@ -46,3 +46,21 @@ func maximizeWindow(hwnd uintptr) {
 	// ShowWindow returns the previous visibility state, not an error.
 	_, _, _ = user32.NewProc("ShowWindow").Call(hwnd, uintptr(swMaximize))
 }
+
+// consoleMode is the mode flags set on a console handle, and false when there
+// is no console behind it to ask — a handle redirected to a file or a pipe.
+func consoleMode(handle uintptr) (uint32, bool) {
+	proc := kernel32.NewProc("GetConsoleMode")
+
+	var mode uint32
+	ok, _, _ := proc.Call(handle, uintptr(unsafe.Pointer(&mode)))
+	return mode, ok != 0
+}
+
+// setConsoleMode puts mode on a console handle and reports whether it took.
+func setConsoleMode(handle uintptr, mode uint32) bool {
+	proc := kernel32.NewProc("SetConsoleMode")
+
+	ok, _, _ := proc.Call(handle, uintptr(mode))
+	return ok != 0
+}

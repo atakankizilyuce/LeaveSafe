@@ -56,6 +56,12 @@ type screen struct {
 	// cooked is how the keyboard was set before raw mode, and nil when it was
 	// never taken.
 	cooked *term.State
+
+	// consoleBack undoes whatever this platform needed doing to the console
+	// before a dashboard could be drawn on it at all, and is nil where nothing
+	// was. See takeConsole — on Windows it is two settings, and everywhere else
+	// there is nothing to ask for.
+	consoleBack func()
 }
 
 // The two calls that take the keyboard and give it back, as variables so a test
@@ -96,7 +102,22 @@ func (s *screen) enter(out io.Writer) {
 	s.out = out
 	s.entered = true
 	s.takeKeyboard()
+	// Before the first escape is written, because on Windows whether an escape
+	// means anything at all is a console setting rather than a given — and
+	// after the keyboard, because the input mode this asks for is the one raw
+	// mode has just installed. restore undoes the three in the other order.
+	s.consoleBack = takeConsole(asFile(out), s.keys)
 	fmt.Fprint(out, altScreenOn)
+}
+
+// asFile is out as the operating system's handle, or nil when it is not one.
+//
+// The dashboard is drawn through an io.Writer so that a test can read what it
+// drew, and the console settings above are asked for on a handle. A buffer has
+// no handle and nothing to ask.
+func asFile(out io.Writer) *os.File {
+	f, _ := out.(*os.File)
+	return f
 }
 
 // readsKeys says which terminal the typing comes from, so that taking the
@@ -173,8 +194,19 @@ func (s *screen) restore() {
 		return
 	}
 	s.entered = false
-	s.giveBackKeyboard()
+	// Undone in the reverse of the order enter took them, which is not a
+	// tidiness: the console mode asked for there was read off the keyboard raw
+	// mode had already installed, so putting the keyboard back first and the
+	// console mode back second would reinstall raw mode on the way out — a
+	// shell with no echo and no line editing, which is the thing this whole
+	// file exists to stop. The escapes go first of all, while the console is
+	// still set to act on them.
 	fmt.Fprint(s.out, scrollWhole+altScreenOff+scrollWhole+cursorShow+cReset)
+	if s.consoleBack != nil {
+		s.consoleBack()
+		s.consoleBack = nil
+	}
+	s.giveBackKeyboard()
 	s.out = nil
 }
 
