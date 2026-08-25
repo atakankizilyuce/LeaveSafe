@@ -57,6 +57,58 @@ func (m *Manager) probe(s Sensor) {
 	m.mu.Unlock()
 }
 
+// availabilityFor answers "can this sensor work here" for a whole set of
+// sensors, waiting only for the ones nobody has asked yet, and asking those
+// side by side.
+//
+// This is what arming reads. Arming is allowed to wait — it is a deliberate act
+// with a person behind it, and starting the wrong set of sensors is worse than
+// a pause — but it used to pay for that by asking every sensor in turn, from
+// scratch, on whichever goroutine typed `arm`. Six sensors each allowed twenty
+// seconds is two minutes, and on the console that is two minutes with nobody
+// reading the keyboard. The answers were already settled by PrimeAvailability
+// at startup; nothing was learned by asking again.
+//
+// So: settled answers are used, unsettled ones are asked for at once rather
+// than one after another, and the worst case is one probe instead of the sum of
+// them. It still waits outside the lock — see probe.
+func (m *Manager) availabilityFor(sensors []Sensor) map[string]bool {
+	answers := make(map[string]bool, len(sensors))
+
+	m.mu.RLock()
+	var unsettled []Sensor
+	for _, s := range sensors {
+		if a, ok := m.availability[s.Name()]; ok {
+			answers[s.Name()] = a
+			continue
+		}
+		unsettled = append(unsettled, s)
+	}
+	m.mu.RUnlock()
+
+	if len(unsettled) == 0 {
+		return answers
+	}
+
+	var wg sync.WaitGroup
+	for _, s := range unsettled {
+		wg.Add(1)
+		sensor := s
+		safe.Go("sensor-availability:"+sensor.Name(), func() {
+			defer wg.Done()
+			m.probe(sensor)
+		})
+	}
+	wg.Wait()
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, s := range unsettled {
+		answers[s.Name()] = m.availability[s.Name()]
+	}
+	return answers
+}
+
 // PrimeAvailability asks every sensor whether it can work here, so the answer is
 // settled before anything on a request path wants it.
 //
