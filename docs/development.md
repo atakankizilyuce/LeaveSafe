@@ -128,9 +128,20 @@ Two things follow, and both have been broken once:
   settled — see `Manager.availabilityFor` in `internal/monitor`. Six sensors
   each allowed twenty seconds is two minutes.
 
-`cmd/leavesafe/console_deafness_test.go` and the arming tests in
-`internal/monitor/availability_test.go` are what keep both true. Neither passes
-against the code they were written for.
+And one more, which is the same rule pointed the other way: **whatever the
+dashboard took, it gives back, and it stops drawing the moment it has.** The
+alternate screen, raw mode, and on Windows two console settings that default the
+wrong way for a full-screen program — see `takeConsole` in
+`cmd/leavesafe/console_windows.go`. Handing the terminal back while still
+writing to it as though it were ours is how the status grid ended up painted
+across the user's shell on the way out; `statusBar.handBack` is what closes
+that.
+
+`cmd/leavesafe/console_deafness_test.go`, `TestNothingIsDrawnOnTheTerminalAfterItIsHandedBack`
+in `terminal_test.go`, the console-mode tests in
+`console_windows_test.go` and the arming tests in
+`internal/monitor/availability_test.go` are what keep all of it true. None of
+them passes against the code it was written for.
 
 ## Cutting a release
 
