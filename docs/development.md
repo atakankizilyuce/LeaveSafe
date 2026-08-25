@@ -128,6 +128,14 @@ Two things follow, and both have been broken once:
   settled — see `Manager.availabilityFor` in `internal/monitor`. Six sensors
   each allowed twenty seconds is two minutes.
 
+There is a wider version of the same term, and it is worth saying because it
+was broken in two more places on Windows: **the program does not take anything
+it was not given.** Not the size of the user's window, not the foreground of
+their desktop. It was maximizing the console it was started in and opening a
+helper window every couple of seconds while armed, and between them the machine
+read as locked — see `syspath.HideWindow`, and the absence of anything that
+resizes a window.
+
 And one more, which is the same rule pointed the other way: **whatever the
 dashboard took, it gives back, and it stops drawing the moment it has.** The
 alternate screen, raw mode, and on Windows two console settings that default the
