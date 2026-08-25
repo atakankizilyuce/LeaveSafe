@@ -92,7 +92,7 @@ func TestTheConsoleModeIsPutBackExactlyAsItWas(t *testing.T) {
 func TestNothingIsChangedOnSomethingThatIsNotAConsole(t *testing.T) {
 	set := stubConsoleMode(t, 0, false, true)
 
-	if back := changeConsoleMode(os.Stdout, enableVTProcessing, 0); back != nil {
+	if changeConsoleMode(os.Stdout, enableVTProcessing, 0) != nil {
 		t.Error("a handle with no console behind it reported something to undo")
 	}
 	if len(*set) != 0 {
@@ -106,7 +106,7 @@ func TestNothingIsChangedOnSomethingThatIsNotAConsole(t *testing.T) {
 func TestAConsoleAlreadySetTheRightWayIsLeftAlone(t *testing.T) {
 	set := stubConsoleMode(t, enableVTProcessing, true, true)
 
-	if back := changeConsoleMode(os.Stdout, enableVTProcessing, 0); back != nil {
+	if changeConsoleMode(os.Stdout, enableVTProcessing, 0) != nil {
 		t.Error("a console that needed no change reported something to undo")
 	}
 	if len(*set) != 0 {
@@ -120,7 +120,7 @@ func TestAConsoleAlreadySetTheRightWayIsLeftAlone(t *testing.T) {
 func TestAConsoleThatRefusesIsNotAFailure(t *testing.T) {
 	stubConsoleMode(t, 0, true, false)
 
-	if back := changeConsoleMode(os.Stdout, enableVTProcessing, 0); back != nil {
+	if changeConsoleMode(os.Stdout, enableVTProcessing, 0) != nil {
 		t.Error("a console that refused the change reported something to undo")
 	}
 }
@@ -130,7 +130,7 @@ func TestAConsoleThatRefusesIsNotAFailure(t *testing.T) {
 func TestTakingNoConsoleAsksForNothing(t *testing.T) {
 	set := stubConsoleMode(t, 0, true, true)
 
-	if back := takeConsole(nil, nil); back != nil {
+	if takeConsole(nil, nil) != nil {
 		t.Error("a run with no console handles reported something to undo")
 	}
 	if len(*set) != 0 {
