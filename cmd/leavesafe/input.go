@@ -3,7 +3,10 @@ package main
 import (
 	"bufio"
 	"strings"
+	"sync"
 	"unicode"
+
+	"github.com/leavesafe/leavesafe/internal/safe"
 )
 
 // The line the user types on.
@@ -420,12 +423,88 @@ func (s scannedLines) readSecret() (string, bool) { return s.readLine() }
 
 // typedLines reads the keyboard a keystroke at a time and draws what is typed
 // on the dashboard's own input row.
+//
+// Reading the keyboard and acting on it are two goroutines, and that split is
+// the whole of this type. It used to be one: the loop read a keystroke, and
+// when the keystroke finished a line it ran the command itself before reading
+// the next one. So for as long as a command took, nothing was reading the
+// keyboard — and in raw mode nothing else turns Ctrl+C into anything. Arming
+// while a sensor was still being asked whether it works could take the better
+// part of a minute, and for that whole minute the terminal was a screen with
+// no echo, no commands, no Ctrl+C and no Ctrl+Z: the user could not get out of
+// it without killing the process from somewhere else, which left the terminal
+// in raw mode afterwards.
+//
+// So [typedLines.pump] does nothing but read. It answers the two keystrokes
+// that mean "stop" and "go away" on the spot, whatever else the program is
+// busy with, and hands everything else to whoever is asking for a line.
+//
+// What it deliberately does *not* do is put those keystrokes on screen. A
+// keystroke is drawn by the reader that consumes it, which is the one that
+// knows whether this line is a command or a PIN — read ahead and drawn by the
+// pump, a PIN typed before the prompt appeared would go on screen in the clear.
 type typedLines struct {
 	in *bufio.Reader
 	sb *statusBar
 	// quit ends the program, for the Ctrl+C the terminal no longer turns into
 	// a signal on our behalf.
 	quit func()
+
+	// keys is what the pump has read and nobody has acted on yet, and started
+	// is what makes sure there is exactly one pump behind it.
+	started sync.Once
+	keys    chan key
+}
+
+// keyBacklog is how many keystrokes may be waiting to be acted on.
+//
+// It exists so that the pump never blocks: a pump waiting for somebody to take
+// a keystroke is a pump not reading the next one, which is the deafness this
+// whole arrangement exists to remove. Far more than anybody types ahead, and a
+// keystroke past it is dropped the way a full terminal buffer drops one.
+const keyBacklog = 256
+
+// begin starts the one goroutine that reads the keyboard.
+func (t *typedLines) begin() {
+	t.started.Do(func() {
+		t.keys = make(chan key, keyBacklog)
+		safe.Go("console-keys", t.pump)
+	})
+}
+
+// pump reads the keyboard for as long as there is one, and does nothing else.
+//
+// Ctrl+C and Ctrl+Z are answered here rather than passed on, because they are
+// the two keystrokes whose whole value is that they work when nothing else
+// does. Neither needs to know what is on the line, so neither has to wait for
+// somebody to be asking for one.
+//
+// Everything else is handed on. It is not applied to the line and not drawn:
+// see the note on the type.
+func (t *typedLines) pump() {
+	defer close(t.keys)
+
+	for {
+		k, err := readKey(t.in)
+		if err != nil {
+			return
+		}
+
+		switch k.code {
+		case keyInterrupt:
+			t.quit()
+			return
+		case keySuspend:
+			suspendFn()
+			continue
+		}
+
+		select {
+		case t.keys <- k:
+		default:
+			// Dropped rather than waited on. See keyBacklog.
+		}
+	}
 }
 
 func (t *typedLines) readLine() (string, bool) {
@@ -445,11 +524,19 @@ func (t *typedLines) readSecret() (string, bool) {
 	return t.read()
 }
 
-// read collects keystrokes until one of them finishes the line.
+// read applies keystrokes to the line until one of them finishes it.
+//
+// This is where a keystroke reaches the screen, and it runs only while
+// somebody is asking for a line — which is what makes the masking on the line
+// below trustworthy. Keystrokes typed while a command was running are waiting
+// in the channel by the time this is called, so they are drawn now, under
+// whatever this caller asked for, rather than when they were typed.
 func (t *typedLines) read() (string, bool) {
+	t.begin()
+
 	for {
-		k, err := readKey(t.in)
-		if err != nil {
+		k, ok := <-t.keys
+		if !ok {
 			return "", false
 		}
 
@@ -460,6 +547,9 @@ func (t *typedLines) read() (string, bool) {
 			t.quit()
 			return "", false
 		case actSuspend:
+			// The pump answers Ctrl+Z, so this is only reachable from a
+			// keystroke that arrived before it did. Answering it twice is
+			// cheaper than an arm of this switch that silently does nothing.
 			suspendFn()
 		case actNone:
 		}
