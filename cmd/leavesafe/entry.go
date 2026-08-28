@@ -23,6 +23,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/leavesafe/leavesafe/internal/logsink"
+
 	"github.com/leavesafe/leavesafe/internal/safe"
 )
 
@@ -47,6 +49,12 @@ func main() {
 	}
 
 	log.SetFormatter(consoleLogFormatter())
+	// Between the logger and its output from here on, and before anything else
+	// is started. logrus holds one mutex across the write to Out, so an output
+	// that blocks stops every log line in the process — and the first statement
+	// in each sensor loop is a log line. See internal/logsink for the afternoon
+	// that taught us that.
+	log.SetOutput(logsink.New(os.Stderr, 0))
 
 	plainRun, _ := planTerminal(*headless, *plain, os.Stdout)
 

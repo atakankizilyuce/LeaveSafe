@@ -19,6 +19,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/endpoint"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
+	"github.com/leavesafe/leavesafe/internal/logsink"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/push"
 	"github.com/leavesafe/leavesafe/internal/safe"
@@ -426,7 +427,12 @@ func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager, keyPath stri
 	// The dashboard owns the terminal, so log lines have to be routed through it
 	// to land inside its scrolling region rather than on top of the QR code.
 	// Headless has no such constraint.
-	log.SetOutput(&logWriter{sb: sb})
+	//
+	// Through the sink, like the output it replaces. A terminal is not a safe
+	// place to write either: selecting text in a Windows console pauses every
+	// write to it until the selection is cleared, and a paused console must not
+	// be able to stop this machine watching — see internal/logsink.
+	log.SetOutput(logsink.New(&logWriter{sb: sb}, 0))
 	return sb
 }
 
