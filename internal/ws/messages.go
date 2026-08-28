@@ -319,15 +319,29 @@ func NewAuthFail(reason string, remaining int) ServerMessage {
 	}
 }
 
-// NewAlarmActive creates a message indicating the laptop alarm is sounding.
+// NewAlarmActive creates a message indicating the laptop alarm is sounding,
+// as of now.
 func NewAlarmActive(sensor, message string) ServerMessage {
+	return NewAlarmActiveAt(sensor, message, time.Now())
+}
+
+// NewAlarmActiveAt is the same message for an alarm that started earlier.
+//
+// The one place it is not now is the one that matters most. A phone drops its
+// socket every time its screen locks, so reconnecting into an alarm already
+// sounding is the ordinary way to meet one — and that message used to carry the
+// moment it was sent. The phone believes the daemon about its own alarm over
+// its own clock, and rightly, so a trip four minutes old arrived reading "just
+// now": the panel said the wrong thing about the one fact somebody standing in
+// front of it is trying to establish.
+func NewAlarmActiveAt(sensor, message string, at time.Time) ServerMessage {
 	return ServerMessage{
 		Type: MsgTypeAlarmActive,
 		Alert: &AlertData{
 			Sensor:  sensor,
 			Message: message,
 		},
-		Timestamp: time.Now().Unix(),
+		Timestamp: at.Unix(),
 	}
 }
 
