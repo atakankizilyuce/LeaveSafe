@@ -124,12 +124,17 @@ func TestWhatWasDroppedIsSaidRatherThanLost(t *testing.T) {
 	// same kind of lie this whole product is built against: a log that looks
 	// complete and is not.
 	release := make(chan struct{})
-	out := &gated{release: release}
+	out := newGated(release)
 	w := New(out, 2)
 	defer func() { _ = w.Close() }()
 
 	// The first goes to the writer, which is waiting on release. The next two
 	// fill the queue behind it; everything after that has nowhere to go.
+	if _, err := w.Write([]byte("the first line\n")); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	<-out.entered
+
 	for i := range 40 {
 		if _, err := w.Write([]byte("a line\n")); err != nil {
 			t.Fatalf("write %d: %v", i, err)
@@ -141,6 +146,41 @@ func TestWhatWasDroppedIsSaidRatherThanLost(t *testing.T) {
 	waitFor(t, "the count of what was dropped", func() bool {
 		return strings.Contains(out.String(), "log lines were dropped")
 	})
+}
+
+func TestNoDepthTakesTheDefaultOne(t *testing.T) {
+	// The shape both call sites in this program use, and the one nothing else
+	// here asks for: New(os.Stderr, 0). What it has to be is deep enough that
+	// an ordinary burst — a start-up, an arm, a sensor failing and coming back
+	// — is not lost to a writer that is merely slow, so the assertion is that
+	// a full default queue behind a stalled writer drops nothing.
+	release := make(chan struct{})
+	out := newGated(release)
+	w := New(out, 0)
+	defer func() { _ = w.Close() }()
+
+	// One goes to the writer, which is waiting on release; DefaultDepth more
+	// fit behind it exactly. Waited for, so the queue really is empty when the
+	// filling starts.
+	if _, err := w.Write([]byte("the first line\n")); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	<-out.entered
+
+	for i := range DefaultDepth {
+		if _, err := w.Write([]byte("a line\n")); err != nil {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+
+	close(release)
+
+	waitFor(t, "every line to arrive", func() bool {
+		return strings.Count(out.String(), "a line\n") == DefaultDepth
+	})
+	if strings.Contains(out.String(), "were dropped") {
+		t.Fatal("a default-depth queue dropped a line it had room for")
+	}
 }
 
 func TestClosingTwiceIsNotAPanic(t *testing.T) {
@@ -188,17 +228,30 @@ func TestAWriterThatFailsIsNotRetriedForever(t *testing.T) {
 	waitFor(t, "the failing writer to be tried", func() bool { return out.tried() })
 }
 
-// gated is an io.Writer that holds its first write until release is closed,
-// so a test can fill the queue behind it.
+// gated is an io.Writer that holds its first write until release is closed, so
+// a test can fill the queue behind it.
+//
+// entered is closed as that first write begins. A test that starts filling
+// before the sink's goroutine has taken a line out is measuring a queue one
+// shorter than it asked for, which is the difference between this being a
+// test and being a coin toss.
 type gated struct {
 	release chan struct{}
+	entered chan struct{}
 	once    sync.Once
 	mu      sync.Mutex
 	buf     bytes.Buffer
 }
 
+func newGated(release chan struct{}) *gated {
+	return &gated{release: release, entered: make(chan struct{})}
+}
+
 func (g *gated) Write(p []byte) (int, error) {
-	g.once.Do(func() { <-g.release })
+	g.once.Do(func() {
+		close(g.entered)
+		<-g.release
+	})
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.buf.Write(p)
