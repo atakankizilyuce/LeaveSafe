@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 	"testing"
+	"time"
 )
 
 // recorder is a transport that keeps what the hub wrote to it, so a test can
@@ -75,6 +76,40 @@ func TestAPhoneThatPairsDuringAnAlarmIsToldAboutIt(t *testing.T) {
 	}
 }
 
+// And it is told when, not when it asked.
+//
+// The phone believes the daemon about the daemon's own alarm over its own
+// clock, which is right — the daemon is the only thing that knows. So a message
+// stamped with the moment it was sent made the panel say "just now" about a
+// trip that happened while the screen was locked, and the age of the alarm is
+// the one fact somebody standing in front of an alarm panel is trying to
+// establish.
+func TestAPhoneThatPairsDuringAnAlarmIsToldWhenItStarted(t *testing.T) {
+	hub := triggerHub(t)
+	hub.Arm()
+	hub.TriggerSensorTest("power")
+
+	started := time.Now()
+	// Far enough back that a message stamped "now" cannot be mistaken for one
+	// stamped when the alarm began, and close enough that the test does not
+	// wait for it.
+	hub.mu.Lock()
+	hub.alarmAt = started.Add(-4 * time.Minute)
+	want := hub.alarmAt.Unix()
+	hub.mu.Unlock()
+
+	_, rec := hub.pairRecorder(t)
+
+	msg, ok := rec.saw(MsgTypeAlarmActive)
+	if !ok {
+		t.Fatal("a phone pairing into a sounding alarm was told nothing about it")
+	}
+	if msg.Timestamp != want {
+		t.Errorf("the alarm was stamped %d, want %d — the phone was told an "+
+			"alarm four minutes old had just happened", msg.Timestamp, want)
+	}
+}
+
 // Pairing while nothing is sounding must stay quiet, or every reconnect would
 // raise an alarm of its own.
 func TestAPhoneThatPairsWithNoAlarmHearsNone(t *testing.T) {
@@ -139,7 +174,7 @@ func TestASecondAlarmSoundsAfterTheFirstIsDismissed(t *testing.T) {
 	if triggers != 2 {
 		t.Errorf("the laptop's siren was started %d times, want 2 — the second alarm was swallowed", triggers)
 	}
-	if _, _, active := hub.activeAlarm(); !active {
+	if _, _, _, active := hub.activeAlarm(); !active {
 		t.Error("the second alarm was not recorded, so nothing could answer it")
 	}
 }

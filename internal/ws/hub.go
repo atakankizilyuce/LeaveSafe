@@ -117,7 +117,14 @@ type Hub struct {
 	// alarmMessage is what the alarm said, kept beside the sensor so a phone
 	// that pairs while one is sounding can be shown the same words the phones
 	// already connected were.
-	alarmMessage      string
+	alarmMessage string
+	// alarmAt is when it started, kept for the same reason and for one more: a
+	// phone drops its socket every time its screen locks, so reconnecting into
+	// an alarm that has been sounding for a while is the ordinary case. Without
+	// this the message it arrives to was stamped with the moment it was sent,
+	// and a trip four minutes old read as "just now" — which is the one fact
+	// somebody looking at an alarm panel is trying to establish.
+	alarmAt           time.Time
 	suppressedSensors map[string]time.Time
 
 	// updateAvailable is the newest release the update check found, kept so a
@@ -704,6 +711,7 @@ func (h *Hub) TriggerSensorTest(sensorName string) bool {
 		h.alarmActive = true
 		h.alarmSensor = sensorName
 		h.alarmMessage = message
+		h.alarmAt = time.Now()
 		armed = true
 	}
 	h.mu.Unlock()
@@ -798,6 +806,7 @@ func (h *Hub) claimAlarm(alert monitor.Alert) bool {
 	h.alarmActive = true
 	h.alarmSensor = alert.Sensor
 	h.alarmMessage = alert.Message
+	h.alarmAt = time.Now()
 	return true
 }
 
@@ -1196,6 +1205,7 @@ func (h *Hub) clearAlarm() string {
 	h.alarmActive = false
 	h.alarmSensor = ""
 	h.alarmMessage = ""
+	h.alarmAt = time.Time{}
 	h.mu.Unlock()
 
 	h.fireAlarmDismiss()
@@ -1221,10 +1231,10 @@ func (h *Hub) DismissAlarm() {
 // while an alarm is active, so the alarm nobody could see was also the reason
 // the next one never fired: the user, seeing nothing to dismiss, dismissed
 // nothing, and the machine stayed silent from then on.
-func (h *Hub) activeAlarm() (sensor, message string, ok bool) {
+func (h *Hub) activeAlarm() (sensor, message string, at time.Time, ok bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.alarmSensor, h.alarmMessage, h.alarmActive
+	return h.alarmSensor, h.alarmMessage, h.alarmAt, h.alarmActive
 }
 
 // DisarmWithPin verifies the PIN, if one is configured, and disarms.
@@ -1373,8 +1383,8 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// screen unlocks, so arriving in the middle of an alarm is the ordinary
 	// case — and arriving to a calm panel meant the one screen the user is
 	// holding showed nothing wrong while the laptop screamed on the table.
-	if sensor, message, active := h.activeAlarm(); active {
-		client.send(NewAlarmActive(sensor, message))
+	if sensor, message, at, active := h.activeAlarm(); active {
+		client.send(NewAlarmActiveAt(sensor, message, at))
 	}
 
 	// A phone can pair hours after the check ran, so the known result is told to
