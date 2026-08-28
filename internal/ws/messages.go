@@ -141,13 +141,26 @@ type ServerMessage struct {
 	// challenge — the field that lets an app tell this daemon apart from
 	// anything else that could have claimed its port. Neither appears on any
 	// other message.
-	Nonce             string                  `json:"nonce,omitempty"`
-	Proof             string                  `json:"proof,omitempty"`
-	Reason            string                  `json:"reason,omitempty"`
-	RemainingAttempts int                     `json:"remaining_attempts,omitempty"`
-	Sensors           []SensorInfo            `json:"sensors,omitempty"`
-	SensorStates      map[string]*SensorState `json:"sensor_states,omitempty"`
-	Armed             *bool                   `json:"armed,omitempty"`
+	Nonce             string       `json:"nonce,omitempty"`
+	Proof             string       `json:"proof,omitempty"`
+	Reason            string       `json:"reason,omitempty"`
+	RemainingAttempts int          `json:"remaining_attempts,omitempty"`
+	Sensors           []SensorInfo `json:"sensors,omitempty"`
+	// Addresses is where a phone could actually reach this machine, as
+	// whole URLs. Sent on auth_ok and nowhere else: the desktop application
+	// knows the port from endpoint.json but only ever has 127.0.0.1 for the
+	// host, which is right and which no phone can dial. Working out the rest
+	// means knowing which interfaces are up, which are loopback, and which
+	// are the bridges Docker, WSL and Hyper-V leave behind — and that is
+	// written once, in internal/server, rather than a second time in
+	// whatever language the client happens to be.
+	//
+	// Not on the greeting. A list of the addresses a machine answers on is a
+	// map of somebody's network, and it is not owed to a stranger who has
+	// only managed to reach one of them.
+	Addresses    []string                `json:"addresses,omitempty"`
+	SensorStates map[string]*SensorState `json:"sensor_states,omitempty"`
+	Armed        *bool                   `json:"armed,omitempty"`
 	// ArmedSince is when arming happened, in Unix seconds. Sent with auth_ok so
 	// a phone that reconnected resumes its counter instead of restarting it.
 	// Omitted when the machine is not armed.

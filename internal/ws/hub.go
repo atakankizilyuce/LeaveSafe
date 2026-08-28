@@ -75,6 +75,10 @@ type Hub struct {
 	pinEnabled        bool
 	pinHash           string
 	alertChan         chan ServerMessage
+	// where answers "which addresses could a phone dial this machine on".
+	// Nil until something wires it up; see SetAddresses.
+	where func() []string
+
 	// push is where alerts go for phones that are not connected. Nil until
 	// something registers one, which is the whole of its off switch.
 	push       PushNotifier
@@ -591,6 +595,31 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 
 		h.handleMessage(client, msg)
 	}
+}
+
+// SetAddresses registers where a phone could reach this machine, for auth_ok
+// to carry.
+//
+// A function rather than a list: the addresses are read when somebody pairs
+// rather than when the daemon started, so a laptop that has moved between
+// networks since hands out the one it is on now.
+//
+// Optional, like the notifier below. A hub with nobody to ask sends the
+// auth_ok it always sent.
+func (h *Hub) SetAddresses(where func() []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.where = where
+}
+
+func (h *Hub) addresses() []string {
+	h.mu.RLock()
+	where := h.where
+	h.mu.RUnlock()
+	if where == nil {
+		return nil
+	}
+	return where()
 }
 
 // SetPushNotifier registers where alerts go for phones that are not connected.
@@ -1334,6 +1363,9 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	if notifier := h.pushNotifier(); notifier != nil {
 		authOK.PushKey = notifier.PublicKey()
 	}
+	// Only now, to a client that has proved it holds the pairing key. See
+	// ServerMessage.Addresses.
+	authOK.Addresses = h.addresses()
 	client.send(authOK)
 
 	// An alarm already sounding is the first thing this phone needs, before the
