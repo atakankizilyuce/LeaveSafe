@@ -33,6 +33,20 @@ type State struct {
 	ChangedAt time.Time `json:"changed_at"`
 	// Version is the build that wrote the file, for reading old files later.
 	Version string `json:"version,omitempty"`
+	// Port is the one the last run's listener bound.
+	//
+	// A phone is given an address to dial — an address it keeps, because the
+	// whole point of pairing is that it works again tomorrow without anybody
+	// standing at the machine. With no port configured the operating system
+	// picks a free one at every start, so that address stopped being true the
+	// first time the program was restarted: the phone retried a dead port for
+	// ever, and pairing again left a second entry beside the first, both named
+	// after the same machine.
+	//
+	// So the address is remembered rather than reinvented. It is a preference
+	// and not a claim — a port somebody else has taken since is given up for a
+	// free one exactly as before.
+	Port int `json:"port,omitempty"`
 }
 
 // Store persists State to a file. The zero value is not usable; call NewStore.
@@ -56,7 +70,12 @@ func (s *Store) Path() string { return s.path }
 func (s *Store) Load() (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.load()
+}
 
+// load is Load with the lock already held, for the writers below: both of them
+// change one field and have to leave the rest of the file as they found it.
+func (s *Store) load() (State, error) {
 	// #nosec G304 -- path is built from the app's own config dir, never user input
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -84,7 +103,38 @@ func (s *Store) Save(armed bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	st := State{Armed: armed, ChangedAt: time.Now(), Version: s.version}
+	// What is already there, so that arming does not throw away the port the
+	// last run bound. A file that cannot be read is treated as an empty one:
+	// this is a write, and refusing to record that the machine is now watching
+	// because of an unreadable old file would lose the more important fact.
+	prev, _ := s.load()
+	return s.write(State{
+		Armed:     armed,
+		ChangedAt: time.Now(),
+		Version:   s.version,
+		Port:      prev.Port,
+	})
+}
+
+// SavePort records where the listener bound, for the next run to try first.
+//
+// Kept apart from the armed state and from ChangedAt, which is when the arming
+// changed and not when this was written.
+func (s *Store) SavePort(port int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	prev, _ := s.load()
+	if prev.Port == port {
+		return nil
+	}
+	prev.Port = port
+	prev.Version = s.version
+	return s.write(prev)
+}
+
+// write puts a whole state on disk, with the lock already held.
+func (s *Store) write(st State) error {
 	data, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode state: %w", err)

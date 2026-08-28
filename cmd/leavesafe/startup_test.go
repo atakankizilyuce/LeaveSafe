@@ -464,8 +464,41 @@ func TestListenPortPrefersTheEnvironmentWhenItMakesSense(t *testing.T) {
 			} else {
 				t.Setenv("PORT", "")
 			}
-			if got := listenPort(8080); got != tc.want {
+			if got := listenPort(8080, 0); got != tc.want {
 				t.Errorf("listenPort = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// With nothing configured, the port the last run bound is the one to ask for.
+//
+// A phone keeps the address it was paired with. Letting the operating system
+// pick a fresh port at every start made that address wrong the first time the
+// machine was restarted: the phone retried a port nobody was on, and pairing
+// again put a second entry beside the first with the same name on it.
+func TestListenPortFallsBackToTheOneTheLastRunBound(t *testing.T) {
+	cases := map[string]struct {
+		env        string
+		configured int
+		remembered int
+		want       int
+	}{
+		"nothing asked for, one remembered":  {"", 0, 51820, 51820},
+		"nothing asked for, none remembered": {"", 0, 0, 0},
+		// The configuration is somebody saying which port they want. What the
+		// last run happened to bind does not get to overrule that.
+		"a configured port outranks memory": {"", 8080, 51820, 8080},
+		// And so does the environment, which outranks the configuration too.
+		"the environment outranks both": {"9000", 8080, 51820, 9000},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("PORT", tc.env)
+			got := listenPort(tc.configured, tc.remembered)
+			if got != tc.want {
+				t.Errorf("listenPort(%d, %d) = %d, want %d",
+					tc.configured, tc.remembered, got, tc.want)
 			}
 		})
 	}

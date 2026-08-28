@@ -291,6 +291,54 @@ func TestURLsNameTheBoundPort(t *testing.T) {
 	}
 }
 
+// A port somebody else is on is given up for a free one, rather than refusing
+// to start.
+//
+// This has always been what it did, and never had a test of its own. It has
+// one now because something depends on it: with no port configured, a run asks
+// for the one the last run bound, so that a phone paired yesterday can still
+// dial the address it was given. That is a preference and not a claim, and this
+// is what makes it one — a machine whose remembered port has since been taken
+// by something else still comes up and still watches.
+func TestABusyPortIsGivenUpForAFreeOne(t *testing.T) {
+	// Bound the way the server binds, on every interface, so the clash is a
+	// real one on every platform rather than only where a wildcard and a
+	// loopback address are held to conflict.
+	squatter, err := net.Listen("tcp", ":0") // #nosec G102 -- see the server
+	if err != nil {
+		t.Fatalf("could not take a port to squat on: %v", err)
+	}
+	defer func() { _ = squatter.Close() }()
+	taken, ok := squatter.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("unexpected address type %T", squatter.Addr())
+	}
+
+	authMgr, err := auth.NewManager()
+	if err != nil {
+		t.Fatalf("auth manager: %v", err)
+	}
+	hub := ws.NewHub(authMgr, monitor.NewManager(), "test")
+	srv := New(Config{Hub: hub, Port: taken.Port})
+
+	if err := srv.Listen(); err != nil {
+		t.Fatalf("a busy port stopped the server starting: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	})
+
+	if srv.Port() == 0 {
+		t.Error("no port was bound at all")
+	}
+	if srv.Port() == taken.Port {
+		t.Errorf("the server bound %d, which is the port already in use — "+
+			"nothing was given up, so this test proves nothing", srv.Port())
+	}
+}
+
 // A machine with nothing dialable — every interface down, or a laptop whose
 // only "networks" are the bridges a container runtime left behind — still has
 // to produce a code. It just says loopback, and works where the laptop is.
