@@ -132,6 +132,11 @@ func startApp(opts appOptions) (*app, error) {
 	if err := a.srv.Listen(); err != nil {
 		return nil, fmt.Errorf("failed to bind port: %w", err)
 	}
+	// After Listen, because the port is not known until then, and as a function
+	// rather than a list, because a laptop moves between networks while it runs.
+	// This is the only thing that knows which addresses a phone could dial —
+	// see ws.ServerMessage.Addresses for why the client is not asked to.
+	hub.SetAddresses(a.srv.URLs)
 	a.publishEndpoint(version)
 
 	ctx, cancel := context.WithCancel(context.Background())
