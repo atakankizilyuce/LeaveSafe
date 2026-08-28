@@ -128,7 +128,11 @@ func startApp(opts appOptions) (*app, error) {
 	// The listener opens once here and is never closed again: everything that
 	// changes while the program runs changes around it rather than rebinding it,
 	// so a phone already connected stays connected.
-	a.srv = server.New(server.Config{Hub: hub, Port: listenPort(cfg.Port), DevMode: opts.devMode})
+	a.srv = server.New(server.Config{
+		Hub:     hub,
+		Port:    listenPort(cfg.Port, prevState.Port),
+		DevMode: opts.devMode,
+	})
 	if err := a.srv.Listen(); err != nil {
 		return nil, fmt.Errorf("failed to bind port: %w", err)
 	}
@@ -138,6 +142,11 @@ func startApp(opts appOptions) (*app, error) {
 	// see ws.ServerMessage.Addresses for why the client is not asked to.
 	hub.SetAddresses(a.srv.URLs)
 	a.publishEndpoint(version)
+	// And written down for the next run, so the address a phone was given is
+	// still the address tomorrow. A failure costs that and nothing else.
+	if err := stateStore.SavePort(a.srv.Port()); err != nil {
+		log.Warnf("Could not remember which port this bound: %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
@@ -335,15 +344,30 @@ func resolvePairingKey(cfg *config.Config, headless bool) (*auth.Manager, string
 	return mgr, keyPath, nil
 }
 
-// listenPort is the port to serve on: the configured one, unless the
-// environment names another.
+// listenPort is the port to serve on: what the environment names, else what the
+// configuration asks for, else the one the last run bound.
 //
 // A PORT that cannot be used is said out loud rather than silently ignored.
 // Falling back quietly used to mean the server came up on a port the user did
 // not ask for, with a QR code they would scan and wonder about.
-func listenPort(configured int) int {
+//
+// The third source is the newest and the quietest. With nothing configured the
+// operating system picks a free port at every start, and a phone paired
+// yesterday is holding the address of one that is now nobody's — so it retried
+// a dead port for ever, and pairing again left a second entry beside the first,
+// both named after the same machine. Preferring what the last run bound makes
+// the address a phone was given true again tomorrow. It stays a preference: a
+// port somebody else has taken since is given up for a free one, as before.
+func listenPort(configured, remembered int) int {
 	v := os.Getenv("PORT")
 	if v == "" {
+		// Nothing asked for in particular. The one the last run bound is the
+		// one a paired phone still has written down, so it is the one worth
+		// asking for — and asking is all it is: server.Listen gives up a busy
+		// port for a free one rather than refusing to start.
+		if configured == 0 {
+			return remembered
+		}
 		return configured
 	}
 

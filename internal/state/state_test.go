@@ -152,3 +152,128 @@ func TestSaveCreatesTheDirectory(t *testing.T) {
 		t.Errorf("state file was not created: %v", err)
 	}
 }
+
+// The port a phone was given has to outlive the run that gave it.
+//
+// With none configured the operating system picks a free one at every start, so
+// the address a paired phone is holding stopped being true the first time the
+// machine was restarted. Remembering it is what makes pairing something done
+// once.
+func TestSavePortIsRememberedAcrossRuns(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := NewStore(dir, "test").SavePort(51820); err != nil {
+		t.Fatalf("SavePort: %v", err)
+	}
+
+	// A second store on the same directory is the next run of the program.
+	got, err := NewStore(dir, "test").Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Port != 51820 {
+		t.Errorf("the next run was told port %d, want 51820", got.Port)
+	}
+}
+
+// Arming is the write that happens all day long. If it wrote only what it knows
+// about, it would throw the port away the first time anybody armed the machine
+// — and the fix would hold for exactly as long as nobody used the product.
+func TestArmingDoesNotForgetThePort(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir, "test")
+	if err := s.SavePort(51820); err != nil {
+		t.Fatalf("SavePort: %v", err)
+	}
+
+	if err := s.Save(true); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	got, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Port != 51820 {
+		t.Errorf("arming left port %d, want 51820", got.Port)
+	}
+	if !got.Armed {
+		t.Error("the armed state was lost keeping the port")
+	}
+}
+
+// And the other way round: recording the port is not a statement about whether
+// anything is being watched.
+func TestSavePortDoesNotDisarm(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir, "test")
+	if err := s.Save(true); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	before, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if err := s.SavePort(51820); err != nil {
+		t.Fatalf("SavePort: %v", err)
+	}
+
+	got, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !got.Armed {
+		t.Error("writing the port stood the machine down")
+	}
+	if !got.ChangedAt.Equal(before.ChangedAt) {
+		t.Error("writing the port moved the time the arming last changed")
+	}
+}
+
+// A run that bound the same port as the last one has nothing to say.
+func TestSavePortWritesNothingWhenItHasNotMoved(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir, "test")
+	if err := s.SavePort(51820); err != nil {
+		t.Fatalf("SavePort: %v", err)
+	}
+	info, err := os.Stat(s.Path())
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+
+	if err := s.SavePort(51820); err != nil {
+		t.Fatalf("second SavePort: %v", err)
+	}
+
+	again, err := os.Stat(s.Path())
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if !again.ModTime().Equal(info.ModTime()) {
+		t.Error("the file was rewritten with the port it already had")
+	}
+}
+
+// A state file from before this field existed reads as a run that remembered
+// nothing, which is what it was.
+func TestAStateFileWithNoPortReadsAsNone(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir, "test")
+	body := `{"armed":true,"changed_at":"2026-01-01T00:00:00Z","version":"v1.3.6"}`
+	if err := os.WriteFile(s.Path(), []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Port != 0 {
+		t.Errorf("an older file was read as remembering port %d", got.Port)
+	}
+	if !got.Armed {
+		t.Error("an older file stopped saying the machine was armed")
+	}
+}
