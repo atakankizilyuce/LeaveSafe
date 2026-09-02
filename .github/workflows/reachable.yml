@@ -1,0 +1,202 @@
+name: Reachable
+
+# Knocks on the product's three front doors from outside, on a timer.
+#
+# Everything else that watches this service watches it from the inside. The
+# deployment's readiness gate asks the container, over a shared docker network,
+# whether it is listening. Prometheus scrapes it across the same network. Both
+# answer the question "is the process healthy", and on 31 August 2026 both went
+# on answering yes for two days while every user saw nothing at all: the three
+# subdomains had been removed from the DNS zone, so no request ever reached the
+# machine that was busy reporting itself well.
+#
+# That is the failure this exists for. A name that does not resolve, a proxy
+# that stops routing a host, a certificate nobody renewed — none of them are
+# visible from inside the box, and all of them are total. So this runs on
+# GitHub's own runners, resolves through a public resolver, and speaks to the
+# service the way a phone in a cafe would.
+#
+# It deliberately does not check whether the service is *correct*. The deploy's
+# smoke test already drives the real journey — open an account, pair a device —
+# against the real domain on every release. This one asks the cheaper question
+# that has to be true first, and asks it every quarter of an hour instead of
+# once a release.
+
+on:
+  schedule:
+    # Every fifteen minutes, off the quarter marks: a schedule asking for :00
+    # joins a queue with every other repository on GitHub, and the delay lands
+    # exactly when the queue is longest. GitHub's scheduler is best-effort and
+    # may still run late or skip a slot under load, which is fine — the point
+    # is to turn days into minutes, not to be a stopwatch.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+# The default token is read-only here. Opening and closing the one issue this
+# raises is the only thing it needs beyond that.
+permissions:
+  issues: write
+
+jobs:
+  check:
+    name: From outside
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Not CI_RUNNER_DEFAULT, and this is the whole point rather than an
+      # oversight: the self-hosted runner lives on the machine the service runs
+      # on. A check from there resolves names against that host's own resolver
+      # and reaches the container over the local network, so it would have
+      # passed cheerfully throughout the outage this workflow exists to catch.
+      # An outside check has to actually be outside.
+      - name: Knock on every door
+        id: knock
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          # host | path | the worst status still counted as answering
+          #
+          # The API and the site must be right: 200 or nothing. The download
+          # host is asked only whether it is there — it answers 404 at the root
+          # today, and a 404 through the proxy still proves the name resolved,
+          # the certificate matched and something is listening. Asking it for a
+          # named installer would tie this file to a release number and turn
+          # every version bump into a false alarm.
+          doors=(
+            'api-leavesafe.softblocksolutions.com|/health|200'
+            'leavesafe.softblocksolutions.com|/|200'
+            'download.leavesafe.softblocksolutions.com|/|499'
+          )
+
+          # Days of certificate left below which this starts complaining. The
+          # certificates are renewed over HTTP-01, which needs the A record and
+          # port 80 — so a zone that loses a record breaks the renewal too, and
+          # would break it silently three months after breaking everything else.
+          warn_days=21
+
+          resolves() {
+            # Through a public resolver rather than the runner's, so this reads
+            # what a phone reads and not what a GitHub network happens to cache.
+            if command -v dig >/dev/null 2>&1; then
+              [ -n "$(dig +short +time=5 +tries=2 A "$1" @1.1.1.1)" ]
+            else
+              getent ahostsv4 "$1" >/dev/null 2>&1
+            fi
+          }
+
+          status_of() {
+            curl -sS -m 20 -o /dev/null -w '%{http_code}' "https://$1$2" 2>/dev/null
+          }
+
+          days_of_cert() {
+            local end
+            end=$(openssl s_client -connect "$1:443" -servername "$1" </dev/null 2>/dev/null \
+                  | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+            [ -n "$end" ] || return 1
+            echo $(( ( $(date -d "$end" +%s) - $(date +%s) ) / 86400 ))
+          }
+
+          # One host, one verdict. Prints a line when something is wrong and
+          # nothing when everything is right, so the caller can just collect.
+          examine() {
+            local host=$1 path=$2 worst=$3 code days
+
+            if ! resolves "$host"; then
+              echo "- **$host** — does not resolve. The A record is missing from the DNS zone."
+              return
+            fi
+
+            code=$(status_of "$host" "$path")
+            if [ -z "$code" ] || [ "$code" = 000 ]; then
+              echo "- **$host** — resolves, but nothing answered \`https://$host$path\` within 20s."
+              return
+            fi
+            if [ "$code" -gt "$worst" ]; then
+              echo "- **$host** — answered \`$code\` at \`$path\`, and anything above \`$worst\` is a fault."
+              return
+            fi
+
+            days=$(days_of_cert "$host") || {
+              echo "- **$host** — answered \`$code\`, but its certificate could not be read."
+              return
+            }
+            if [ "$days" -lt "$warn_days" ]; then
+              echo "- **$host** — answered \`$code\`, but its certificate expires in **$days days**."
+            fi
+          }
+
+          sweep() {
+            local door
+            for door in "${doors[@]}"; do
+              IFS='|' read -r host path worst <<<"$door"
+              examine "$host" "$path" "$worst"
+            done
+          }
+
+          faults=$(sweep)
+
+          # A single blip should not wake anybody. Anything that fails is given
+          # twenty seconds and asked again, and only a second refusal counts —
+          # which is also why the sweep is a function rather than a loop body.
+          if [ -n "$faults" ]; then
+            echo "First pass found something. Looking again in 20s:"
+            echo "$faults"
+            sleep 20
+            faults=$(sweep)
+          fi
+
+          {
+            echo 'faults<<FAULTS'
+            echo "$faults"
+            echo 'FAULTS'
+          } >>"$GITHUB_OUTPUT"
+
+          if [ -n "$faults" ]; then
+            echo "$faults"
+            echo "::error::The front doors are not answering. See the issue this opens."
+          else
+            echo "All three doors answered."
+          fi
+
+      # Two runs of a red check should be one issue with two comments, not two
+      # issues — and a check that has gone green again should close what it
+      # opened rather than leave somebody to notice. Both are done by title:
+      # there are few enough open issues to list them and match locally, and
+      # local matching does not wait for the search index to catch up.
+      - name: Say so, once
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAULTS: ${{ steps.knock.outputs.faults }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: The front doors are not answering
+        run: |
+          set -euo pipefail
+
+          open=$(gh issue list --state open --limit 100 --json number,title \
+                 --jq "[.[] | select(.title == \"$TITLE\") | .number] | first // empty")
+
+          # Emptiness is checked without the whitespace rather than with -n,
+          # because a green run still hands this step a multi-line output block
+          # whose content is one blank line, and a blank line is not nothing.
+          if [ -n "$(printf '%s' "${FAULTS:-}" | tr -d '[:space:]')" ]; then
+            body=$(printf '%s\n\n%s\n\n%s\n' \
+              "A check from outside GitHub could not reach these:" \
+              "$FAULTS" \
+              "Checked from a GitHub-hosted runner, resolving through 1.1.1.1. The run: $RUN_URL")
+
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "$body"
+              echo "Commented on #$open."
+            else
+              gh issue create --title "$TITLE" --label bug --body "$body"
+            fi
+            exit 1
+          fi
+
+          if [ -n "$open" ]; then
+            gh issue close "$open" --comment "All three doors answered again. The run: $RUN_URL"
+            echo "Closed #$open."
+          fi
