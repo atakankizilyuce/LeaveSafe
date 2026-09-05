@@ -164,11 +164,17 @@ jobs:
       # opened rather than leave somebody to notice. Both are done by title:
       # there are few enough open issues to list them and match locally, and
       # local matching does not wait for the search index to catch up.
+      #
+      # Nothing here checks the repository out — a probe has no use for the
+      # source — so `gh` has no `.git` to read the repository from and has
+      # to be told. Without GH_REPO every `gh issue` call below dies with
+      # "not a git repository", after the knock itself succeeded.
       - name: Say so, once
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           FAULTS: ${{ steps.knock.outputs.faults }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TITLE: The front doors are not answering
