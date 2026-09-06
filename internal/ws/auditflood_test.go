@@ -55,7 +55,7 @@ func TestAPairingFloodCannotEraseTheEventLog(t *testing.T) {
 
 	const attempts = 5000
 	for range attempts {
-		hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: "0000000000000000"})
+		hub.handleMessage(client, provingAuth(client, "0000000000000000"))
 	}
 
 	written := countEvents(t, path, eventlog.EventAuthFail)
@@ -78,7 +78,7 @@ func TestTheLockoutItselfIsStillRecorded(t *testing.T) {
 	client := &Client{hub: hub, remoteAddr: "192.0.2.67:5000"}
 
 	for range hub.authManager.MaxAttempts() {
-		hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: "0000000000000000"})
+		hub.handleMessage(client, provingAuth(client, "0000000000000000"))
 	}
 
 	if got := countEvents(t, path, eventlog.EventAuthFail); got < hub.authManager.MaxAttempts() {
@@ -94,12 +94,12 @@ func TestAPhoneCanStillMistypeTheKey(t *testing.T) {
 	client := &Client{hub: hub, remoteAddr: "192.0.2.68:5000"}
 
 	for i := range 3 {
-		hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: "0000000000000000"})
+		hub.handleMessage(client, provingAuth(client, "0000000000000000"))
 		if client.authenticated {
 			t.Fatalf("attempt %d paired with a wrong key", i)
 		}
 	}
-	hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: hub.authManager.RawPairingKey()})
+	hub.handleMessage(client, provingAuth(client, hub.authManager.RawPairingKey()))
 	if !client.authenticated {
 		t.Error("a phone that mistyped the key three times could not then pair correctly")
 	}

@@ -71,12 +71,27 @@ func wrongKeyReason(t *testing.T) string {
 	hub := testHub(t)
 	rec := &recorder{}
 	client := hub.RegisterExternalClient(rec, nil)
-	hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: "0000000000000000"})
+	hub.handleMessage(client, provingAuth(client, "0000000000000000"))
 	fail, ok := rec.saw(MsgTypeAuthFail)
 	if !ok {
 		t.Fatal("a wrong key was not refused at all")
 	}
 	return fail.Reason
+}
+
+// provingAuth is authWithProof for a test that built its client directly
+// rather than through greeted(): it plants on the connection the challenge
+// HandleConnection would have sent, and answers it.
+//
+// It exists because there is no longer any other way to authenticate. Every
+// test that used to hand over provingAuth(client, …) says
+// the same thing through this instead — including the ones that mean to fail,
+// which now pass a key that is wrong rather than a field that is gone.
+func provingAuth(client *Client, key string) ClientMessage {
+	if client.serverNonce == "" {
+		client.serverNonce = fixedServerNonce
+	}
+	return authWithProof(key, client.serverNonce, fixedClientNonce)
 }
 
 // The whole point of the exchange: a client that can compute the proof holds
@@ -232,45 +247,68 @@ func TestAProofOnAConnectionThatWasNeverChallengedIsRefused(t *testing.T) {
 	}
 }
 
-// Transitional: released apps still send the key itself, and this change is not
-// the one that breaks them.
-func TestTheOldKeyMessageStillPairs(t *testing.T) {
+// An app that answers the greeting with no proof is one from before the
+// handshake, and it is turned away.
+//
+// This used to pair. While it did, the pairing key still crossed the wire on
+// every such pairing — which is the one thing the handshake was built to stop,
+// and the reason a listener on a café network had anything to collect.
+//
+// The daemon no longer has a field to read the key out of, so what arrives from
+// such an app is exactly this: an auth message with nothing in it but its type.
+func TestAnAuthWithNoProofIsRefused(t *testing.T) {
 	hub := testHub(t)
 	client, rec, _ := greeted(t, hub)
 
-	hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: hub.authManager.RawPairingKey()})
+	hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth})
 
-	if !client.authenticated {
-		t.Fatal("the old key message no longer pairs")
+	if client.authenticated {
+		t.Fatal("an auth message with no proof paired the client")
 	}
-	authOK, ok := rec.saw(MsgTypeAuthOK)
+	fail, ok := rec.saw(MsgTypeAuthFail)
 	if !ok {
-		t.Fatal("the old key message was not answered with auth_ok")
+		t.Fatal("an auth message with no proof was not refused")
 	}
-	// There is no client nonce in the old message, so there is nothing for the
-	// laptop to prove itself against. Inventing a proof would be worse than
-	// omitting one: it would look like an answer to a challenge nobody made.
-	if authOK.Proof != "" {
-		t.Errorf("auth_ok answered a keyed pairing with a proof %q", authOK.Proof)
+	// Told which end is out of date, rather than that the key was wrong. The
+	// app says the mirror of this to somebody whose daemon is too old to prove
+	// itself, and a person holding one of the two needs to know which.
+	if !strings.Contains(fail.Reason, "too old") {
+		t.Errorf("refused with %q, want a reason that says the app is too old", fail.Reason)
 	}
 }
 
-// A client sending both is judged by the proof. The key field is the weaker of
-// the two and must not be able to override the stronger one.
-func TestAKeyAlongsideAProofIsJudgedByTheProof(t *testing.T) {
+// And it costs nothing against the lockout. Nothing was guessed: the message
+// names no key and learns nothing from the answer, so counting it would let an
+// app that is merely out of date lock its owner out of pairing the moment they
+// updated it.
+//
+// Read off the refusals rather than by flooding, because a connection has an
+// allowance of its own for auth messages and exhausting that would prove
+// something else.
+func TestAnAuthWithNoProofSpendsNoAttempt(t *testing.T) {
 	hub := testHub(t)
-	key := hub.authManager.RawPairingKey()
 	client, rec, serverNonce := greeted(t, hub)
 
-	msg := authWithProof("0000000000000000", serverNonce, fixedClientNonce)
-	msg.Key = key // the right key, behind a proof that is wrong
-	hub.handleMessage(client, msg)
-
-	if client.authenticated {
-		t.Fatal("a correct key rescued a wrong proof")
+	hub.handleMessage(client, ClientMessage{Type: MsgTypeAuth})
+	unproven, ok := rec.saw(MsgTypeAuthFail)
+	if !ok {
+		t.Fatal("an auth message with no proof was not refused")
 	}
-	if _, ok := rec.saw(MsgTypeAuthFail); !ok {
-		t.Error("a wrong proof beside a right key was not refused")
+	if unproven.RemainingAttempts != hub.authManager.MaxAttempts() {
+		t.Errorf("after an unproven auth, %d attempts remained, want all %d",
+			unproven.RemainingAttempts, hub.authManager.MaxAttempts())
+	}
+
+	// A real guess, for contrast: this one is counted.
+	rec.reset()
+	hub.handleMessage(client, authWithProof("0000000000000000", serverNonce, fixedClientNonce))
+	guessed, ok := rec.saw(MsgTypeAuthFail)
+	if !ok {
+		t.Fatal("a proof computed with the wrong key was not refused")
+	}
+	if guessed.RemainingAttempts != hub.authManager.MaxAttempts()-1 {
+		t.Errorf("after a wrong proof, %d attempts remained, want %d",
+			guessed.RemainingAttempts, hub.authManager.MaxAttempts()-1)
 	}
 }
 

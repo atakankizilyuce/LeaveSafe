@@ -74,7 +74,7 @@ func TestPairingReleasesTheSlot(t *testing.T) {
 	client := &Client{hub: hub, remoteAddr: "192.0.2.11:5000", pendingHeld: true}
 	hub.pending.acquire(auth.NormalizeAddr("192.0.2.11:5000"))
 
-	hub.handleAuth(client, ClientMessage{Type: MsgTypeAuth, Key: hub.authManager.RawPairingKey()})
+	hub.handleAuth(client, provingAuth(client, hub.authManager.RawPairingKey()))
 
 	if !client.authenticated {
 		t.Fatal("the client did not pair")

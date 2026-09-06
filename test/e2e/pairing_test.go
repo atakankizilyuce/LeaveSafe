@@ -3,12 +3,31 @@
 package e2e_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/leavesafe/leavesafe/internal/ws"
 	"github.com/leavesafe/leavesafe/test/harness"
 )
+
+// An app from before the handshake sends the pairing key itself. Against the
+// real process, that is refused — which is what makes "the key never crosses
+// the wire" a fact about this daemon rather than about the current app.
+func TestPairing_AnAppThatSendsTheKeyIsRefused(t *testing.T) {
+	app := harness.Start(t, harness.Options{})
+	phone := harness.Dial(t, app.Port())
+
+	reply := phone.AuthenticateWithoutProof(app.Key())
+
+	if reply.Type != ws.MsgTypeAuthFail {
+		t.Fatalf("auth reply type = %q, want %q — the key alone still pairs",
+			reply.Type, ws.MsgTypeAuthFail)
+	}
+	if !strings.Contains(reply.Reason, "too old") {
+		t.Errorf("refused with %q, want a reason that says the app is too old", reply.Reason)
+	}
+}
 
 // TestPairing_CorrectKeyIssuesToken proves the documented pairing flow works
 // against the real process.
