@@ -47,7 +47,7 @@ func (t *recordingTransport) count() int {
 func TestOneExternalClientIsHandledOneMessageAtATime(t *testing.T) {
 	hub, path := hubWithEventLog(t)
 	transport := &recordingTransport{}
-	client := hub.RegisterExternalClient(transport, nil)
+	client := challenged(hub.RegisterExternalClient(transport, nil))
 
 	const attempts = 400
 	var wg sync.WaitGroup
@@ -80,7 +80,9 @@ func TestAnExternalClientCanBeRemovedFromItsOwnMessage(t *testing.T) {
 	transport := &recordingTransport{}
 
 	removed := make(chan struct{}, 1)
-	client := hub.RegisterExternalClient(transport, func() { removed <- struct{}{} })
+	client := challenged(
+		hub.RegisterExternalClient(transport, func() { removed <- struct{}{} }),
+	)
 
 	hub.HandleExternalMessage(client, provingAuth(client, hub.authManager.RawPairingKey()))
 	if !client.authenticated {

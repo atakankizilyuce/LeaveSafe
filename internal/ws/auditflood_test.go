@@ -51,7 +51,7 @@ func countEvents(t *testing.T, path string, kind eventlog.EventType) int {
 // lockout was recorded when it started.
 func TestAPairingFloodCannotEraseTheEventLog(t *testing.T) {
 	hub, path := hubWithEventLog(t)
-	client := &Client{hub: hub, remoteAddr: "192.0.2.66:5000"}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.66:5000"})
 
 	const attempts = 5000
 	for range attempts {
@@ -75,7 +75,7 @@ func TestAPairingFloodCannotEraseTheEventLog(t *testing.T) {
 // "was someone guessing at this?" — which is the question it exists for.
 func TestTheLockoutItselfIsStillRecorded(t *testing.T) {
 	hub, path := hubWithEventLog(t)
-	client := &Client{hub: hub, remoteAddr: "192.0.2.67:5000"}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.67:5000"})
 
 	for range hub.authManager.MaxAttempts() {
 		hub.handleMessage(client, provingAuth(client, "0000000000000000"))
@@ -91,7 +91,7 @@ func TestTheLockoutItselfIsStillRecorded(t *testing.T) {
 // connection, and a second when the user mistypes the key.
 func TestAPhoneCanStillMistypeTheKey(t *testing.T) {
 	hub := testHub(t)
-	client := &Client{hub: hub, remoteAddr: "192.0.2.68:5000"}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.68:5000"})
 
 	for i := range 3 {
 		hub.handleMessage(client, provingAuth(client, "0000000000000000"))

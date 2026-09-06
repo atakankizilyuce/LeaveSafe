@@ -86,7 +86,7 @@ func hubWithSensors(t *testing.T, names ...string) (*Hub, []*quietSensor) {
 func listeningClient(t *testing.T, hub *Hub) *alertRecorder {
 	t.Helper()
 	rec := &alertRecorder{}
-	client := &Client{hub: hub, transport: rec, authenticated: true}
+	client := challenged(&Client{hub: hub, transport: rec, authenticated: true})
 	hub.mu.Lock()
 	hub.clients[client] = true
 	hub.mu.Unlock()

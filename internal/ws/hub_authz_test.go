@@ -28,7 +28,7 @@ func armedHub(t *testing.T) *Hub {
 // because the message was never handled at all.
 func pairedClient(t *testing.T, hub *Hub) *Client {
 	t.Helper()
-	client := &Client{hub: hub, remoteAddr: "192.0.2.10:5000"}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.10:5000"})
 	hub.handleAuth(client, provingAuth(client, hub.authManager.RawPairingKey()))
 	if !client.authenticated {
 		t.Fatal("the test client did not pair")
@@ -165,7 +165,7 @@ func TestPauseLengthIsClamped(t *testing.T) {
 // other phone out with "maximum connections reached" — the owner's included.
 func TestRepeatedPairingOnOneSocketDoesNotHoardSessions(t *testing.T) {
 	hub := testHub(t)
-	client := &Client{hub: hub, remoteAddr: "192.0.2.7:5000"}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.7:5000"})
 	key := hub.authManager.RawPairingKey()
 
 	for range hub.authManager.MaxSessions() + 2 {

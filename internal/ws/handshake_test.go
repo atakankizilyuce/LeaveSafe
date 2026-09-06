@@ -70,7 +70,7 @@ func wrongKeyReason(t *testing.T) string {
 	t.Helper()
 	hub := testHub(t)
 	rec := &recorder{}
-	client := hub.RegisterExternalClient(rec, nil)
+	client := challenged(hub.RegisterExternalClient(rec, nil))
 	hub.handleMessage(client, provingAuth(client, "0000000000000000"))
 	fail, ok := rec.saw(MsgTypeAuthFail)
 	if !ok {
@@ -88,10 +88,23 @@ func wrongKeyReason(t *testing.T) string {
 // the same thing through this instead — including the ones that mean to fail,
 // which now pass a key that is wrong rather than a field that is gone.
 func provingAuth(client *Client, key string) ClientMessage {
+	return authWithProof(key, client.serverNonce, fixedClientNonce)
+}
+
+// challenged plants on a client the nonce HandleConnection would have sent,
+// and hands it back so a test can wrap the line that made it.
+//
+// Separate from provingAuth, and not a write hidden inside it, because one of
+// these tests hands the same client to several goroutines at once: a helper
+// that filled the nonce in on first use would be two goroutines writing the
+// same field, which is a data race whatever the value they agree on. Planting
+// it once, where the client is made, is a fact about the connection rather
+// than about the message.
+func challenged(client *Client) *Client {
 	if client.serverNonce == "" {
 		client.serverNonce = fixedServerNonce
 	}
-	return authWithProof(key, client.serverNonce, fixedClientNonce)
+	return client
 }
 
 // The whole point of the exchange: a client that can compute the proof holds
@@ -362,7 +375,7 @@ func TestTheProofsAreTheOnesTheSpecDescribes(t *testing.T) {
 func TestAuthOKCarriesTheServersProof(t *testing.T) {
 	hub := hubWithKey(t, fixedKey)
 	rec := &recorder{}
-	client := hub.RegisterExternalClient(rec, nil)
+	client := challenged(hub.RegisterExternalClient(rec, nil))
 	client.serverNonce = fixedServerNonce
 
 	hub.handleMessage(client, ClientMessage{
@@ -402,7 +415,7 @@ func TestARefusedProofIsCountedLikeARefusedKey(t *testing.T) {
 func TestTheChallengeGivesNothingElseAway(t *testing.T) {
 	hub := testHub(t)
 	rec := &recorder{}
-	client := hub.RegisterExternalClient(rec, nil)
+	client := challenged(hub.RegisterExternalClient(rec, nil))
 	hub.greet(client)
 
 	hello, ok := rec.saw(MsgTypeHello)
