@@ -595,6 +595,16 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 			return
 		}
 
+		data, err = client.unseal(data)
+		if err != nil {
+			// A connection that agreed to seal and then sent something that
+			// does not open is not a connection with a bad frame on it — it is
+			// somebody else writing to the socket, or the same frame played
+			// twice. Neither is worth carrying on with.
+			log.Warnf("Closing a sealed connection: %v", err)
+			return
+		}
+
 		var msg ClientMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
@@ -1281,6 +1291,38 @@ func (h *Hub) PinRequired() bool {
 // pairing key is always sixteen digits, so the empty string is never one.
 const refusedKey = ""
 
+// sealSession derives the session this connection will speak under, or nil
+// when there is nothing to derive.
+//
+// Nil covers three ordinary cases and no failure worth reporting to a client:
+// an app that did not ask, an app that asked for a construction this daemon
+// does not know, and a transport with no greeting behind it — BLE, where there
+// is no server nonce and so nothing to derive a key from. Each of those is a
+// connection that carries on in the clear, exactly as every connection did
+// before this existed.
+func (h *Hub) sealSession(client *Client, msg ClientMessage, key string) *session {
+	// The client's nonce is half the salt, so an auth that carries no nonce
+	// carries nothing to derive a session from. That is not a failure — it is
+	// an app old enough to have sent a key instead of a proof — and it is
+	// checked here so that it reads as "not eligible" rather than arriving at
+	// newSession as an error nobody can act on.
+	if msg.Encrypt != encChaCha || client.serverNonce == "" || msg.Nonce == "" {
+		return nil
+	}
+
+	sealed, err := newSession(key, client.serverNonce, msg.Nonce, true)
+	if err != nil {
+		// The inputs were checked a moment ago by the proof this client had to
+		// produce, so this is a programming error rather than a bad message.
+		// Carrying on unsealed is the safe half of it: the client is told, by
+		// the acceptance not naming a construction, and shows the same warning
+		// it shows for a daemon too old to seal at all.
+		log.Errorf("Could not derive a session key, carrying on in the clear: %v", err)
+		return nil
+	}
+	return sealed
+}
+
 // authKey returns what this auth message should be judged against: key when the
 // client has shown it is entitled to it, refusedKey when it has not.
 //
@@ -1376,7 +1418,20 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// Only now, to a client that has proved it holds the pairing key. See
 	// ServerMessage.Addresses.
 	authOK.Addresses = h.addresses()
+	// What the two ends will speak from here on. Named back rather than
+	// assumed: an app that asked for something this daemon does not know gets
+	// an acceptance that says so by not naming it, and carries on in the clear
+	// exactly as it did before — which is what keeps an old app and a new
+	// daemon working together.
+	sealed := h.sealSession(client, msg, key)
+	if sealed != nil {
+		authOK.Encrypt = encChaCha
+	}
 	client.send(authOK)
+	// Only now. The acceptance is what tells the app the answer, so it is the
+	// last message either end writes in the clear; everything after it is
+	// sealed, in both directions, from this line.
+	client.sealed = sealed
 
 	// An alarm already sounding is the first thing this phone needs, before the
 	// update notice and before anything else. A phone reconnects every time its

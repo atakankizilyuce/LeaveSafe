@@ -385,3 +385,117 @@ func TestTheChallengeGivesNothingElseAway(t *testing.T) {
 		t.Error("the greeting describes the machine before the client has paired")
 	}
 }
+
+// sealedAuth is authWithProof plus the request to seal what follows.
+func sealedAuth(key, serverNonce string) ClientMessage {
+	msg := authWithProof(key, serverNonce, fixedClientNonce)
+	msg.Encrypt = encChaCha
+	return msg
+}
+
+// An app that asks for a sealed session is told it has one, and everything
+// after the acceptance goes out sealed.
+//
+// The acceptance itself does not: it is what tells the app the answer, so it
+// is the last message on either side that is readable from the wire.
+func TestAnAppThatAsksForASessionGetsOne(t *testing.T) {
+	hub := testHub(t)
+	client, rec, serverNonce := greeted(t, hub)
+
+	hub.handleMessage(client, sealedAuth(hub.authManager.RawPairingKey(), serverNonce))
+
+	authOK, ok := rec.saw(MsgTypeAuthOK)
+	if !ok {
+		t.Fatal("a proving auth that asked to seal was not accepted")
+	}
+	if authOK.Encrypt != encChaCha {
+		t.Fatalf("auth_ok named %q, want %q", authOK.Encrypt, encChaCha)
+	}
+	if client.sealed == nil {
+		t.Fatal("the connection was answered with a construction and then not sealed")
+	}
+
+	rec.reset()
+	client.send(ServerMessage{Type: MsgTypeAlarmActive, Reason: "the cable came out"})
+
+	sealed, ok := rec.saw(sealedType)
+	if !ok {
+		t.Fatal("a message after the acceptance went out in the clear")
+	}
+	if sealed.Reason != "" {
+		t.Errorf("the sealed frame still carries its contents: reason %q", sealed.Reason)
+	}
+}
+
+// And what it sealed, the app opens — with the key the app derives for itself
+// from what it already had.
+func TestWhatTheDaemonSealsTheAppCanOpen(t *testing.T) {
+	hub := testHub(t)
+	key := hub.authManager.RawPairingKey()
+	client, rec, serverNonce := greeted(t, hub)
+
+	hub.handleMessage(client, sealedAuth(key, serverNonce))
+	rec.reset()
+
+	client.send(ServerMessage{Type: MsgTypeAlarmActive, Reason: "the cable came out"})
+
+	app, err := newSession(key, serverNonce, fixedClientNonce, false)
+	if err != nil {
+		t.Fatalf("newSession: %v", err)
+	}
+	frame, ok := rec.raw(sealedType)
+	if !ok {
+		t.Fatal("nothing sealed was written")
+	}
+	plaintext, err := app.open(frame)
+	if err != nil {
+		t.Fatalf("the app could not open what the daemon sealed: %v", err)
+	}
+
+	var got ServerMessage
+	if err := json.Unmarshal(plaintext, &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Type != MsgTypeAlarmActive || got.Reason != "the cable came out" {
+		t.Errorf("opened %+v, want the alarm that was sent", got)
+	}
+}
+
+// An app that asks for something this daemon does not know is not refused. It
+// is answered without a construction named, and carries on in the clear —
+// which is what keeps a daemon and an app of different ages working together.
+func TestAnUnknownConstructionLeavesTheConnectionInTheClear(t *testing.T) {
+	hub := testHub(t)
+	client, rec, serverNonce := greeted(t, hub)
+
+	msg := authWithProof(hub.authManager.RawPairingKey(), serverNonce, fixedClientNonce)
+	msg.Encrypt = "something-nobody-has-implemented"
+	hub.handleMessage(client, msg)
+
+	authOK, ok := rec.saw(MsgTypeAuthOK)
+	if !ok {
+		t.Fatal("an app asking for an unknown construction was refused outright")
+	}
+	if authOK.Encrypt != "" {
+		t.Errorf("auth_ok named %q, want nothing", authOK.Encrypt)
+	}
+	if client.sealed != nil {
+		t.Error("the connection was sealed under a construction nobody agreed on")
+	}
+}
+
+// An app that does not ask gets what it has always got.
+func TestAnAppThatDoesNotAskIsNotSealed(t *testing.T) {
+	hub := testHub(t)
+	client, rec, serverNonce := greeted(t, hub)
+
+	hub.handleMessage(client, authWithProof(hub.authManager.RawPairingKey(), serverNonce, fixedClientNonce))
+
+	authOK, ok := rec.saw(MsgTypeAuthOK)
+	if !ok {
+		t.Fatal("a proving auth was not accepted")
+	}
+	if authOK.Encrypt != "" || client.sealed != nil {
+		t.Error("a connection that asked for nothing was sealed anyway")
+	}
+}

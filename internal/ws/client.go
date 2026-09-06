@@ -62,6 +62,30 @@ type Client struct {
 	// cannot share one allowance: a flood from a paired phone would otherwise
 	// eat into what a stranger's guesses are counted against.
 	authLimiter *tokenBucket
+	// sealed is the session key this connection agreed on, or nil for a
+	// connection that did not ask for one. Set once, in handleAuth, after the
+	// acceptance has gone out — the acceptance itself is what tells the app
+	// the answer, so it is the last message on either side that is readable
+	// from the wire.
+	//
+	// It has a lock of its own because sending is not confined to the
+	// connection's goroutine: an alarm reaches every client from whichever
+	// goroutine noticed it.
+	sealed *session
+}
+
+// unseal returns the plaintext of one frame from this client, or the frame
+// itself when the connection is not sealed.
+//
+// A connection that agreed to seal and then sends something that does not open
+// is not a connection with one bad frame on it: nobody else can produce a
+// frame that opens, so what arrived was written by somebody else, or is the
+// same frame played twice. The caller closes the socket.
+func (c *Client) unseal(data []byte) ([]byte, error) {
+	if c.sealed == nil {
+		return data, nil
+	}
+	return c.sealed.open(data)
 }
 
 // allowMessage reports whether this client may have another message handled,
@@ -103,6 +127,19 @@ func (c *Client) send(msg ServerMessage) {
 	if err != nil {
 		log.Errorf("marshal message: %v", err)
 		return
+	}
+
+	if c.sealed != nil {
+		sealed, err := c.sealed.seal(data)
+		if err != nil {
+			// Nothing is sent in the clear as a fallback. A phone that cannot
+			// be told something is a phone that shows stale state; a phone
+			// told it over a channel this connection agreed to seal is one
+			// whose owner believes it is protected and is not.
+			log.Errorf("seal message: %v", err)
+			return
+		}
+		data = sealed
 	}
 
 	if c.transport != nil {

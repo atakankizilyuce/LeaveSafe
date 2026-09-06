@@ -64,12 +64,21 @@ not cleartext in `config.json`, and rate-limited to five guesses per address per
 minute. A speed bump against someone holding an unlocked paired phone, not a
 second factor.
 
-**The listener is plain HTTP**, so a pairing key sent over the LAN can be read by
-a hostile machine on the same Wi-Fi. There is no TLS anywhere: a certificate for
+**The listener is plain HTTP**, and there is no TLS anywhere: a certificate for
 a LAN address cannot be vouched for by any authority, and the self-signed one
-that used to guard the internet-facing listener went with that listener. Treat
-an untrusted network as a place where the key is visible, and `rotate-key`
-afterwards.
+that used to guard the internet-facing listener went with that listener.
+
+What crosses it is no longer plain. A paired connection is sealed with a key
+derived from the pairing key and the two handshake nonces — one key per
+direction, ChaCha20-Poly1305, a counter that must strictly increase — so the
+status, the alarms, the position and the PIN are unreadable to anything on the
+network, and a frame nobody could seal does not open. A machine on the path can
+still relay the handshake itself; it cannot compute the key that handshake
+produces, so the conversation after it is closed to it.
+
+Two things are still readable there: that a connection exists, and how much
+traffic it carries. An app too old to ask for a session pairs in the clear as
+before, which is worth knowing if you are looking at an old phone.
 
 **Nothing is reachable from outside your network.** LeaveSafe binds to the local
 interfaces and asks nothing of your router. A phone that is not on the same
@@ -112,6 +121,18 @@ handed the key by a phone that scanned a code printed for the real one.
 Closing that needs a password-authenticated key exchange, so the key never leaves
 the phone at all. Worth doing; not done yet. Until then, scan on a network you
 trust.
+
+**What follows the pairing is sealed**, whatever the pairing itself proved. The
+handshake produces a session key as well as a verdict — HKDF-SHA256 over the
+pairing key with both nonces as the salt, a separate key for each direction —
+and every message after `auth_ok` is ChaCha20-Poly1305 under it, with a counter
+that must strictly increase so a recorded frame is worth nothing played again.
+
+That is what closes the relay: an attacker on the path can forward both proofs
+unchanged and be believed by both ends, but it cannot derive the key those
+proofs were made with, so it can neither read what follows nor write anything
+that opens. A frame that does not open closes the connection rather than being
+skipped.
 
 ## Dependencies
 
