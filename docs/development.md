@@ -50,6 +50,34 @@ cd web && npm run dev              # terminal two
 `./leavesafe -dev` also exists and serves `web/dist` straight from disk, so a
 rebuild shows up without restarting the binary.
 
+## The session protocol lives in two repositories
+
+`internal/ws/session.go` is one half of a construction whose other half is the
+Flutter application's `lib/link/session.dart`. There is no shared code between
+them — two languages, two crypto libraries — so the only thing keeping them
+speaking the same protocol is a set of fixtures.
+
+The application's `test/link/session_test.dart` holds frames **this daemon
+really produced**, in both directions, compared byte for byte. That is the test
+that would catch the failure worth catching: two implementations that each agree
+with themselves and not with each other. Nothing written against one side alone
+can see it, because each side is internally consistent by construction.
+
+So a change to the derivation, the info labels, the nonce layout or the envelope
+is a protocol change, and it is a change to both repositories at once:
+
+1. Make it here, and regenerate the fixtures — seal known plaintexts under a
+   known pairing key and the two nonces the fixtures name, and print the frames.
+2. Paste them into `session_test.dart` and make the same change there.
+3. Bump the construction name if the two are no longer compatible. It is
+   negotiated — the app asks for it by name and `auth_ok` names it back — so a
+   second construction is a second constant and a client that asks for whichever
+   it prefers, never a version number either end has to guess at.
+
+It should be hard, and that is the point. An app and a daemon of different
+versions must always negotiate down to something both speak rather than fail in
+a way that reads as a broken alarm.
+
 ## Checks
 
 Every pull request has to pass the same gate, and all of it runs locally:

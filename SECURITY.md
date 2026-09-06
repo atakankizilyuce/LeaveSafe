@@ -104,7 +104,7 @@ deliberate hold plus an optional PIN. Allowing toggles while armed would let
 anyone holding the paired phone switch every sensor off without passing the
 disarm check, while the panel still read ARMED.
 
-## What pairing does not prove
+## What pairing proves, and what it does not
 
 The pairing key rides in the URL **fragment**, which is never put on the wire:
 it reaches the page's own JavaScript and no server sees it. Older builds put it
@@ -112,17 +112,14 @@ in the query string, so the first request line already carried it to whatever
 answered. A QR code containing `?key=` is from such a build; treat that key as
 disclosed and run `rotate-key`.
 
-**What the phone cannot check is who answered.** The connection is plain HTTP,
-so there is no certificate to compare and nothing identifies the far end before
-the key is offered. Anything that can answer the laptop's address on your network
-— a machine that took the address after a reboot, or one interposing on it — is
-handed the key by a phone that scanned a code printed for the real one.
+**Both ends prove they hold the key.** The greeting carries a random challenge,
+the app answers it with an HMAC over the key and a challenge of its own, and the
+acceptance carries the laptop's answer to that one. The key is in none of it. So
+a machine that took the laptop's address after a reboot, or one interposing on
+it, is not handed the key by a phone that scanned a code printed for the real
+one — it cannot answer the challenge, and the app refuses it.
 
-Closing that needs a password-authenticated key exchange, so the key never leaves
-the phone at all. Worth doing; not done yet. Until then, scan on a network you
-trust.
-
-**What follows the pairing is sealed**, whatever the pairing itself proved. The
+**What follows the pairing is sealed**, which is a separate claim. The
 handshake produces a session key as well as a verdict — HKDF-SHA256 over the
 pairing key with both nonces as the salt, a separate key for each direction —
 and every message after `auth_ok` is ChaCha20-Poly1305 under it, with a counter
@@ -133,6 +130,13 @@ unchanged and be believed by both ends, but it cannot derive the key those
 proofs were made with, so it can neither read what follows nor write anything
 that opens. A frame that does not open closes the connection rather than being
 skipped.
+
+**What none of it proves is who scanned the code.** The pairing key is shown on
+a screen, and a phone that photographs it over your shoulder holds exactly what
+a real one does — the handshake cannot tell two holders of the same secret
+apart, and neither can the session it derives. That is a property of the design
+rather than a gap in it: the sixteen digits on the laptop are the whole identity
+either end has. Scan on a network you trust, and `rotate-key` if a code was seen.
 
 ## Dependencies
 
