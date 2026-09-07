@@ -68,10 +68,29 @@ type Client struct {
 	// the answer, so it is the last message on either side that is readable
 	// from the wire.
 	//
-	// It has a lock of its own because sending is not confined to the
-	// connection's goroutine: an alarm reaches every client from whichever
-	// goroutine noticed it.
-	sealed *session
+	// It is the one field here that is not confined to the connection's own
+	// goroutine, so it is the one that needs a lock: an alarm reaches every
+	// client from whichever goroutine noticed it, and that goroutine reads
+	// this while the read loop is still writing it. The session behind the
+	// pointer has a lock of its own; this one is over the pointer.
+	sealedMu sync.RWMutex
+	sealed   *session
+}
+
+// sealedSession returns the session this connection agreed on, or nil.
+func (c *Client) sealedSession() *session {
+	c.sealedMu.RLock()
+	defer c.sealedMu.RUnlock()
+	return c.sealed
+}
+
+// sealFrom seals everything this connection sends from here on. Called once,
+// from handleAuth, after the acceptance has gone out — the acceptance is the
+// last message either end writes in the clear.
+func (c *Client) sealFrom(s *session) {
+	c.sealedMu.Lock()
+	defer c.sealedMu.Unlock()
+	c.sealed = s
 }
 
 // unseal returns the plaintext of one frame from this client, or the frame
@@ -82,10 +101,11 @@ type Client struct {
 // frame that opens, so what arrived was written by somebody else, or is the
 // same frame played twice. The caller closes the socket.
 func (c *Client) unseal(data []byte) ([]byte, error) {
-	if c.sealed == nil {
+	sealed := c.sealedSession()
+	if sealed == nil {
 		return data, nil
 	}
-	return c.sealed.open(data)
+	return sealed.open(data)
 }
 
 // allowMessage reports whether this client may have another message handled,
@@ -129,8 +149,8 @@ func (c *Client) send(msg ServerMessage) {
 		return
 	}
 
-	if c.sealed != nil {
-		sealed, err := c.sealed.seal(data)
+	if session := c.sealedSession(); session != nil {
+		sealed, err := session.seal(data)
 		if err != nil {
 			// Nothing is sent in the clear as a fallback. A phone that cannot
 			// be told something is a phone that shows stale state; a phone
