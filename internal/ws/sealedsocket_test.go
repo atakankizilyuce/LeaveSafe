@@ -59,37 +59,7 @@ func TestASealedConnectionCarriesRealMessages(t *testing.T) {
 	}
 
 	// The status the hub broadcasts on arming comes back sealed, and opens.
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if time.Now().After(deadline) {
-			t.Fatal("nothing sealed came back after arming")
-		}
-
-		_, data, err := conn.Read(ctx)
-		if err != nil {
-			t.Fatalf("read: %v", err)
-		}
-
-		var envelope ServerMessage
-		if err := json.Unmarshal(data, &envelope); err != nil {
-			t.Fatalf("decode: %v", err)
-		}
-		if envelope.Type != sealedType {
-			t.Fatalf("a message came back in the clear as %q", envelope.Type)
-		}
-
-		plaintext, err := app.open(data)
-		if err != nil {
-			t.Fatalf("the app could not open what the daemon sent: %v", err)
-		}
-		var msg ServerMessage
-		if err := json.Unmarshal(plaintext, &msg); err != nil {
-			t.Fatalf("decode the opened message: %v", err)
-		}
-		if msg.Type == MsgTypeStatus && msg.Armed != nil && *msg.Armed {
-			break
-		}
-	}
+	awaitSealedArmedStatus(t, ctx, conn, app)
 
 	if !hub.IsArmed() {
 		t.Error("a sealed arm did not arm the machine")
@@ -131,6 +101,52 @@ func TestASealedConnectionIsClosedOnAFrameThatDoesNotOpen(t *testing.T) {
 	if hub.IsArmed() {
 		t.Error("the machine acted on a message it could not open")
 	}
+}
+
+// awaitSealedArmedStatus waits for the status the hub broadcasts on arming.
+// A broadcast is not the only thing on the wire, so anything else that arrives
+// sealed is read and passed over rather than being treated as the answer.
+func awaitSealedArmedStatus(t *testing.T, ctx context.Context, conn *websocket.Conn, app *session) {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		msg := openNextSealed(t, ctx, conn, app)
+		if msg.Type == MsgTypeStatus && msg.Armed != nil && *msg.Armed {
+			return
+		}
+	}
+	t.Fatal("nothing sealed came back after arming")
+}
+
+// openNextSealed reads one frame, insists it arrived sealed, and opens it. The
+// insisting is half the point: a message that came back in the clear is the
+// failure this whole file is about, and it must not be read as a pass.
+func openNextSealed(t *testing.T, ctx context.Context, conn *websocket.Conn, app *session) ServerMessage {
+	t.Helper()
+
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	var envelope ServerMessage
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if envelope.Type != sealedType {
+		t.Fatalf("a message came back in the clear as %q", envelope.Type)
+	}
+
+	plaintext, err := app.open(data)
+	if err != nil {
+		t.Fatalf("the app could not open what the daemon sent: %v", err)
+	}
+	var msg ServerMessage
+	if err := json.Unmarshal(plaintext, &msg); err != nil {
+		t.Fatalf("decode the opened message: %v", err)
+	}
+	return msg
 }
 
 // writeJSON and readJSON are the two halves of talking to a hub over a real
