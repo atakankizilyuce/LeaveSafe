@@ -64,19 +64,21 @@ not cleartext in `config.json`, and rate-limited to five guesses per address per
 minute. A speed bump against someone holding an unlocked paired phone, not a
 second factor.
 
-**The listener is plain HTTP.** There is no TLS anywhere: a certificate for a
-LAN address cannot be vouched for by any authority, and the self-signed one that
-used to guard the internet-facing listener went with that listener.
+**The listener is plain HTTP**, and there is no TLS anywhere: a certificate for
+a LAN address cannot be vouched for by any authority, and the self-signed one
+that used to guard the internet-facing listener went with that listener.
 
-The pairing key itself no longer crosses the wire — both ends prove they hold it
-instead, and an app that sends the key is refused — so pairing on a hostile
-network no longer discloses it. What is still readable there is everything
-after: the status, the alarms, the position, and the disarm PIN, which is sent
-as typed. And a machine that can get on the path can relay the handshake
-between a real phone and a real laptop, let both prove themselves to each
-other, and then hold the plaintext channel that follows: injecting a disarm,
-or dropping the alarm frame. Closing that means deriving a session key from the
-exchange and authenticating every frame under it; see the issue tracker.
+What crosses it is no longer plain. A paired connection is sealed with a key
+derived from the pairing key and the two handshake nonces — one key per
+direction, ChaCha20-Poly1305, a counter that must strictly increase — so the
+status, the alarms, the position and the PIN are unreadable to anything on the
+network, and a frame nobody could seal does not open. A machine on the path can
+still relay the handshake itself; it cannot compute the key that handshake
+produces, so the conversation after it is closed to it.
+
+Two things are still readable there: that a connection exists, and how much
+traffic it carries. An app too old to ask for a session pairs in the clear as
+before, which is worth knowing if you are looking at an old phone.
 
 **Nothing is reachable from outside your network.** LeaveSafe binds to the local
 interfaces and asks nothing of your router. A phone that is not on the same
@@ -110,24 +112,33 @@ in the query string, so the first request line already carried it to whatever
 answered. A QR code containing `?key=` is from such a build; treat that key as
 disclosed and run `rotate-key`.
 
-**Both ends now prove they hold the key.** The greeting carries a random
-challenge, the app answers it with an HMAC over the key and a challenge of its
-own, and the acceptance carries the laptop's answer to that one. The key is not
-in any of it. So a machine that took the laptop's address after a reboot, or one
-interposing on it, is no longer handed the key by a phone that scanned a code
-printed for the real one — it cannot answer the challenge, and the app refuses
-it. This used to be the paragraph saying otherwise.
+**Both ends prove they hold the key.** The greeting carries a random challenge,
+the app answers it with an HMAC over the key and a challenge of its own, and the
+acceptance carries the laptop's answer to that one. The key is in none of it,
+and there is no longer a field for it to arrive in — an app old enough to send
+one is refused with a message naming which end is out of date. So a machine that
+took the laptop's address after a reboot, or one interposing on it, is not handed
+the key by a phone that scanned a code printed for the real one — it cannot
+answer the challenge, and the app refuses it.
 
-**What that still does not give you is a private channel.** The proofs
-authenticate the two ends and nothing binds the rest of the conversation to
-them, so an attacker on the path can relay the whole exchange — both proofs
-verify, because it is forwarding them unchanged — and own the plaintext socket
-afterwards. That is a disarm it can inject, an alarm it can drop, and a PIN it
-can read.
+**What follows the pairing is sealed**, which is a separate claim. The
+handshake produces a session key as well as a verdict — HKDF-SHA256 over the
+pairing key with both nonces as the salt, a separate key for each direction —
+and every message after `auth_ok` is ChaCha20-Poly1305 under it, with a counter
+that must strictly increase so a recorded frame is worth nothing played again.
 
-Closing it means deriving a session key from the two nonces and the pairing key,
-and authenticating every frame under it. Worth doing; not done yet. Until then,
-pair and watch on a network you trust.
+That is what closes the relay: an attacker on the path can forward both proofs
+unchanged and be believed by both ends, but it cannot derive the key those
+proofs were made with, so it can neither read what follows nor write anything
+that opens. A frame that does not open closes the connection rather than being
+skipped.
+
+**What none of it proves is who scanned the code.** The pairing key is shown on
+a screen, and a phone that photographs it over your shoulder holds exactly what
+a real one does — the handshake cannot tell two holders of the same secret
+apart, and neither can the session it derives. That is a property of the design
+rather than a gap in it: the sixteen digits on the laptop are the whole identity
+either end has. Scan on a network you trust, and `rotate-key` if a code was seen.
 
 ## Dependencies
 

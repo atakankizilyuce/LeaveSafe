@@ -66,8 +66,14 @@ type ClientMessage struct {
 	// Nonce on an auth message is the client's half of the pairing challenge
 	// and Proof is its answer to the server's half, both hex-encoded.
 	// handshakeProof spells out what is signed and why both nonces are in it.
-	Nonce    string          `json:"nonce,omitempty"`
-	Proof    string          `json:"proof,omitempty"`
+	Nonce string `json:"nonce,omitempty"`
+	Proof string `json:"proof,omitempty"`
+	// Encrypt names the construction the app would like the rest of the
+	// conversation sealed under — "chacha20-poly1305", and nothing else today.
+	// Absent means the app cannot seal, and the connection carries on in the
+	// clear the way every connection used to. The acceptance names it back
+	// when the daemon agrees; see session.go.
+	Encrypt  string          `json:"encrypt,omitempty"`
 	Pin      string          `json:"pin,omitempty"`
 	Sensors  map[string]bool `json:"sensors,omitempty"`
 	Sensor   string          `json:"sensor,omitempty"`
@@ -141,8 +147,12 @@ type ServerMessage struct {
 	// challenge — the field that lets an app tell this daemon apart from
 	// anything else that could have claimed its port. Neither appears on any
 	// other message.
-	Nonce             string       `json:"nonce,omitempty"`
-	Proof             string       `json:"proof,omitempty"`
+	Nonce string `json:"nonce,omitempty"`
+	Proof string `json:"proof,omitempty"`
+	// Encrypt on an auth_ok names the construction this connection will be
+	// sealed under from the next message onwards, and is absent when it will
+	// not be. It is the last thing either end says in the clear.
+	Encrypt           string       `json:"encrypt,omitempty"`
 	Reason            string       `json:"reason,omitempty"`
 	RemainingAttempts int          `json:"remaining_attempts,omitempty"`
 	Sensors           []SensorInfo `json:"sensors,omitempty"`

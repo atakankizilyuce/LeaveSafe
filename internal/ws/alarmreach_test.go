@@ -12,6 +12,10 @@ import (
 type recorder struct {
 	mu   sync.Mutex
 	sent []ServerMessage
+	// rawSent is the same messages before they were decoded, for the tests
+	// that care what actually went down the wire — a sealed frame decodes to
+	// its envelope and says nothing about what is inside it.
+	rawSent [][]byte
 }
 
 func (r *recorder) Send(data []byte) error {
@@ -21,6 +25,7 @@ func (r *recorder) Send(data []byte) error {
 	}
 	r.mu.Lock()
 	r.sent = append(r.sent, msg)
+	r.rawSent = append(r.rawSent, append([]byte(nil), data...))
 	r.mu.Unlock()
 	return nil
 }
@@ -39,12 +44,27 @@ func (r *recorder) saw(msgType string) (ServerMessage, bool) {
 	return ServerMessage{}, false
 }
 
+// raw returns the bytes of the first message of this type, for a test that
+// needs the frame itself rather than what the recorder made of it.
+func (r *recorder) raw(msgType string) ([]byte, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.rawSent {
+		var probe ServerMessage
+		if err := json.Unmarshal(m, &probe); err == nil && probe.Type == msgType {
+			return m, true
+		}
+	}
+	return nil, false
+}
+
 // reset forgets everything written so far, so a test can ask what happened
 // after a particular point rather than what happened at all.
 func (r *recorder) reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.sent = nil
+	r.rawSent = nil
 }
 
 // pair registers a client on this hub and takes it through the pairing key, the

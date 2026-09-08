@@ -31,6 +31,19 @@ diff is small.
   from such an app, and this daemon was what made that worth doing. An app that
   sends one is refused with a reason that says which end is out of date, and it
   costs nothing against the lockout: nothing was guessed. Update the app.
+- **The paired connection is now sealed.** The handshake produces a session key
+  as well as a verdict: HKDF over the pairing key and both nonces, one key per
+  direction, and everything after `auth_ok` is ChaCha20-Poly1305 under it with a
+  counter that must strictly increase. Until now the proofs established who was
+  at each end and nothing bound the conversation to them — so a machine on the
+  path could relay the whole exchange between a real phone and a real laptop,
+  forward both proofs unchanged, and then own the plaintext socket: inject a
+  `disarm`, drop an alarm frame, or read the PIN as it was typed. It can still
+  relay the handshake; what it cannot do is compute the key those proofs were
+  made with, so nothing it writes afterwards opens and nothing it reads means
+  anything. An app that does not ask for a session, or asks for a construction
+  this daemon does not know, is answered exactly as before and carries on in the
+  clear.
 
 ### Fixed
 
