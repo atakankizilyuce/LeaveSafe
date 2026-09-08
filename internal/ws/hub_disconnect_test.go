@@ -19,15 +19,7 @@ func dialAndAuth(t *testing.T, ctx context.Context, srv string, hub *Hub) *webso
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	readHello(t, ctx, conn)
-
-	authMsg := `{"type":"auth","key":"` + hub.authManager.RawPairingKey() + `"}`
-	if err := conn.Write(ctx, websocket.MessageText, []byte(authMsg)); err != nil {
-		t.Fatalf("write auth: %v", err)
-	}
-	if _, _, err := conn.Read(ctx); err != nil {
-		t.Fatalf("expected auth_ok: %v", err)
-	}
+	pairOverSocket(t, ctx, conn, hub.authManager.RawPairingKey())
 	return conn
 }
 

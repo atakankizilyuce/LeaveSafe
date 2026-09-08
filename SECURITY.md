@@ -114,10 +114,12 @@ disclosed and run `rotate-key`.
 
 **Both ends prove they hold the key.** The greeting carries a random challenge,
 the app answers it with an HMAC over the key and a challenge of its own, and the
-acceptance carries the laptop's answer to that one. The key is in none of it. So
-a machine that took the laptop's address after a reboot, or one interposing on
-it, is not handed the key by a phone that scanned a code printed for the real
-one — it cannot answer the challenge, and the app refuses it.
+acceptance carries the laptop's answer to that one. The key is in none of it,
+and there is no longer a field for it to arrive in — an app old enough to send
+one is refused with a message naming which end is out of date. So a machine that
+took the laptop's address after a reboot, or one interposing on it, is not handed
+the key by a phone that scanned a code printed for the real one — it cannot
+answer the challenge, and the app refuses it.
 
 **What follows the pairing is sealed**, which is a separate claim. The
 handshake produces a session key as well as a verdict — HKDF-SHA256 over the

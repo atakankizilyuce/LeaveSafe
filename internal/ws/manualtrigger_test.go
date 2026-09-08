@@ -73,7 +73,7 @@ func TestPausingASensorAnswersAManualTrigger(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pair the stand-in phone: %v", err)
 	}
-	client := hub.RegisterExternalClient(nopTransport{}, nil)
+	client := challenged(hub.RegisterExternalClient(nopTransport{}, nil))
 	client.authenticated = true
 	client.token = token
 	hub.handleMessage(client, ClientMessage{Type: MsgTypeDismissAlarmPause, Duration: 60})

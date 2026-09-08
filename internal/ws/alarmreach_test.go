@@ -72,8 +72,8 @@ func (r *recorder) reset() {
 func (h *Hub) pairRecorder(t *testing.T) (*Client, *recorder) {
 	t.Helper()
 	rec := &recorder{}
-	client := h.RegisterExternalClient(rec, nil)
-	h.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: h.authManager.RawPairingKey()})
+	client := challenged(h.RegisterExternalClient(rec, nil))
+	h.handleMessage(client, provingAuth(client, h.authManager.RawPairingKey()))
 	if !client.authenticated {
 		t.Fatal("the stand-in phone did not pair")
 	}

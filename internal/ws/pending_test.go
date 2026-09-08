@@ -71,10 +71,10 @@ func TestPendingLeavesNothingBehind(t *testing.T) {
 // reconnects from one phone would lock that phone out of its own laptop.
 func TestPairingReleasesTheSlot(t *testing.T) {
 	hub := testHub(t)
-	client := &Client{hub: hub, remoteAddr: "192.0.2.11:5000", pendingHeld: true}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.11:5000", pendingHeld: true})
 	hub.pending.acquire(auth.NormalizeAddr("192.0.2.11:5000"))
 
-	hub.handleAuth(client, ClientMessage{Type: MsgTypeAuth, Key: hub.authManager.RawPairingKey()})
+	hub.handleAuth(client, provingAuth(client, hub.authManager.RawPairingKey()))
 
 	if !client.authenticated {
 		t.Fatal("the client did not pair")
@@ -89,7 +89,7 @@ func TestPairingReleasesTheSlot(t *testing.T) {
 // the total drift down until the cap refused everybody.
 func TestASlotIsGivenBackOnlyOnce(t *testing.T) {
 	hub := testHub(t)
-	client := &Client{hub: hub, remoteAddr: "192.0.2.12:5000", pendingHeld: true}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.12:5000", pendingHeld: true})
 	hub.pending.acquire("192.0.2.12")
 	hub.pending.acquire("192.0.2.13")
 

@@ -58,10 +58,10 @@ const (
 // ClientMessage represents a message from the phone to the laptop.
 type ClientMessage struct {
 	Type string `json:"type"`
-	// Key is the pairing key in plaintext, and only released apps still send
-	// it. A current app answers the greeting's challenge with Nonce and Proof
-	// instead, so the key never crosses the wire at all.
-	Key   string `json:"key,omitempty"`
+	// No key field, and that is the point of the handshake: the pairing key
+	// never crosses the wire. An app answers the greeting's challenge with
+	// Nonce and Proof, and an auth message carrying anything else — including
+	// a `key` an older app still sends — is refused. See Hub.handleAuth.
 	Token string `json:"token,omitempty"`
 	// Nonce on an auth message is the client's half of the pairing challenge
 	// and Proof is its answer to the server's half, both hex-encoded.

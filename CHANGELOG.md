@@ -23,8 +23,14 @@ diff is small.
   while the real machine sat unwatched. Both proofs are bound to both
   challenges, so neither half can be replayed onto another connection. A wrong
   proof is refused exactly as a wrong key is, in the same words and against the
-  same lockout. Apps already released still send the key in plaintext and keep
-  working for now.
+  same lockout.
+- **The pairing key is no longer a way to authenticate.** The transitional
+  branch that accepted the key itself, for apps released before the handshake,
+  is gone — and with it the last path by which the key crossed the wire at all.
+  While it was there, a listener on a café network could still harvest a key
+  from such an app, and this daemon was what made that worth doing. An app that
+  sends one is refused with a reason that says which end is out of date, and it
+  costs nothing against the lockout: nothing was guessed. Update the app.
 - **The paired connection is now sealed.** The handshake produces a session key
   as well as a verdict: HKDF over the pairing key and both nonces, one key per
   direction, and everything after `auth_ok` is ChaCha20-Poly1305 under it with a

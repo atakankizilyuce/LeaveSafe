@@ -72,9 +72,9 @@ func TestPairingDoesNotWaitOnASensorProbe(t *testing.T) {
 	}
 	hub := NewHub(authMgr, sensorMgr, "test")
 
-	client := &Client{hub: hub, remoteAddr: "192.0.2.30:5000"}
+	client := challenged(&Client{hub: hub, remoteAddr: "192.0.2.30:5000"})
 	start := time.Now()
-	hub.handleAuth(client, ClientMessage{Type: MsgTypeAuth, Key: authMgr.RawPairingKey()})
+	hub.handleAuth(client, provingAuth(client, authMgr.RawPairingKey()))
 	elapsed := time.Since(start)
 
 	if !client.authenticated {
