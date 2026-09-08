@@ -64,12 +64,19 @@ not cleartext in `config.json`, and rate-limited to five guesses per address per
 minute. A speed bump against someone holding an unlocked paired phone, not a
 second factor.
 
-**The listener is plain HTTP**, so a pairing key sent over the LAN can be read by
-a hostile machine on the same Wi-Fi. There is no TLS anywhere: a certificate for
-a LAN address cannot be vouched for by any authority, and the self-signed one
-that used to guard the internet-facing listener went with that listener. Treat
-an untrusted network as a place where the key is visible, and `rotate-key`
-afterwards.
+**The listener is plain HTTP.** There is no TLS anywhere: a certificate for a
+LAN address cannot be vouched for by any authority, and the self-signed one that
+used to guard the internet-facing listener went with that listener.
+
+The pairing key itself no longer crosses the wire — both ends prove they hold it
+instead, and an app that sends the key is refused — so pairing on a hostile
+network no longer discloses it. What is still readable there is everything
+after: the status, the alarms, the position, and the disarm PIN, which is sent
+as typed. And a machine that can get on the path can relay the handshake
+between a real phone and a real laptop, let both prove themselves to each
+other, and then hold the plaintext channel that follows: injecting a disarm,
+or dropping the alarm frame. Closing that means deriving a session key from the
+exchange and authenticating every frame under it; see the issue tracker.
 
 **Nothing is reachable from outside your network.** LeaveSafe binds to the local
 interfaces and asks nothing of your router. A phone that is not on the same
@@ -95,7 +102,7 @@ deliberate hold plus an optional PIN. Allowing toggles while armed would let
 anyone holding the paired phone switch every sensor off without passing the
 disarm check, while the panel still read ARMED.
 
-## What pairing does not prove
+## What pairing proves, and what it does not
 
 The pairing key rides in the URL **fragment**, which is never put on the wire:
 it reaches the page's own JavaScript and no server sees it. Older builds put it
@@ -103,15 +110,24 @@ in the query string, so the first request line already carried it to whatever
 answered. A QR code containing `?key=` is from such a build; treat that key as
 disclosed and run `rotate-key`.
 
-**What the phone cannot check is who answered.** The connection is plain HTTP,
-so there is no certificate to compare and nothing identifies the far end before
-the key is offered. Anything that can answer the laptop's address on your network
-— a machine that took the address after a reboot, or one interposing on it — is
-handed the key by a phone that scanned a code printed for the real one.
+**Both ends now prove they hold the key.** The greeting carries a random
+challenge, the app answers it with an HMAC over the key and a challenge of its
+own, and the acceptance carries the laptop's answer to that one. The key is not
+in any of it. So a machine that took the laptop's address after a reboot, or one
+interposing on it, is no longer handed the key by a phone that scanned a code
+printed for the real one — it cannot answer the challenge, and the app refuses
+it. This used to be the paragraph saying otherwise.
 
-Closing that needs a password-authenticated key exchange, so the key never leaves
-the phone at all. Worth doing; not done yet. Until then, scan on a network you
-trust.
+**What that still does not give you is a private channel.** The proofs
+authenticate the two ends and nothing binds the rest of the conversation to
+them, so an attacker on the path can relay the whole exchange — both proofs
+verify, because it is forwarding them unchanged — and own the plaintext socket
+afterwards. That is a disarm it can inject, an alarm it can drop, and a PIN it
+can read.
+
+Closing it means deriving a session key from the two nonces and the pairing key,
+and authenticating every frame under it. Worth doing; not done yet. Until then,
+pair and watch on a network you trust.
 
 ## Dependencies
 

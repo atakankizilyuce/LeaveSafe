@@ -29,7 +29,7 @@ func TestAuthOKCarriesWhereAPhoneCanReachThis(t *testing.T) {
 	})
 
 	rec := &recorder{}
-	client := hub.RegisterExternalClient(rec, nil)
+	client := challenged(hub.RegisterExternalClient(rec, nil))
 	client.serverNonce = fixedServerNonce
 
 	hub.handleMessage(client, ClientMessage{
@@ -72,7 +72,7 @@ func TestAHubWithNobodyToAskCarriesOnWithoutAddresses(t *testing.T) {
 	hub := hubWithKey(t, fixedKey)
 
 	rec := &recorder{}
-	client := hub.RegisterExternalClient(rec, nil)
+	client := challenged(hub.RegisterExternalClient(rec, nil))
 	client.serverNonce = fixedServerNonce
 
 	hub.handleMessage(client, ClientMessage{

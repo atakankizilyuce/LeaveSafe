@@ -130,7 +130,7 @@ func TestAnUnpairedPhoneCannotHandOverAnything(t *testing.T) {
 	hub := testHub(t)
 	notifier := &rememberingNotifier{}
 	hub.SetPushNotifier(notifier)
-	client := hub.RegisterExternalClient(&recorder{}, nil)
+	client := challenged(hub.RegisterExternalClient(&recorder{}, nil))
 
 	hub.handleMessage(client, ClientMessage{
 		Type: MsgTypePushSubscribe,

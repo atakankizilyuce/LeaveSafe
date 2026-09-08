@@ -39,13 +39,21 @@ func (r *recorder) saw(msgType string) (ServerMessage, bool) {
 	return ServerMessage{}, false
 }
 
+// reset forgets everything written so far, so a test can ask what happened
+// after a particular point rather than what happened at all.
+func (r *recorder) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sent = nil
+}
+
 // pair registers a client on this hub and takes it through the pairing key, the
 // way a phone's first two messages do.
 func (h *Hub) pairRecorder(t *testing.T) (*Client, *recorder) {
 	t.Helper()
 	rec := &recorder{}
-	client := h.RegisterExternalClient(rec, nil)
-	h.handleMessage(client, ClientMessage{Type: MsgTypeAuth, Key: h.authManager.RawPairingKey()})
+	client := challenged(h.RegisterExternalClient(rec, nil))
+	h.handleMessage(client, provingAuth(client, h.authManager.RawPairingKey()))
 	if !client.authenticated {
 		t.Fatal("the stand-in phone did not pair")
 	}

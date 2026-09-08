@@ -1284,20 +1284,10 @@ const refusedKey = ""
 // authKey returns what this auth message should be judged against: key when the
 // client has shown it is entitled to it, refusedKey when it has not.
 //
-// A message carrying a proof is judged by the proof and nothing else, even when
-// it also carries a key: the key field is the weaker of the two and must not be
-// able to rescue a connection that could not answer the challenge.
+// There is one way to be entitled to it. An app that sent no proof is turned
+// away by handleAuth before this is reached — see the note there — and there is
+// no longer any field on an auth message that carries the key itself.
 func (h *Hub) authKey(client *Client, msg ClientMessage, key string) string {
-	if msg.Proof == "" {
-		// Transitional. Released apps still send the pairing key in plaintext,
-		// and breaking every one of them is not this change's job. Delete this
-		// branch — and the Key field with it — once every supported app answers
-		// the greeting's challenge instead, at which point the key stops
-		// crossing the wire at all and anything that can read the socket or
-		// rewrite endpoint.json stops being able to harvest it.
-		return msg.Key
-	}
-
 	// A connection that was never greeted holds no challenge, and a nonce that
 	// is not the shape this protocol produces is not one either. Neither case
 	// describes a proof this daemon could have asked for.
@@ -1318,6 +1308,27 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// once, a rotation mid-handshake simply fails the pairing — which is what a
 	// phone holding a key that no longer works should be told.
 	key := h.authManager.RawPairingKey()
+
+	// An app that sends no proof is one from before the handshake existed.
+	// Such an app used to send the pairing key itself and be believed, which
+	// is the one thing that kept "the key never crosses the wire" from being
+	// true: anything able to read the socket on a café network could harvest a
+	// key from it, and this daemon was what made that worth doing.
+	//
+	// Refused, and told which end is out of date — the mirror of what the app
+	// already says to somebody whose daemon is too old to prove itself. It
+	// costs no attempt against the lockout, because nothing was guessed: the
+	// message names no key and learns nothing from the answer.
+	if msg.Proof == "" {
+		client.send(NewAuthFail(
+			"this app is too old to pair with this machine — update it",
+			h.authManager.MaxAttempts()))
+		h.logEvent(eventlog.Event{
+			Type:    eventlog.EventAuthFail,
+			Message: "Pairing refused: the app answered the greeting without a proof",
+		})
+		return
+	}
 
 	token, remaining, err := h.authManager.Authenticate(client.remoteAddr, h.authKey(client, msg, key))
 	if err != nil {
@@ -1364,12 +1375,9 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// endpoint.json is writable by anything running as this user, so the app
 	// cannot tell the daemon from an impostor that claimed the port by where it
 	// connected; it can tell them apart by which one can answer with the
-	// pairing key. Only a client that offered a nonce of its own can be
-	// answered — a released app that sent the key gets the auth_ok it always
-	// got, with no proof in it.
-	if msg.Proof != "" {
-		authOK.Proof = handshakeProof(key, proofRoleServer, client.serverNonce, msg.Nonce)
-	}
+	// pairing key. Unconditional now that a proof is the only way through the
+	// door above: every client that gets this far offered a nonce.
+	authOK.Proof = handshakeProof(key, proofRoleServer, client.serverNonce, msg.Nonce)
 	if notifier := h.pushNotifier(); notifier != nil {
 		authOK.PushKey = notifier.PublicKey()
 	}

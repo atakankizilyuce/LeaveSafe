@@ -60,6 +60,31 @@ func readHello(t *testing.T, ctx context.Context, conn *websocket.Conn) ServerMe
 	return msg
 }
 
+// pairOverSocket answers the greeting's challenge on a real connection and
+// waits for the acceptance.
+//
+// The tests that use this are about what happens to a paired socket — a
+// deadline, a reconnection, an alarm — rather than about pairing itself, and
+// they used to get there by writing {"type":"auth","key":…}. There is no such
+// message any more: the key never crosses the wire, so getting paired means
+// doing the handshake, and doing it in one place keeps that from being four
+// copies of the same six lines.
+func pairOverSocket(t *testing.T, ctx context.Context, conn *websocket.Conn, key string) {
+	t.Helper()
+
+	hello := readHello(t, ctx, conn)
+	auth, err := json.Marshal(authWithProof(key, hello.Nonce, fixedClientNonce))
+	if err != nil {
+		t.Fatalf("encode auth: %v", err)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, auth); err != nil {
+		t.Fatalf("write auth: %v", err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatalf("expected auth_ok: %v", err)
+	}
+}
+
 // The greeting names the version, which is what a phone shows before it has
 // paired and the only thing it is told at that point.
 func TestHelloCarriesTheVersion(t *testing.T) {
@@ -162,15 +187,7 @@ func TestAuthenticatedConnectionSurvivesDeadline(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	readHello(t, ctx, conn)
-
-	authMsg := `{"type":"auth","key":"` + hub.authManager.RawPairingKey() + `"}`
-	if err := conn.Write(ctx, websocket.MessageText, []byte(authMsg)); err != nil {
-		t.Fatalf("write auth: %v", err)
-	}
-	if _, _, err := conn.Read(ctx); err != nil {
-		t.Fatalf("expected auth_ok: %v", err)
-	}
+	pairOverSocket(t, ctx, conn, hub.authManager.RawPairingKey())
 
 	// Past the (short) deadline, an authenticated socket must still be usable.
 	time.Sleep(2 * deadline)

@@ -57,7 +57,7 @@ func TestChangingThePINWithoutTheCurrentOneIsRefused(t *testing.T) {
 	hub.SetConfig(cfg)
 
 	rec := &alertRecorder{}
-	client := &Client{hub: hub, transport: rec, authenticated: true, remoteAddr: "203.0.113.9"}
+	client := challenged(&Client{hub: hub, transport: rec, authenticated: true, remoteAddr: "203.0.113.9"})
 	hub.mu.Lock()
 	hub.clients[client] = true
 	hub.mu.Unlock()

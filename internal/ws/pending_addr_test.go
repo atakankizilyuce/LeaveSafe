@@ -16,7 +16,7 @@ func TestAPhoneCanReconnectPastItsShare(t *testing.T) {
 	const addr = "192.0.2.20:41000"
 
 	for i := range maxPendingConnsPerAdr * 3 {
-		client := &Client{hub: hub, remoteAddr: addr}
+		client := challenged(&Client{hub: hub, remoteAddr: addr})
 		if !hub.pending.acquire(auth.NormalizeAddr(addr)) {
 			t.Fatalf("reconnect %d was refused: the phone's own slots were never given back", i)
 		}
@@ -34,7 +34,7 @@ func TestReleasingLeavesNoAddressBehind(t *testing.T) {
 
 	for i := range 200 {
 		addr := netAddr(i)
-		client := &Client{hub: hub, remoteAddr: addr}
+		client := challenged(&Client{hub: hub, remoteAddr: addr})
 		if !hub.pending.acquire(auth.NormalizeAddr(addr)) {
 			t.Fatalf("connection %d was refused while the table should have been empty", i)
 		}
