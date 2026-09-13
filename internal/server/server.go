@@ -131,7 +131,11 @@ func (s *Server) URLs() []string {
 	urls := make([]string, 0, len(ips))
 
 	for _, ip := range ips {
-		urls = append(urls, fmt.Sprintf("http://%s:%d", ip.String(), s.port))
+		// Plain HTTP by design, not by oversight: this is a LAN address with no
+		// certificate a phone could check, and everything that matters on it is
+		// carried inside the sealed session (internal/ws/session.go) or proven
+		// by the handshake — see SECURITY.md. NOSONAR go:S5332
+		urls = append(urls, fmt.Sprintf("http://%s:%d", ip.String(), s.port)) // NOSONAR
 	}
 	return urls
 }
@@ -357,7 +361,9 @@ func socketOrigins(r *http.Request) string {
 	if !ok || host == "" {
 		return "ws: wss:"
 	}
-	return "ws://" + host
+	// ws:// for the same reason URLs builds http://: the frames on it are
+	// sealed, and there is no certificate a LAN address could present. NOSONAR go:S5332
+	return "ws://" + host // NOSONAR
 }
 
 // getLocalIPs returns non-loopback IPv4 addresses, skipping virtual
