@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -184,5 +185,33 @@ func TestCheckPinSuccessClearsFailures(t *testing.T) {
 	}
 	if got := m.TrackedAddrs(); got != 0 {
 		t.Errorf("TrackedAddrs after success = %d, want 0", got)
+	}
+}
+
+// The cost a fresh hash is written at. OWASP's current floor for scrypt is
+// N=2^17 with r=8 and p=1; a PIN hashed below it is the one finding a code
+// scanner keeps raising, and it is also simply slower to crack than it needs
+// to be. A hash written under the old preset is reported as needing a rehash,
+// which is how existing users are moved up without being locked out.
+func TestHashPinCostMeetsTheCurrentFloor(t *testing.T) {
+	hash, err := HashPin("4271")
+	if err != nil {
+		t.Fatalf("HashPin: %v", err)
+	}
+	parts := strings.Split(hash, "$")
+	if len(parts) != 6 {
+		t.Fatalf("hash %q does not have six fields", hash)
+	}
+	n, err := strconv.Atoi(parts[1])
+	if err != nil {
+		t.Fatalf("N %q is not a number: %v", parts[1], err)
+	}
+	if n < 1<<17 {
+		t.Errorf("a fresh hash was written at N=%d, want at least %d", n, 1<<17)
+	}
+
+	old := "scrypt$16384$8$1$" + strings.Repeat("ab", 16) + "$" + strings.Repeat("cd", 32)
+	if !NeedsRehash(old) {
+		t.Error("a hash written under the old preset was not reported as needing a rehash")
 	}
 }

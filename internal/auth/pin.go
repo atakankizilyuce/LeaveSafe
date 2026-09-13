@@ -14,17 +14,14 @@ import (
 
 const pinSaltBytes = 16
 
-// scrypt parameters. N=16384, r=8, p=1 is the interactive-login preset from the
-// scrypt paper: roughly 16 MiB of memory and tens of milliseconds per guess on
-// ordinary hardware.
-//
-// The cost is paid once per disarm attempt by someone standing at their own
-// laptop, where 30ms is imperceptible. It is paid per guess by anyone working
-// through a stolen config file, where it is the difference between sweeping the
-// whole four-digit space in under a second and taking minutes for it — on top
-// of the five-attempt lockout that guards the live PIN.
+// scrypt parameters. N=2^17, r=8, p=1 is the floor OWASP recommends for scrypt
+// today (about 128 MiB and a fraction of a second per hash): a disarm PIN is
+// checked once, by a person, so the cost is paid where it is felt least and
+// counted where it matters. A hash written under an older, cheaper preset
+// still verifies — the parameters travel in the hash — and NeedsRehash moves
+// it up the next time the PIN is held.
 const (
-	scryptN      = 16384
+	scryptN      = 1 << 17
 	scryptR      = 8
 	scryptP      = 1
 	scryptKeyLen = 32
