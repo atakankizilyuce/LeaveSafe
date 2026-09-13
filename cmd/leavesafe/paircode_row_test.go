@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -147,5 +148,53 @@ func TestTheGridIsAsTallAsTheLinesItDraws(t *testing.T) {
 				t.Errorf("the grid does not end on its bottom border: %q", lines[len(lines)-1])
 			}
 		})
+	}
+}
+
+// -plain has no dashboard, so what it prints once at start-up is the whole of
+// what somebody can carry to a phone. The dashboard shows the application's
+// code beside the key; a plain start — which is also what a service does —
+// has to print the same code, or a phone with the application installed has
+// nothing to type.
+func TestPlainStartPrintsTheCodeTheApplicationTakes(t *testing.T) {
+	sb := dashboardWith([]string{"http://192.168.1.24:9443"}, "")
+
+	var out bytes.Buffer
+	printPairingCode(&out, sb, testRawKey)
+	printed := out.String()
+
+	_, after, found := strings.Cut(printed, "Code")
+	if !found {
+		t.Fatalf("a plain start printed no code for the application; output was:\n%s", printed)
+	}
+	// The code is the first run of code characters after the label, with the
+	// color escapes the printer wraps it in stripped.
+	fields := strings.Fields(stripANSI(after))
+	if len(fields) == 0 {
+		t.Fatalf("the Code line carried nothing; output was:\n%s", printed)
+	}
+	host, port, key, err := paircode.Decode(fields[0])
+	if err != nil {
+		t.Fatalf("the code a plain start printed does not decode: %v (%q)", err, fields[0])
+	}
+	if host != "192.168.1.24" || port != 9443 || key != testRawKey {
+		t.Errorf("code carries %s:%d %s, want 192.168.1.24:9443 %s",
+			host, port, key, testRawKey)
+	}
+}
+
+// An address a code cannot carry gets no code rather than a wrong one: a
+// dashboard row or a plain-start line that is simply absent, the same way the
+// dashboard already handles a missing address.
+func TestPairCodeForRefusesWhatItCannotCarry(t *testing.T) {
+	for name, rawURL := range map[string]string{
+		"a URL that does not parse": "http://192.168.1.24:9443/%zz",
+		"an address with no port":   "http://192.168.1.24",
+		"a host name":               "http://laptop.local:9443",
+		"an IPv6 address":           "http://[fe80::1]:9443",
+	} {
+		if got := pairCodeFor(rawURL, testRawKey); got != "" {
+			t.Errorf("%s produced the code %q", name, got)
+		}
 	}
 }

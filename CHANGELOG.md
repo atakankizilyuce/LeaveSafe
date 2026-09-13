@@ -11,6 +11,25 @@ diff is small.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-13
+
+### Fixed
+
+- **A plain start prints the code the application takes.** `-plain` (and
+  `-headless`, which is what the service is) printed the QR code, the URL
+  and the sixteen-digit key and stopped there. The dashboard prints one
+  more line: the short code the application's own pairing field takes,
+  built from the shown address and the key. A laptop started as a service
+  therefore gave a phone with the application installed nothing to type.
+  Both paths now build the code the same way, from the address the QR
+  encodes; an address a code cannot carry prints no line, as the
+  dashboard already drew no row. (#132)
+
+## [1.4.0] - 2026-09-08
+
+The sections below were written under *Unreleased* and shipped in this
+release, together with the 2026-08-18 entries that follow them.
+
 ### Security
 
 - **The laptop now proves it holds the pairing key, instead of only asking.**
@@ -118,7 +137,6 @@ diff is small.
   1.4.0 was drawn without being counted, so the layout gave the grid one row less
   than it needed and clipped the last one off in every window.
 
-## [1.4.0] - 2026-08-18
 
 ### Added
 

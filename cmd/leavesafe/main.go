@@ -210,7 +210,13 @@ func (sb *statusBar) pairCodeLocked() string {
 		return ""
 	}
 
-	u, err := url.Parse(sb.urls[idx])
+	return pairCodeFor(sb.urls[idx], sb.rawKey)
+}
+
+// pairCodeFor is the application's pairing code for one reachable address, or
+// "" when that address is one a code cannot carry — a host name, or IPv6.
+func pairCodeFor(rawURL, rawKey string) string {
+	u, err := url.Parse(rawURL)
 	if err != nil {
 		return ""
 	}
@@ -218,8 +224,7 @@ func (sb *statusBar) pairCodeLocked() string {
 	if err != nil {
 		return ""
 	}
-
-	code, err := paircode.Encode(u.Hostname(), port, sb.rawKey)
+	code, err := paircode.Encode(u.Hostname(), port, rawKey)
 	if err != nil {
 		return ""
 	}
@@ -719,6 +724,13 @@ func printPairingCode(out io.Writer, sb *statusBar, rawKey string) {
 
 	fmt.Fprintf(out, "\n  %s●%s  URL      %s%s%s\n", cGreen, cReset, cGreen, urls[0], cReset)
 	fmt.Fprintf(out, "  %s●%s  Key      %s%s%s\n", cYellow, cReset, cBold, sb.keyText(), cReset)
+	// The application's own code, for a phone that has it installed — the same
+	// line the dashboard draws, built from the address whose QR is above. A
+	// plain start is also what a service is, and a service that printed the
+	// key but not the code left the application with nothing to type.
+	if code := pairCodeFor(urls[0], rawKey); code != "" {
+		fmt.Fprintf(out, "  %s●%s  Code     %s%s%s\n", cYellow, cReset, cBold, code, cReset)
+	}
 	fmt.Fprintf(out, "\n  %sCommands: type 'help'. Ctrl+C to quit.%s\n\n", cDim, cReset)
 }
 
