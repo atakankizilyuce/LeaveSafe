@@ -13,16 +13,16 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@preact/signals": "^2.11.1",
+    "@preact/signals": "^2.11.2",
     "preact": "^10.29.8"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
+    "@biomejs/biome": "2.5.13",
     "@preact/preset-vite": "^2.10.1",
     "@vitest/coverage-v8": "^5.0.0",
     "jsdom": "30.0.1",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.0",
     "vitest": "^5.0.0"
   }
 }
