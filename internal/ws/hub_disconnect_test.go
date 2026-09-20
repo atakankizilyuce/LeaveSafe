@@ -12,15 +12,17 @@ import (
 )
 
 // dialAndAuth opens a socket, gets past the greeting and pairs it, returning a
-// connection the caller closes to simulate the phone going away.
-func dialAndAuth(t *testing.T, ctx context.Context, srv string, hub *Hub) *websocket.Conn {
+// connection the caller closes to simulate the phone going away, and the app's
+// half of the session everything after the acceptance is sealed under.
+func dialAndAuth(
+	t *testing.T, ctx context.Context, srv string, hub *Hub,
+) (*websocket.Conn, *session) {
 	t.Helper()
 	conn, _, err := websocket.Dial(ctx, srv, nil) //nolint:bodyclose // response body is not used
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	pairOverSocket(t, ctx, conn, hub.authManager.RawPairingKey())
-	return conn
+	return conn, pairOverSocket(t, ctx, conn, hub.authManager.RawPairingKey())
 }
 
 // A phone whose screen locks drops the socket. That is the ordinary case, not an
@@ -40,7 +42,7 @@ func TestDisconnectWhileArmedDoesNotAlarm(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn := dialAndAuth(t, ctx, wsURL(srv), hub)
+	conn, _ := dialAndAuth(t, ctx, wsURL(srv), hub)
 	hub.Arm()
 
 	if err := conn.Close(websocket.StatusNormalClosure, ""); err != nil {
@@ -72,7 +74,7 @@ func TestReconnectWithinGraceIsNotReported(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn := dialAndAuth(t, ctx, wsURL(srv), hub)
+	conn, _ := dialAndAuth(t, ctx, wsURL(srv), hub)
 	hub.Arm()
 
 	if err := conn.Close(websocket.StatusNormalClosure, ""); err != nil {
@@ -80,7 +82,7 @@ func TestReconnectWithinGraceIsNotReported(t *testing.T) {
 	}
 
 	// Back before the grace period is up, the way a page that reloaded is.
-	again := dialAndAuth(t, ctx, wsURL(srv), hub)
+	again, _ := dialAndAuth(t, ctx, wsURL(srv), hub)
 	defer again.Close(websocket.StatusNormalClosure, "")
 
 	time.Sleep(grace * 3)

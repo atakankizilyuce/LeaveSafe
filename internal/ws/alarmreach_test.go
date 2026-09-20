@@ -2,6 +2,7 @@ package ws
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,23 @@ type recorder struct {
 	// that care what actually went down the wire — a sealed frame decodes to
 	// its envelope and says nothing about what is inside it.
 	rawSent [][]byte
+
+	// on is the client this recorder is the transport for, and it is how a
+	// sealed frame is recorded as the message inside it.
+	//
+	// Every paired connection is sealed now, so without this every test that
+	// asks "what did the phone see" would see the word "sealed". The client
+	// holds the daemon's half of the session; mirror gives the half that opens
+	// what that half writes, which is exactly what the app would hold.
+	on     *Client
+	mirror *session
+}
+
+// watching makes this recorder read what the hub seals to that client. Called
+// where the client is made, so nothing has been written yet.
+func (r *recorder) watching(client *Client) *recorder {
+	r.on = client
+	return r
 }
 
 func (r *recorder) Send(data []byte) error {
@@ -23,11 +41,48 @@ func (r *recorder) Send(data []byte) error {
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return err
 	}
+
 	r.mu.Lock()
-	r.sent = append(r.sent, msg)
+	defer r.mu.Unlock()
+
 	r.rawSent = append(r.rawSent, append([]byte(nil), data...))
-	r.mu.Unlock()
+	if msg.Type == sealedType {
+		opened, err := r.open(data)
+		if err != nil {
+			return err
+		}
+		msg = opened
+	}
+	r.sent = append(r.sent, msg)
 	return nil
+}
+
+// open reads one sealed frame as the app on the other end would. The caller
+// holds the lock.
+func (r *recorder) open(data []byte) (ServerMessage, error) {
+	if r.on == nil {
+		return ServerMessage{}, errors.New("recorder: a sealed frame arrived on a recorder watching nothing")
+	}
+	if r.mirror == nil {
+		sealed := r.on.sealedSession()
+		if sealed == nil {
+			return ServerMessage{}, errors.New("recorder: a sealed frame arrived before the session did")
+		}
+		// The app's half: what the daemon sends is what this opens. The
+		// counters start where a fresh connection's do, because this is built
+		// before the first sealed frame is read.
+		r.mirror = &session{send: sealed.receive, receive: sealed.send}
+	}
+
+	plain, err := r.mirror.open(data)
+	if err != nil {
+		return ServerMessage{}, err
+	}
+	var msg ServerMessage
+	if err := json.Unmarshal(plain, &msg); err != nil {
+		return ServerMessage{}, err
+	}
+	return msg, nil
 }
 
 func (r *recorder) Close() error { return nil }
@@ -73,6 +128,7 @@ func (h *Hub) pairRecorder(t *testing.T) (*Client, *recorder) {
 	t.Helper()
 	rec := &recorder{}
 	client := challenged(h.RegisterExternalClient(rec, nil))
+	rec.watching(client)
 	h.handleMessage(client, provingAuth(client, h.authManager.RawPairingKey()))
 	if !client.authenticated {
 		t.Fatal("the stand-in phone did not pair")
