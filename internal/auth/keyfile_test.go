@@ -14,6 +14,11 @@ import (
 // a silent one: a key quietly replaced locks out the phone it was there to keep
 // paired, and a key quietly kept when it should not be is a stale secret.
 
+// testSalt is a salt to write beside a key. A real one is thirty-two random
+// bytes minted with the key; what matters to these tests is only that it comes
+// back out again.
+const testSalt = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+
 // aKey builds a key the program itself would accept: the digits, plus the check
 // digit this package computes for them. Written out as a constant it would be a
 // magic number nobody could verify — and the first draft of this file had one
@@ -24,20 +29,34 @@ func aKey(digits string) string {
 
 // readKey returns what is actually on disk, normalised the way the loader
 // normalises it.
+// readKey returns the key line of the file, which is the first of two: the
+// salt is written beside it and is nobody's business here.
 func readKey(t *testing.T, path string) string {
+	t.Helper()
+	key, _ := readKeyAndSalt(t, path)
+	return key
+}
+
+func readKeyAndSalt(t *testing.T, path string) (key, salt string) {
 	t.Helper()
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read the key file back: %v", err)
 	}
-	return strings.TrimSpace(string(data))
+
+	lines := strings.SplitN(strings.TrimSpace(string(data)), "\n", 2)
+	key = strings.TrimSpace(lines[0])
+	if len(lines) == 2 {
+		salt = strings.TrimSpace(lines[1])
+	}
+	return key, salt
 }
 
 func TestAMissingKeyFileIsCreatedWithAUsableKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), KeyFileName)
 
-	key, err := LoadOrCreateKeyFile(path)
+	key, _, err := LoadOrCreateKeyFile(path)
 	if err != nil {
 		t.Fatalf("LoadOrCreateKeyFile: %v", err)
 	}
@@ -65,7 +84,7 @@ func TestTheKeyFileIsOwnerOnly(t *testing.T) {
 	}
 	path := filepath.Join(t.TempDir(), KeyFileName)
 
-	if _, err := LoadOrCreateKeyFile(path); err != nil {
+	if _, _, err := LoadOrCreateKeyFile(path); err != nil {
 		t.Fatalf("LoadOrCreateKeyFile: %v", err)
 	}
 
@@ -90,7 +109,7 @@ func TestRewritingAKeyRestrictsAFileThatWasLoose(t *testing.T) {
 		t.Fatalf("plant a loose key file: %v", err)
 	}
 
-	if err := SaveKeyFile(path, aKey("222222222222222")); err != nil {
+	if err := SaveKeyFile(path, aKey("222222222222222"), testSalt); err != nil {
 		t.Fatalf("SaveKeyFile: %v", err)
 	}
 
@@ -108,12 +127,12 @@ func TestRewritingAKeyRestrictsAFileThatWasLoose(t *testing.T) {
 // be refused by a key it never saw.
 func TestAValidStoredKeyIsKept(t *testing.T) {
 	path := filepath.Join(t.TempDir(), KeyFileName)
-	first, err := LoadOrCreateKeyFile(path)
+	first, _, err := LoadOrCreateKeyFile(path)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 
-	second, err := LoadOrCreateKeyFile(path)
+	second, _, err := LoadOrCreateKeyFile(path)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -142,7 +161,7 @@ func TestAStoredKeyIsAcceptedWithDashesAndStrayWhitespace(t *testing.T) {
 				t.Fatalf("plant the key file: %v", err)
 			}
 
-			got, err := LoadOrCreateKeyFile(path)
+			got, _, err := LoadOrCreateKeyFile(path)
 			if err != nil {
 				t.Fatalf("LoadOrCreateKeyFile: %v", err)
 			}
@@ -177,7 +196,7 @@ func TestAKeyThatCouldNotHaveBeenGeneratedIsReplaced(t *testing.T) {
 				t.Fatalf("plant the key file: %v", err)
 			}
 
-			got, err := LoadOrCreateKeyFile(path)
+			got, _, err := LoadOrCreateKeyFile(path)
 			if err != nil {
 				t.Fatalf("LoadOrCreateKeyFile: %v", err)
 			}
@@ -214,7 +233,7 @@ func TestAnUnreadableKeyFileIsAnErrorRatherThanANewKey(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(path, keyFileMode) })
 
-	if _, err := LoadOrCreateKeyFile(path); err == nil {
+	if _, _, err := LoadOrCreateKeyFile(path); err == nil {
 		t.Error("an unreadable key file was treated as a missing one")
 	}
 }
@@ -235,7 +254,7 @@ func TestAKeyThatCannotBeWrittenIsAnError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	if _, err := LoadOrCreateKeyFile(filepath.Join(dir, KeyFileName)); err == nil {
+	if _, _, err := LoadOrCreateKeyFile(filepath.Join(dir, KeyFileName)); err == nil {
 		t.Error("a key file that could not be written was reported as written")
 	}
 }
@@ -251,7 +270,7 @@ func TestAKeyDirectoryBlockedByAFileIsAnError(t *testing.T) {
 		t.Fatalf("plant the blocking file: %v", err)
 	}
 
-	if _, err := LoadOrCreateKeyFile(filepath.Join(blocker, KeyFileName)); err == nil {
+	if _, _, err := LoadOrCreateKeyFile(filepath.Join(blocker, KeyFileName)); err == nil {
 		t.Error("a key directory blocked by a file was reported as created")
 	}
 }
@@ -261,7 +280,7 @@ func TestAKeyDirectoryBlockedByAFileIsAnError(t *testing.T) {
 func TestTheKeyDirectoryIsCreatedOnDemand(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "deeper", KeyFileName)
 
-	key, err := LoadOrCreateKeyFile(path)
+	key, _, err := LoadOrCreateKeyFile(path)
 	if err != nil {
 		t.Fatalf("LoadOrCreateKeyFile: %v", err)
 	}
@@ -279,18 +298,64 @@ func TestSavingARotatedKeyStripsItsGrouping(t *testing.T) {
 	want := aKey("222222222222222")
 	grouped := want[0:4] + "-" + want[4:8] + "-" + want[8:12] + "-" + want[12:16]
 
-	if err := SaveKeyFile(path, grouped); err != nil {
+	if err := SaveKeyFile(path, grouped, testSalt); err != nil {
 		t.Fatalf("SaveKeyFile: %v", err)
 	}
 
 	if stored := readKey(t, path); stored != want {
 		t.Errorf("the file holds %q, want the key without its grouping", stored)
 	}
-	back, err := LoadOrCreateKeyFile(path)
+	back, _, err := LoadOrCreateKeyFile(path)
 	if err != nil {
 		t.Fatalf("LoadOrCreateKeyFile after saving: %v", err)
 	}
 	if back != want {
 		t.Errorf("the saved key read back as %q", back)
+	}
+}
+
+// The salt is written beside the key and read back with it, so a headless
+// restart does not cost every paired phone a fresh Argon2 derivation for a key
+// that has not changed.
+func TestTheSaltIsKeptBesideTheKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), KeyFileName)
+
+	key, salt, err := LoadOrCreateKeyFile(path)
+	if err != nil {
+		t.Fatalf("LoadOrCreateKeyFile: %v", err)
+	}
+	if salt == "" {
+		t.Fatal("a fresh key file carries no salt")
+	}
+
+	back, backSalt, err := LoadOrCreateKeyFile(path)
+	if err != nil {
+		t.Fatalf("reading it again: %v", err)
+	}
+	if back != key || backSalt != salt {
+		t.Errorf("read back as %q/%q, want %q/%q", back, backSalt, key, salt)
+	}
+}
+
+// A file written before the salt existed still opens, and is given one. It
+// pairs either way — the salt travels in the greeting — so replacing the file
+// would be throwing away a working key for nothing.
+func TestAKeyFileWithNoSaltKeepsItsKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), KeyFileName)
+	want := aKey("333333333333333")
+
+	if err := os.WriteFile(path, []byte(want+"\n"), 0o600); err != nil {
+		t.Fatalf("write the old shape: %v", err)
+	}
+
+	key, salt, err := LoadOrCreateKeyFile(path)
+	if err != nil {
+		t.Fatalf("LoadOrCreateKeyFile: %v", err)
+	}
+	if key != want {
+		t.Errorf("the key read back as %q, want %q", key, want)
+	}
+	if salt != "" {
+		t.Errorf("a file with no salt reported %q", salt)
 	}
 }

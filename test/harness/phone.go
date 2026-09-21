@@ -37,6 +37,9 @@ type Phone struct {
 	greeted     chan struct{}
 	greetedOnce sync.Once
 	serverNonce string
+	// serverSalt is what the greeting said this machine's key is stretched
+	// under. Both ends have to use it or neither can check the other's proof.
+	serverSalt string
 
 	// sealed is what this phone writes under and reads under once it has
 	// paired. Everything after the acceptance is sealed, in both directions, so
@@ -97,6 +100,7 @@ func (p *Phone) readLoop() {
 		if msg.Type == ws.MsgTypeHello {
 			p.greetedOnce.Do(func() {
 				p.serverNonce = msg.Nonce
+				p.serverSalt = msg.Salt
 				close(p.greeted)
 			})
 		}
@@ -259,7 +263,7 @@ func (p *Phone) Authenticate(key string) ws.ServerMessage {
 
 	// Stretched once, here, because the proofs and the session keys are both
 	// computed under it rather than under the digits.
-	strong := stretchKey(key)
+	strong := stretchKey(key, p.serverSalt)
 
 	clientNonce := freshNonce(p.t)
 	p.Send(ws.ClientMessage{
@@ -370,8 +374,8 @@ func proofFor(key []byte, role, serverNonce, clientNonce, encrypt string) string
 // pairing has both nonces and both proofs, and sixteen digits under a bare
 // HMAC is about a day and a half of a few graphics cards. Memory-hard, the
 // same search runs to millennia.
-func stretchKey(key string) []byte {
-	return argon2.IDKey([]byte(key), []byte("leavesafe/v2 lan pairing key"),
+func stretchKey(key, salt string) []byte {
+	return argon2.IDKey([]byte(key), []byte("leavesafe/v2 lan pairing key|"+salt),
 		3, 32*1024, 1, 32)
 }
 

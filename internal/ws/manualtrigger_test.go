@@ -33,7 +33,10 @@ func (s *quietSensor) Start(ctx context.Context, _ chan<- monitor.Alert) error {
 
 func triggerHub(t *testing.T) *Hub {
 	t.Helper()
-	authMgr, err := auth.NewManager()
+	// The fixed salt, for the reason on testHub: the stand-in phone stretches
+	// under it too, and a hub that minted its own would be stretching under
+	// something the phone could not know.
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}

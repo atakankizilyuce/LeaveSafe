@@ -65,7 +65,7 @@ func (a *alertRecorder) sawWarning(phrase string) bool {
 // disabled, which is what the manager does with anything registered.
 func hubWithSensors(t *testing.T, names ...string) (*Hub, []*quietSensor) {
 	t.Helper()
-	authMgr, err := auth.NewManager()
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}

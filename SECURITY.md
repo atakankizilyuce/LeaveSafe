@@ -131,14 +131,20 @@ the key by a phone that scanned a code printed for the real one — it cannot
 answer the challenge, and the app refuses it.
 
 **The proofs cost something to guess at.** They are HMACs under a key stretched
-out of the sixteen digits with Argon2id — 32 MiB, three passes — rather than
-under the digits themselves. It matters because a proof is guessable *offline*:
+out of the sixteen digits with Argon2id — 32 MiB, three passes, under a salt
+this machine minted with its key — rather than under the digits themselves. It matters because a proof is guessable *offline*:
 anything that watched one pairing has both nonces and both proofs, and can work
 through every possible key at home for as long as it likes. There are 10^15 of
 them, which under a bare HMAC is about a day and a half of a few graphics cards.
 Memory-hard, each guess needs its own 32 MiB, and the same search is measured in
 millennia. The owner pays a fifth of a second, once per key, because the result
 is cached on both ends.
+
+The salt is not a secret — it travels in the greeting, before anything has been
+proved — and it does not need to be. What it buys is that the work is specific
+to one machine: a table built against one installation is worth nothing against
+the next, and rotating the key mints a new salt with it, so whatever was built
+against the old key goes with it.
 
 The alternative was a longer key, and it is a worse one: these digits are read
 off a screen and typed into a phone.

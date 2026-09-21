@@ -16,7 +16,10 @@ import (
 
 func testHub(t *testing.T) *Hub {
 	t.Helper()
-	authMgr, err := auth.NewManager()
+	// The salt is fixed rather than minted, so that stretchedForTest agrees
+	// with the hub about what the key stretches to — and so that a suite that
+	// builds a hub per test derives once rather than once per hub.
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}

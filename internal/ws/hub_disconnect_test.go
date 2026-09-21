@@ -115,7 +115,7 @@ func (s *firingSensor) Start(ctx context.Context, alerts chan<- monitor.Alert) e
 // one route to fireAlarmTrigger, and this pins down that it left the route that
 // matters — a real sensor event on an armed machine — alone.
 func TestArmedHubStillAlarmsOnASensorEvent(t *testing.T) {
-	authMgr, err := auth.NewManager()
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}

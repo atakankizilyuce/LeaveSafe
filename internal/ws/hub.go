@@ -151,7 +151,7 @@ func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *
 	// second of deliberate work, and the moment it would otherwise land in is
 	// the middle of somebody's first pairing — the one exchange that is already
 	// being waited on, and the one with a deadline over it.
-	stretchedKey(authMgr.RawPairingKey())
+	stretchedKey(authMgr.RawPairingKey(), authMgr.PairingSalt())
 	return hub
 }
 
@@ -540,7 +540,7 @@ func (h *Hub) RemoveExternalClient(client *Client) {
 // connection's own goroutine, so it needs no lock.
 func (h *Hub) greet(client *Client) {
 	client.serverNonce = newNonce()
-	client.send(NewHello(h.version, client.serverNonce))
+	client.send(NewHello(h.version, client.serverNonce, h.authManager.PairingSalt()))
 }
 
 // HandleConnection handles a new WebSocket connection. remoteAddr is the peer
@@ -1334,7 +1334,7 @@ func (h *Hub) authKey(client *Client, msg ClientMessage, key string) string {
 	// Judged under the stretched key, and against the construction the client
 	// asked for: the proof covers what it asked to seal with, so a field edited
 	// on the way here is a proof that does not hold.
-	if !proofHolds(stretchedKey(key), proofRoleClient,
+	if !proofHolds(stretchedKey(key, h.authManager.PairingSalt()), proofRoleClient,
 		client.serverNonce, msg.Nonce, msg.Encrypt, msg.Proof) {
 		return refusedKey
 	}
@@ -1436,7 +1436,7 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// is built, because the acceptance names it and the proof on the acceptance
 	// covers that name: a session this daemon could not derive is a pairing that
 	// fails, not one that quietly opens a socket in the clear.
-	sealed, err := h.sealSession(client, msg, stretchedKey(key))
+	sealed, err := h.sealSession(client, msg, stretchedKey(key, h.authManager.PairingSalt()))
 	if err != nil {
 		log.Errorf("Could not derive a session key: %v", err)
 		client.send(NewAuthFail("this machine could not seal the connection",
@@ -1460,7 +1460,7 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// It covers the construction being granted as well, so the field naming it
 	// cannot be stripped on the way back to the phone any more than it could on
 	// the way here.
-	authOK.Proof = handshakeProof(stretchedKey(key), proofRoleServer,
+	authOK.Proof = handshakeProof(stretchedKey(key, h.authManager.PairingSalt()), proofRoleServer,
 		client.serverNonce, msg.Nonce, authOK.Encrypt)
 	if notifier := h.pushNotifier(); notifier != nil {
 		authOK.PushKey = notifier.PublicKey()

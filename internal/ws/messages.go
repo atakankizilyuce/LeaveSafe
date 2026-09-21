@@ -149,6 +149,15 @@ type ServerMessage struct {
 	// other message.
 	Nonce string `json:"nonce,omitempty"`
 	Proof string `json:"proof,omitempty"`
+	// Salt on a hello is the salt this machine's pairing key is stretched
+	// under before either end computes anything from it. It is per key, minted
+	// with it and replaced with it, and it is not a secret: what it buys is
+	// that the stretch is specific to this machine, so work done against one
+	// installation is worth nothing against the next.
+	//
+	// It travels in the greeting because both ends have to stretch under the
+	// same salt before the first proof can be made.
+	Salt string `json:"salt,omitempty"`
 	// Encrypt on an auth_ok names the construction this connection will be
 	// sealed under from the next message onwards, and is absent when it will
 	// not be. It is the last thing either end says in the clear.
@@ -290,11 +299,17 @@ func NewAlert(sensor, level, message string) ServerMessage {
 // The nonce is what makes the greeting more than an introduction: the client
 // answers it with a proof instead of the key, and demands one back. See
 // handshakeProof.
-func NewHello(version, nonce string) ServerMessage {
+//
+// The salt is the other thing a client needs before it can answer: both ends
+// stretch the pairing key under it, and a client stretching under a different
+// one would produce a proof this machine could not check. It is public, and
+// see ServerMessage.Salt for what it is for.
+func NewHello(version, nonce, salt string) ServerMessage {
 	return ServerMessage{
 		Type:      MsgTypeHello,
 		Version:   version,
 		Nonce:     nonce,
+		Salt:      salt,
 		Timestamp: time.Now().Unix(),
 	}
 }

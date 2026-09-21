@@ -33,8 +33,9 @@ diff is small.
   to prove itself already got.
 
 - **The proofs and the session key are computed under a stretched key.**
-  Argon2id over the sixteen digits — 32 MiB, three passes — rather than the
-  digits themselves.
+  Argon2id over the sixteen digits — 32 MiB, three passes, salted with a value
+  this machine mints alongside its pairing key — rather than the digits
+  themselves.
 
   A proof is guessable offline: anything that watched one pairing on a café
   network has both nonces and both proofs, and can then work through every
@@ -44,6 +45,13 @@ diff is small.
   each guess needs its own 32 MiB, and the same search runs to millennia. HKDF
   is fast by design, so the session key was open to the same search and is
   derived from the stretched key for the same reason.
+
+  The salt travels in the greeting and is not a secret. What it buys is that the
+  work is specific to one machine: a table built against one installation is
+  worth nothing against the next, and rotating the key mints a new salt with it.
+  It is stored beside a persisted key, so a restart costs no phone a fresh
+  derivation, and a key file written before it existed is given one rather than
+  replaced.
 
   The owner pays a fifth of a second, once per key: the result is cached on both
   ends and only changes when the key does. The alternative was a longer key, and

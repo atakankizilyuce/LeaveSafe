@@ -330,11 +330,14 @@ func resolvePairingKey(cfg *config.Config, headless bool) (*auth.Manager, string
 	keyPath := ""
 	if headless {
 		keyPath = filepath.Join(config.ConfigDir(), auth.KeyFileName)
-		persisted, err := auth.LoadOrCreateKeyFile(keyPath)
+		persisted, salt, err := auth.LoadOrCreateKeyFile(keyPath)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to prepare the stored pairing key: %w", err)
 		}
 		opts.PairingKey = persisted
+		// Empty for a file written before the salt existed, which mints one —
+		// and pairs, because the salt travels in the greeting.
+		opts.PairingSalt = salt
 	}
 
 	mgr, err := auth.NewManagerWithOptions(opts)

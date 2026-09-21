@@ -19,13 +19,17 @@ import (
 // other. fixedKey is a real 16-digit pairing key, check digit and all, so it can
 // also be handed to an auth.Manager.
 const (
-	fixedKey         = "4839201746583123"
+	fixedKey = "4839201746583123"
+	// The salt this worked example stretches under. A real one is minted per
+	// key and sent in the greeting; this is a fixed one so the numbers below
+	// can be written down.
+	fixedSalt        = "5eed5a17feedfaceba5eba11c0ffee00d15ea5edb01dfacedeadbeef0ddba11a"
 	fixedServerNonce = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
 	fixedClientNonce = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 	// The stretched key the proofs are really computed under, hex-encoded.
-	fixedStretched   = "a6586de3786c30d63085deeb32dc6373f48edad705023dc45d85ad9480a8a5d9"
-	fixedClientProof = "9a809db5d1addb37a4fefca7fe21b1ba6113d89321482a05068340c7379043c5"
-	fixedServerProof = "6734e4b93d162d4f8f34e8a9a87e571e26d95a1bc6189eefc8e50fd4f5af6dbf"
+	fixedStretched   = "1c98c60bd6350ef74e3ac95e224901d403db6de0199c63f26f3b173e68917558"
+	fixedClientProof = "ff7c364107eb0e2030afebb00a3ccb32e5c333ff62337b53cde06f3df2a51978"
+	fixedServerProof = "c6bbd45257fd67086208923095d0b13d93534a21201847be848b9dd6d71357a5"
 )
 
 // greeted returns a stand-in phone that has been greeted, so it is holding the
@@ -65,13 +69,13 @@ func authWithProof(key, serverNonce, clientNonce string) ClientMessage {
 // It was a cache of its own while the production one held a single entry. The
 // production one is now a table shared by the whole process, which is what
 // these tests wanted from theirs, so this is the same call.
-func stretchedForTest(key string) []byte { return stretchedKey(key) }
+func stretchedForTest(key string) []byte { return stretchedKey(key, fixedSalt) }
 
 // hubWithKey returns a hub whose pairing key is fixed, so a test can assert
 // against proofs computed by hand.
 func hubWithKey(t *testing.T, key string) *Hub {
 	t.Helper()
-	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingKey: key})
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingKey: key, PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}
@@ -630,18 +634,30 @@ func TestAProofOverTheBareDigitsDoesNotPair(t *testing.T) {
 // The stretch is cached, because Argon2 is a fifth of a second by design and a
 // phone reconnects every time its screen unlocks.
 func TestTheStretchIsCachedPerKey(t *testing.T) {
-	first := stretchedKey(fixedKey)
-	if again := stretchedKey(fixedKey); &again[0] != &first[0] {
+	first := stretchedKey(fixedKey, fixedSalt)
+	if again := stretchedKey(fixedKey, fixedSalt); &again[0] != &first[0] {
 		t.Error("the same key was stretched twice")
 	}
 
-	other := stretchedKey("8791234567890129")
+	other := stretchedKey("8791234567890129", fixedSalt)
 	if string(other) == string(first) {
 		t.Fatal("two different keys stretched to the same thing")
 	}
 	// And a second key does not evict the first: the table holds several, so a
 	// rotation does not cost every phone still holding the old one.
-	if back := stretchedKey(fixedKey); &back[0] != &first[0] {
+	if back := stretchedKey(fixedKey, fixedSalt); &back[0] != &first[0] {
 		t.Error("a second key pushed the first out of a table with room for both")
+	}
+}
+
+// The salt is what makes the work specific to one machine. The same key under
+// another installation's salt is another stretched key, so a table built
+// against one is worth nothing against the next — and a rotation, which mints a
+// new salt with the new key, throws away whatever was built against the old.
+func TestTheSaltMakesTheStretchThisMachinesOwn(t *testing.T) {
+	const elsewhere = "0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff"
+
+	if string(stretchedKey(fixedKey, fixedSalt)) == string(stretchedKey(fixedKey, elsewhere)) {
+		t.Error("the salt did not reach the derivation")
 	}
 }

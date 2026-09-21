@@ -148,18 +148,21 @@ func proofHolds(key []byte, role, serverNonce, clientNonce, encrypt, offered str
 // How the sixteen digits become the key the proofs and the session are really
 // computed under.
 const (
-	// stretchSalt is the fixed salt every LeaveSafe installation stretches
-	// under. Fixed rather than random, because the derivation has to be
-	// cacheable: a salt that changed per connection would be a second and a
-	// half of Argon2 on every reconnect, and a phone reconnects every time its
-	// screen unlocks.
+	// saltDomain is what this machine's own salt is prefixed with, so that the
+	// same random bytes could never mean the same thing to some other
+	// derivation this program might one day grow.
 	//
-	// What a fixed salt costs is that a table covering every possible key would
-	// work against everybody at once. What that table costs to build is the
-	// three thousand years below, and what it costs to keep is thirty-two
-	// petabytes. Neither is a saving worth the round trip a per-machine salt
-	// would add to the greeting.
-	stretchSalt = "leavesafe/v2 lan pairing key"
+	// The salt itself is per key: minted with it, replaced with it, and sent in
+	// the greeting — see auth.Manager.PairingSalt. It is not a secret and does
+	// not need to be. What it buys is that the stretch is specific to one
+	// machine, so a table built against one installation is worth nothing
+	// against the next, and a rotation throws away whatever was built against
+	// the key before it.
+	//
+	// It arrives before anything is computed, which is why it is in the
+	// greeting rather than the acceptance: both ends have to stretch under the
+	// same salt to produce proofs the other can check.
+	saltDomain = "leavesafe/v2 lan pairing key|"
 
 	// Argon2id at thirty-two mebibytes and three passes. Roughly a fifth of a
 	// second on a laptop and under a second on a phone, paid once per key
@@ -210,8 +213,8 @@ const rememberedKeys = 8
 var stretched = struct {
 	mu   sync.Mutex
 	seen map[string][]byte
-	// order is the keys in the order they arrived, so the oldest goes when the
-	// table is full.
+	// order is the entries in the order they arrived, so the oldest goes when
+	// the table is full.
 	order []string
 }{seen: make(map[string][]byte)}
 
@@ -226,22 +229,27 @@ var stretched = struct {
 // to be judged against anything", and it is stretched like any other rather
 // than special-cased: it produces a key nothing can match, which is precisely
 // what refusing means here.
-func stretchedKey(key string) []byte {
+func stretchedKey(key, salt string) []byte {
+	// The pair, because a key stretched under two salts is two keys and the
+	// table has to tell them apart. The separator cannot appear in either: a
+	// pairing key is digits and a salt is hex.
+	at := key + "|" + salt
+
 	stretched.mu.Lock()
 	defer stretched.mu.Unlock()
 
-	if got, ok := stretched.seen[key]; ok {
+	if got, ok := stretched.seen[at]; ok {
 		return got
 	}
 
-	got := argon2.IDKey([]byte(key), []byte(stretchSalt),
+	got := argon2.IDKey([]byte(key), []byte(saltDomain+salt),
 		argonTime, argonMemory, argonThreads, argonKeyLen)
 
 	if len(stretched.order) >= rememberedKeys {
 		delete(stretched.seen, stretched.order[0])
 		stretched.order = stretched.order[1:]
 	}
-	stretched.seen[key] = got
-	stretched.order = append(stretched.order, key)
+	stretched.seen[at] = got
+	stretched.order = append(stretched.order, at)
 	return got
 }
