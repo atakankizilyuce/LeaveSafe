@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -61,30 +60,12 @@ func authWithProof(key, serverNonce, clientNonce string) ClientMessage {
 	}
 }
 
-// stretchedForTest is stretchedKey with a cache that remembers every key rather
-// than the last one.
+// stretchedForTest is stretchedKey under the name these tests reach for.
 //
-// Argon2 is a fifth of a second by design and these tests run through a dozen
-// keys many times over, which would be a minute of the suite spent proving
-// nothing. The production cache holds one entry because a daemon holds one
-// pairing key; a test holds as many as it has scenarios.
-var forTest = struct {
-	mu   sync.Mutex
-	seen map[string][]byte
-}{seen: make(map[string][]byte)}
-
-func stretchedForTest(key string) []byte {
-	forTest.mu.Lock()
-	defer forTest.mu.Unlock()
-
-	if got, ok := forTest.seen[key]; ok {
-		return got
-	}
-	var one keyStretcher
-	got := one.of(key)
-	forTest.seen[key] = got
-	return got
-}
+// It was a cache of its own while the production one held a single entry. The
+// production one is now a table shared by the whole process, which is what
+// these tests wanted from theirs, so this is the same call.
+func stretchedForTest(key string) []byte { return stretchedKey(key) }
 
 // hubWithKey returns a hub whose pairing key is fixed, so a test can assert
 // against proofs computed by hand.
@@ -647,22 +628,20 @@ func TestAProofOverTheBareDigitsDoesNotPair(t *testing.T) {
 }
 
 // The stretch is cached, because Argon2 is a fifth of a second by design and a
-// phone reconnects every time its screen unlocks. One entry is all a daemon
-// needs — it holds one pairing key — and a rotation replaces it.
-func TestTheStretchIsCachedUntilTheKeyChanges(t *testing.T) {
-	var one keyStretcher
-
-	first := one.of(fixedKey)
-	if again := one.of(fixedKey); &again[0] != &first[0] {
+// phone reconnects every time its screen unlocks.
+func TestTheStretchIsCachedPerKey(t *testing.T) {
+	first := stretchedKey(fixedKey)
+	if again := stretchedKey(fixedKey); &again[0] != &first[0] {
 		t.Error("the same key was stretched twice")
 	}
 
-	other := one.of("8791234567890129")
+	other := stretchedKey("8791234567890129")
 	if string(other) == string(first) {
 		t.Fatal("two different keys stretched to the same thing")
 	}
-	// And the cache moved with it rather than keeping both.
-	if back := one.of(fixedKey); &back[0] == &first[0] {
-		t.Error("the cache kept an entry it had been asked to replace")
+	// And a second key does not evict the first: the table holds several, so a
+	// rotation does not cost every phone still holding the old one.
+	if back := stretchedKey(fixedKey); &back[0] != &first[0] {
+		t.Error("a second key pushed the first out of a table with room for both")
 	}
 }

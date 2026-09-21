@@ -95,11 +95,6 @@ type Hub struct {
 	// above limits how long each one lives; this limits how many there are.
 	pending *pendingConns
 
-	// stretched turns the pairing key into the key the proofs and the session
-	// are computed under. It caches, because Argon2 is deliberately slow and
-	// the answer only changes when the key does — see keyStretcher.
-	stretched keyStretcher
-
 	tracker *location.Tracker
 	// startTracking begins location tracking, and is nil until a tracker is
 	// installed.
@@ -140,7 +135,7 @@ type Hub struct {
 
 // NewHub creates a new WebSocket hub.
 func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *Hub {
-	return &Hub{
+	hub := &Hub{
 		clients:               make(map[*Client]bool),
 		authManager:           authMgr,
 		sensorMgr:             sensorMgr,
@@ -152,6 +147,12 @@ func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *
 		authDeadline:          defaultAuthDeadline,
 		pending:               newPendingConns(maxPendingConns, maxPendingConnsPerAdr),
 	}
+	// Derived now rather than when the first phone asks. It is a fifth of a
+	// second of deliberate work, and the moment it would otherwise land in is
+	// the middle of somebody's first pairing — the one exchange that is already
+	// being waited on, and the one with a deadline over it.
+	stretchedKey(authMgr.RawPairingKey())
+	return hub
 }
 
 // acquirePending takes an unpaired-socket slot for this client, reporting
@@ -1333,7 +1334,7 @@ func (h *Hub) authKey(client *Client, msg ClientMessage, key string) string {
 	// Judged under the stretched key, and against the construction the client
 	// asked for: the proof covers what it asked to seal with, so a field edited
 	// on the way here is a proof that does not hold.
-	if !proofHolds(h.stretched.of(key), proofRoleClient,
+	if !proofHolds(stretchedKey(key), proofRoleClient,
 		client.serverNonce, msg.Nonce, msg.Encrypt, msg.Proof) {
 		return refusedKey
 	}
@@ -1435,7 +1436,7 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// is built, because the acceptance names it and the proof on the acceptance
 	// covers that name: a session this daemon could not derive is a pairing that
 	// fails, not one that quietly opens a socket in the clear.
-	sealed, err := h.sealSession(client, msg, h.stretched.of(key))
+	sealed, err := h.sealSession(client, msg, stretchedKey(key))
 	if err != nil {
 		log.Errorf("Could not derive a session key: %v", err)
 		client.send(NewAuthFail("this machine could not seal the connection",
@@ -1459,7 +1460,7 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// It covers the construction being granted as well, so the field naming it
 	// cannot be stripped on the way back to the phone any more than it could on
 	// the way here.
-	authOK.Proof = handshakeProof(h.stretched.of(key), proofRoleServer,
+	authOK.Proof = handshakeProof(stretchedKey(key), proofRoleServer,
 		client.serverNonce, msg.Nonce, authOK.Encrypt)
 	if notifier := h.pushNotifier(); notifier != nil {
 		authOK.PushKey = notifier.PublicKey()

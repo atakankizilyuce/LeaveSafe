@@ -191,34 +191,57 @@ const (
 	argonKeyLen  = 32
 )
 
-// stretchedKey turns the pairing key into the key everything else is computed
-// under: the proofs above, and the session keys in session.go.
+// rememberedKeys is how many stretched keys are kept at once.
 //
-// Cached, because Argon2 is deliberately slow and the answer only changes when
-// the key does. One entry is all there is ever call for — a daemon holds one
-// pairing key at a time — and a rotation simply replaces it.
-type keyStretcher struct {
-	mu   sync.Mutex
-	from string
-	to   []byte
-}
+// A daemon holds one pairing key, so one would do for production and the rest
+// of the room is for a rotation — the key before it is worth keeping for the
+// moment it takes every phone to notice. It also means a process that builds
+// several hubs, which is every run of this package's tests, derives once per
+// key rather than once per hub.
+const rememberedKeys = 8
 
-// of returns the stretched form of key, deriving it if this is not the key it
-// last saw.
+// stretched is what has already been derived. Package-wide rather than a field
+// on the Hub, because the answer depends on nothing but the key: two hubs
+// holding the same key hold the same stretched key, and deriving it twice is
+// half a second spent proving that.
+//
+// The keys in it are the pairing keys this process already holds in memory, so
+// keeping them costs no secrecy that was not already spent.
+var stretched = struct {
+	mu   sync.Mutex
+	seen map[string][]byte
+	// order is the keys in the order they arrived, so the oldest goes when the
+	// table is full.
+	order []string
+}{seen: make(map[string][]byte)}
+
+// stretchedKey returns the key everything else is computed under: the proofs
+// above, and the session keys in session.go.
+//
+// Cached, because Argon2 is deliberately slow by design and the answer only
+// changes when the pairing key does. A phone reconnects every time its screen
+// unlocks, and none of those should pay for it.
 //
 // The empty key is the one refusedKey uses to mean "this client is not entitled
 // to be judged against anything", and it is stretched like any other rather
 // than special-cased: it produces a key nothing can match, which is precisely
 // what refusing means here.
-func (s *keyStretcher) of(key string) []byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func stretchedKey(key string) []byte {
+	stretched.mu.Lock()
+	defer stretched.mu.Unlock()
 
-	if s.to != nil && s.from == key {
-		return s.to
+	if got, ok := stretched.seen[key]; ok {
+		return got
 	}
-	s.from = key
-	s.to = argon2.IDKey([]byte(key), []byte(stretchSalt),
+
+	got := argon2.IDKey([]byte(key), []byte(stretchSalt),
 		argonTime, argonMemory, argonThreads, argonKeyLen)
-	return s.to
+
+	if len(stretched.order) >= rememberedKeys {
+		delete(stretched.seen, stretched.order[0])
+		stretched.order = stretched.order[1:]
+	}
+	stretched.seen[key] = got
+	stretched.order = append(stretched.order, key)
+	return got
 }
