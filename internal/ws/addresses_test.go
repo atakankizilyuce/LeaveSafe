@@ -30,12 +30,14 @@ func TestAuthOKCarriesWhereAPhoneCanReachThis(t *testing.T) {
 
 	rec := &recorder{}
 	client := challenged(hub.RegisterExternalClient(rec, nil))
+	rec.watching(client)
 	client.serverNonce = fixedServerNonce
 
 	hub.handleMessage(client, ClientMessage{
-		Type:  MsgTypeAuth,
-		Nonce: fixedClientNonce,
-		Proof: fixedClientProof,
+		Type:    MsgTypeAuth,
+		Nonce:   fixedClientNonce,
+		Encrypt: encChaCha,
+		Proof:   fixedClientProof,
 	})
 
 	authOK, ok := rec.saw(MsgTypeAuthOK)
@@ -73,12 +75,14 @@ func TestAHubWithNobodyToAskCarriesOnWithoutAddresses(t *testing.T) {
 
 	rec := &recorder{}
 	client := challenged(hub.RegisterExternalClient(rec, nil))
+	rec.watching(client)
 	client.serverNonce = fixedServerNonce
 
 	hub.handleMessage(client, ClientMessage{
-		Type:  MsgTypeAuth,
-		Nonce: fixedClientNonce,
-		Proof: fixedClientProof,
+		Type:    MsgTypeAuth,
+		Nonce:   fixedClientNonce,
+		Encrypt: encChaCha,
+		Proof:   fixedClientProof,
 	})
 
 	authOK, ok := rec.saw(MsgTypeAuthOK)

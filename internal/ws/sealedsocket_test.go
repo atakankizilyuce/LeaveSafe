@@ -43,7 +43,7 @@ func TestASealedConnectionCarriesRealMessages(t *testing.T) {
 		t.Fatalf("auth_ok named %q, want %q", authOK.Encrypt, encChaCha)
 	}
 
-	app, err := newSession(key, hello.Nonce, auth.Nonce, false)
+	app, err := newSession(stretchedForTest(key), hello.Nonce, auth.Nonce, false)
 	if err != nil {
 		t.Fatalf("newSession: %v", err)
 	}

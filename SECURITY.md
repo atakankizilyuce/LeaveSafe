@@ -76,9 +76,18 @@ network, and a frame nobody could seal does not open. A machine on the path can
 still relay the handshake itself; it cannot compute the key that handshake
 produces, so the conversation after it is closed to it.
 
-Two things are still readable there: that a connection exists, and how much
-traffic it carries. An app too old to ask for a session pairs in the clear as
-before, which is worth knowing if you are looking at an old phone.
+**Sealing is not optional, and cannot be talked out of.** It used to be: an app
+that did not ask for it paired and carried on in the clear, which was a kindness
+to old apps and was also a way in. The field naming the construction sat outside
+both proofs, so a machine on the path deleted it and the laptop obligingly held
+a plaintext conversation with a phone that had asked for an encrypted one —
+neither end any the wiser, and a `disarm` to inject and an alarm frame to drop
+for whoever had done it. The field is inside both proofs now, so it cannot be
+edited unnoticed, and there is no longer a value of it that means "do not seal":
+an app that will not is refused, and told which end is out of date.
+
+One thing is still readable there: that a connection exists, and how much
+traffic it carries.
 
 **Nothing is reachable from outside your network.** LeaveSafe binds to the local
 interfaces and asks nothing of your router. A phone that is not on the same
@@ -121,11 +130,33 @@ took the laptop's address after a reboot, or one interposing on it, is not hande
 the key by a phone that scanned a code printed for the real one — it cannot
 answer the challenge, and the app refuses it.
 
+**The proofs cost something to guess at.** They are HMACs under a key stretched
+out of the sixteen digits with Argon2id — 32 MiB, three passes, under a salt
+this machine minted with its key — rather than under the digits themselves. It matters because a proof is guessable *offline*:
+anything that watched one pairing has both nonces and both proofs, and can work
+through every possible key at home for as long as it likes. There are 10^15 of
+them, which under a bare HMAC is about a day and a half of a few graphics cards.
+Memory-hard, each guess needs its own 32 MiB, and the same search is measured in
+millennia. The owner pays a fifth of a second, once per key, because the result
+is cached on both ends.
+
+The salt is not a secret — it travels in the greeting, before anything has been
+proved — and it does not need to be. What it buys is that the work is specific
+to one machine: a table built against one installation is worth nothing against
+the next, and rotating the key mints a new salt with it, so whatever was built
+against the old key goes with it.
+
+The alternative was a longer key, and it is a worse one: these digits are read
+off a screen and typed into a phone.
+
 **What follows the pairing is sealed**, which is a separate claim. The
-handshake produces a session key as well as a verdict — HKDF-SHA256 over the
-pairing key with both nonces as the salt, a separate key for each direction —
-and every message after `auth_ok` is ChaCha20-Poly1305 under it, with a counter
-that must strictly increase so a recorded frame is worth nothing played again.
+handshake produces a session key as well as a verdict — HKDF-SHA256 over that
+same stretched key with both nonces as the salt, a separate key for each
+direction — and every message after `auth_ok` is ChaCha20-Poly1305 under it,
+with a counter that must strictly increase so a recorded frame is worth nothing
+played again. The stretch is in front of this too: HKDF is fast by design, so
+deriving straight from the digits would have left a recorded conversation open
+to the very same offline search.
 
 That is what closes the relay: an attacker on the path can forward both proofs
 unchanged and be believed by both ends, but it cannot derive the key those

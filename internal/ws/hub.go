@@ -135,7 +135,7 @@ type Hub struct {
 
 // NewHub creates a new WebSocket hub.
 func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *Hub {
-	return &Hub{
+	hub := &Hub{
 		clients:               make(map[*Client]bool),
 		authManager:           authMgr,
 		sensorMgr:             sensorMgr,
@@ -147,6 +147,12 @@ func NewHub(authMgr *auth.Manager, sensorMgr *monitor.Manager, version string) *
 		authDeadline:          defaultAuthDeadline,
 		pending:               newPendingConns(maxPendingConns, maxPendingConnsPerAdr),
 	}
+	// Derived now rather than when the first phone asks. It is a fifth of a
+	// second of deliberate work, and the moment it would otherwise land in is
+	// the middle of somebody's first pairing — the one exchange that is already
+	// being waited on, and the one with a deadline over it.
+	stretchedKey(authMgr.RawPairingKey(), authMgr.PairingSalt())
+	return hub
 }
 
 // acquirePending takes an unpaired-socket slot for this client, reporting
@@ -534,7 +540,7 @@ func (h *Hub) RemoveExternalClient(client *Client) {
 // connection's own goroutine, so it needs no lock.
 func (h *Hub) greet(client *Client) {
 	client.serverNonce = newNonce()
-	client.send(NewHello(h.version, client.serverNonce))
+	client.send(NewHello(h.version, client.serverNonce, h.authManager.PairingSalt()))
 }
 
 // HandleConnection handles a new WebSocket connection. remoteAddr is the peer
@@ -1291,44 +1297,33 @@ func (h *Hub) PinRequired() bool {
 // pairing key is always sixteen digits, so the empty string is never one.
 const refusedKey = ""
 
-// sealSession derives the session this connection will speak under, or nil
-// when there is nothing to derive.
+// sealSession derives the session this connection will speak under.
 //
-// Nil covers three ordinary cases and no failure worth reporting to a client:
-// an app that did not ask, an app that asked for a construction this daemon
-// does not know, and a transport with no greeting behind it — BLE, where there
-// is no server nonce and so nothing to derive a key from. Each of those is a
-// connection that carries on in the clear, exactly as every connection did
-// before this existed.
-func (h *Hub) sealSession(client *Client, msg ClientMessage, key string) *session {
-	// The client's nonce is half the salt, so an auth that carries no nonce
-	// carries nothing to derive a session from. That is not a failure — it is
-	// an app old enough to have sent a key instead of a proof — and it is
-	// checked here so that it reads as "not eligible" rather than arriving at
-	// newSession as an error nobody can act on.
-	if msg.Encrypt != encChaCha || client.serverNonce == "" || msg.Nonce == "" {
-		return nil
-	}
-
-	sealed, err := newSession(key, client.serverNonce, msg.Nonce, true)
-	if err != nil {
-		// The inputs were checked a moment ago by the proof this client had to
-		// produce, so this is a programming error rather than a bad message.
-		// Carrying on unsealed is the safe half of it: the client is told, by
-		// the acceptance not naming a construction, and shows the same warning
-		// it shows for a daemon too old to seal at all.
-		log.Errorf("Could not derive a session key, carrying on in the clear: %v", err)
-		return nil
-	}
-	return sealed
+// Every paired connection has one now. It used to be allowed to come back nil —
+// an app that did not ask to seal, or asked for something this daemon had never
+// heard of, carried on in the clear the way every connection did before sealing
+// existed. That was a kindness to old apps and it was also the whole of the
+// downgrade: a machine on the path deleted one field from the auth message and
+// the laptop obligingly held a plaintext conversation with a phone that had
+// asked for an encrypted one. Nobody could tell, because the field sat outside
+// both proofs.
+//
+// So an app that does not ask for a construction this daemon knows is refused
+// in handleAuth, with a reason naming which end is out of date, and by the time
+// this runs the inputs are all present and already covered by a proof that held.
+// An error here is a programming error rather than a bad message, and it fails
+// the pairing rather than quietly opening the socket it was meant to close.
+func (h *Hub) sealSession(client *Client, msg ClientMessage, key []byte) (*session, error) {
+	return newSession(key, client.serverNonce, msg.Nonce, true)
 }
 
 // authKey returns what this auth message should be judged against: key when the
 // client has shown it is entitled to it, refusedKey when it has not.
 //
-// There is one way to be entitled to it. An app that sent no proof is turned
-// away by handleAuth before this is reached — see the note there — and there is
-// no longer any field on an auth message that carries the key itself.
+// There is one way to be entitled to it. An app that sent no proof, or asked to
+// seal with something this daemon does not speak, is turned away by handleAuth
+// before this is reached — see the notes there — and there is no longer any
+// field on an auth message that carries the key itself.
 func (h *Hub) authKey(client *Client, msg ClientMessage, key string) string {
 	// A connection that was never greeted holds no challenge, and a nonce that
 	// is not the shape this protocol produces is not one either. Neither case
@@ -1336,7 +1331,11 @@ func (h *Hub) authKey(client *Client, msg ClientMessage, key string) string {
 	if client.serverNonce == "" || !validNonce(msg.Nonce) {
 		return refusedKey
 	}
-	if !proofHolds(key, proofRoleClient, client.serverNonce, msg.Nonce, msg.Proof) {
+	// Judged under the stretched key, and against the construction the client
+	// asked for: the proof covers what it asked to seal with, so a field edited
+	// on the way here is a proof that does not hold.
+	if !proofHolds(stretchedKey(key, h.authManager.PairingSalt()), proofRoleClient,
+		client.serverNonce, msg.Nonce, msg.Encrypt, msg.Proof) {
 		return refusedKey
 	}
 	return key
@@ -1368,6 +1367,28 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 		h.logEvent(eventlog.Event{
 			Type:    eventlog.EventAuthFail,
 			Message: "Pairing refused: the app answered the greeting without a proof",
+		})
+		return
+	}
+
+	// And an app that will not seal is refused for the same reason and in the
+	// same words. Sealing used to be optional — an app that did not ask for it
+	// held a plaintext conversation, which is what every connection did before
+	// sealing existed — and optional is what made the downgrade possible: a
+	// machine on the path deleted this one field and both ends carried on in the
+	// clear, believing each other, with a `disarm` it could inject and an alarm
+	// frame it could drop.
+	//
+	// The field is inside both proofs now, so it cannot be edited unnoticed.
+	// This is the other half: there is no longer a value of it that means "do
+	// not seal". Costs no attempt against the lockout — nothing was guessed.
+	if msg.Encrypt != encChaCha {
+		client.send(NewAuthFail(
+			"this app is too old to pair with this machine — update it",
+			h.authManager.MaxAttempts()))
+		h.logEvent(eventlog.Event{
+			Type:    eventlog.EventAuthFail,
+			Message: "Pairing refused: the app would not seal the connection",
 		})
 		return
 	}
@@ -1411,30 +1432,42 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 		changeCb(count, isArmed)
 	}
 
+	// What the two ends will speak from here on. Derived before the acceptance
+	// is built, because the acceptance names it and the proof on the acceptance
+	// covers that name: a session this daemon could not derive is a pairing that
+	// fails, not one that quietly opens a socket in the clear.
+	sealed, err := h.sealSession(client, msg, stretchedKey(key, h.authManager.PairingSalt()))
+	if err != nil {
+		log.Errorf("Could not derive a session key: %v", err)
+		client.send(NewAuthFail("this machine could not seal the connection",
+			h.authManager.MaxAttempts()))
+		h.authManager.RemoveSession(token)
+		client.authenticated = false
+		client.token = ""
+		return
+	}
+
 	infos := h.GetSensorInfos()
 	authOK := NewAuthOK(token, infos, h.version, h.IsArmed(), h.ArmedAt())
+	authOK.Encrypt = encChaCha
 	// The laptop's half of the challenge, and the reason this exchange exists.
 	// endpoint.json is writable by anything running as this user, so the app
 	// cannot tell the daemon from an impostor that claimed the port by where it
 	// connected; it can tell them apart by which one can answer with the
 	// pairing key. Unconditional now that a proof is the only way through the
 	// door above: every client that gets this far offered a nonce.
-	authOK.Proof = handshakeProof(key, proofRoleServer, client.serverNonce, msg.Nonce)
+	//
+	// It covers the construction being granted as well, so the field naming it
+	// cannot be stripped on the way back to the phone any more than it could on
+	// the way here.
+	authOK.Proof = handshakeProof(stretchedKey(key, h.authManager.PairingSalt()), proofRoleServer,
+		client.serverNonce, msg.Nonce, authOK.Encrypt)
 	if notifier := h.pushNotifier(); notifier != nil {
 		authOK.PushKey = notifier.PublicKey()
 	}
 	// Only now, to a client that has proved it holds the pairing key. See
 	// ServerMessage.Addresses.
 	authOK.Addresses = h.addresses()
-	// What the two ends will speak from here on. Named back rather than
-	// assumed: an app that asked for something this daemon does not know gets
-	// an acceptance that says so by not naming it, and carries on in the clear
-	// exactly as it did before — which is what keeps an old app and a new
-	// daemon working together.
-	sealed := h.sealSession(client, msg, key)
-	if sealed != nil {
-		authOK.Encrypt = encChaCha
-	}
 	client.send(authOK)
 	// Only now. The acceptance is what tells the app the answer, so it is the
 	// last message either end writes in the clear; everything after it is

@@ -549,7 +549,9 @@ func TestADamagedStoredKeyIsReplacedRatherThanTrusted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the key file back: %v", err)
 	}
-	if strings.TrimSpace(string(stored)) != mgr.RawPairingKey() {
+	// The key is the first line; the salt it was minted with is the second.
+	keyLine := strings.SplitN(strings.TrimSpace(string(stored)), "\n", 2)[0]
+	if strings.TrimSpace(keyLine) != mgr.RawPairingKey() {
 		t.Error("the replacement was not written down, so the next start would generate another")
 	}
 }

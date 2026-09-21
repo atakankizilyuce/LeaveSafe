@@ -17,11 +17,11 @@ const (
 func pairOfSessions(t *testing.T) (server, app *session) {
 	t.Helper()
 
-	server, err := newSession(sessionKey, sessionServer, sessionClient, true)
+	server, err := newSession(stretchedForTest(sessionKey), sessionServer, sessionClient, true)
 	if err != nil {
 		t.Fatalf("newSession(server) = %v", err)
 	}
-	app, err = newSession(sessionKey, sessionServer, sessionClient, false)
+	app, err = newSession(stretchedForTest(sessionKey), sessionServer, sessionClient, false)
 	if err != nil {
 		t.Fatalf("newSession(app) = %v", err)
 	}
@@ -174,7 +174,7 @@ func TestAnEditedCounterDoesNotOpen(t *testing.T) {
 func TestAFrameSealedUnderAnotherKeyDoesNotOpen(t *testing.T) {
 	server, _ := pairOfSessions(t)
 
-	impostor, err := newSession("6543210987654321", sessionServer, sessionClient, false)
+	impostor, err := newSession(stretchedForTest("6543210987654321"), sessionServer, sessionClient, false)
 	if err != nil {
 		t.Fatalf("newSession: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestAFrameSealedUnderAnotherKeyDoesNotOpen(t *testing.T) {
 func TestEachConnectionsSessionIsItsOwn(t *testing.T) {
 	server, app := pairOfSessions(t)
 
-	other, err := newSession(sessionKey, sessionClient, sessionServer, true)
+	other, err := newSession(stretchedForTest(sessionKey), sessionClient, sessionServer, true)
 	if err != nil {
 		t.Fatalf("newSession: %v", err)
 	}
@@ -225,15 +225,20 @@ func TestAPlainMessageOnASealedConnectionIsRefused(t *testing.T) {
 }
 
 // Missing halves are a programming error, and they fail where they happen
-// rather than producing a key derived from an empty string.
+// rather than producing a key derived from nothing.
 func TestASessionNeedsEveryPartOfItsInput(t *testing.T) {
-	for name, in := range map[string][3]string{
-		"no key":          {"", sessionServer, sessionClient},
-		"no server nonce": {sessionKey, "", sessionClient},
-		"no client nonce": {sessionKey, sessionServer, ""},
+	good := stretchedForTest(sessionKey)
+
+	for name, in := range map[string]struct {
+		key                      []byte
+		serverNonce, clientNonce string
+	}{
+		"no key":          {nil, sessionServer, sessionClient},
+		"no server nonce": {good, "", sessionClient},
+		"no client nonce": {good, sessionServer, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := newSession(in[0], in[1], in[2], true); err == nil {
+			if _, err := newSession(in.key, in.serverNonce, in.clientNonce, true); err == nil {
 				t.Error("a session was derived from an incomplete handshake")
 			}
 		})

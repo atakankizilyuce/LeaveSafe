@@ -52,7 +52,7 @@ func TestConsoleRotateKeyWritesTheNewKeyToItsFile(t *testing.T) {
 		t.Fatalf("auth manager: %v", err)
 	}
 	keyPath := filepath.Join(t.TempDir(), "pairing.key")
-	if err := auth.SaveKeyFile(keyPath, authMgr.RawPairingKey()); err != nil {
+	if err := auth.SaveKeyFile(keyPath, authMgr.RawPairingKey(), authMgr.PairingSalt()); err != nil {
 		t.Fatalf("seed the key file: %v", err)
 	}
 	before, err := os.ReadFile(keyPath)
@@ -77,9 +77,9 @@ func TestConsoleRotateKeyWritesTheNewKeyToItsFile(t *testing.T) {
 	if string(after) == string(before) {
 		t.Error("the stored key still holds the one that was just invalidated")
 	}
-	// The file is written with a trailing newline, so compare the key itself
-	// rather than the bytes around it.
-	stored := strings.TrimSpace(string(after))
+	// The file holds the key on its first line and the salt on the second, so
+	// compare the key itself rather than the bytes around it.
+	stored := strings.TrimSpace(strings.SplitN(strings.TrimSpace(string(after)), "\n", 2)[0])
 	if want := strings.ReplaceAll(authMgr.RawPairingKey(), "-", ""); stored != want {
 		t.Errorf("the stored key is %q, but the manager now holds %q", stored, want)
 	}

@@ -1324,7 +1324,11 @@ func consoleRotateKey(_ context.Context, c *console) {
 	// Without this the stored key still holds the one just invalidated, and the
 	// next start would come back with it.
 	if c.sb.keyPath != "" {
-		if err := auth.SaveKeyFile(c.sb.keyPath, c.authMgr.RawPairingKey()); err != nil {
+		// The salt as well: Regenerate mints a new one with the new key, and a
+		// stored key whose salt had been left behind would cost every phone a
+		// fresh derivation on the next start.
+		if err := auth.SaveKeyFile(c.sb.keyPath,
+			c.authMgr.RawPairingKey(), c.authMgr.PairingSalt()); err != nil {
 			c.sb.writeLine("  %s[KEY]%s Rotated, but the stored key could not be updated: %v", cRed, cReset, err)
 		}
 	}

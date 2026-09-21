@@ -16,7 +16,10 @@ import (
 
 func testHub(t *testing.T) *Hub {
 	t.Helper()
-	authMgr, err := auth.NewManager()
+	// The salt is fixed rather than minted, so that stretchedForTest agrees
+	// with the hub about what the key stretches to — and so that a suite that
+	// builds a hub per test derives once rather than once per hub.
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}
@@ -60,8 +63,9 @@ func readHello(t *testing.T, ctx context.Context, conn *websocket.Conn) ServerMe
 	return msg
 }
 
-// pairOverSocket answers the greeting's challenge on a real connection and
-// waits for the acceptance.
+// pairOverSocket answers the greeting's challenge on a real connection, waits
+// for the acceptance, and hands back the app's half of the session the two ends
+// just agreed on.
 //
 // The tests that use this are about what happens to a paired socket — a
 // deadline, a reconnection, an alarm — rather than about pairing itself, and
@@ -69,7 +73,13 @@ func readHello(t *testing.T, ctx context.Context, conn *websocket.Conn) ServerMe
 // message any more: the key never crosses the wire, so getting paired means
 // doing the handshake, and doing it in one place keeps that from being four
 // copies of the same six lines.
-func pairOverSocket(t *testing.T, ctx context.Context, conn *websocket.Conn, key string) {
+//
+// The session comes back because there is no longer such a thing as a paired
+// socket in the clear. Everything either end writes after the acceptance is
+// sealed, so a test that wants to write a ping needs the key to seal it with.
+func pairOverSocket(
+	t *testing.T, ctx context.Context, conn *websocket.Conn, key string,
+) *session {
 	t.Helper()
 
 	hello := readHello(t, ctx, conn)
@@ -83,6 +93,12 @@ func pairOverSocket(t *testing.T, ctx context.Context, conn *websocket.Conn, key
 	if _, _, err := conn.Read(ctx); err != nil {
 		t.Fatalf("expected auth_ok: %v", err)
 	}
+
+	app, err := newSession(stretchedForTest(key), hello.Nonce, fixedClientNonce, false)
+	if err != nil {
+		t.Fatalf("newSession: %v", err)
+	}
+	return app
 }
 
 // The greeting names the version, which is what a phone shows before it has
@@ -187,11 +203,15 @@ func TestAuthenticatedConnectionSurvivesDeadline(t *testing.T) {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	pairOverSocket(t, ctx, conn, hub.authManager.RawPairingKey())
+	app := pairOverSocket(t, ctx, conn, hub.authManager.RawPairingKey())
 
 	// Past the (short) deadline, an authenticated socket must still be usable.
 	time.Sleep(2 * deadline)
-	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"ping"}`)); err != nil {
+	ping, err := app.seal([]byte(`{"type":"ping"}`))
+	if err != nil {
+		t.Fatalf("seal ping: %v", err)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, ping); err != nil {
 		t.Fatalf("write ping after deadline: %v", err)
 	}
 	if _, _, err := conn.Read(ctx); err != nil {

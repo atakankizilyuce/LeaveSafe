@@ -45,6 +45,11 @@ type Options struct {
 	// SessionIdle is how long a session may go unused before it is dropped.
 	// Zero means idle sessions are kept.
 	SessionIdle time.Duration
+	// PairingSalt fixes the salt the key is stretched under instead of minting
+	// a fresh one. Empty — the ordinary case — mints one. A persisted pairing
+	// carries its salt beside its key so that a restart does not make every
+	// paired phone stretch again.
+	PairingSalt string
 	// PairingKey fixes the key instead of generating a fresh one. It must be 16
 	// digits with a valid Luhn check; anything else is rejected. Used when the
 	// key is persisted so a phone stays paired across restarts.
@@ -92,8 +97,17 @@ type session struct {
 type Manager struct {
 	mu         sync.Mutex
 	opts       Options
-	pairingKey string              // 16-digit key with Luhn check
-	sessions   map[string]*session // active session tokens
+	pairingKey string // 16-digit key with Luhn check
+	// pairingSalt is the salt the key is stretched under before anything is
+	// computed from it — see internal/ws/handshake.go. Thirty-two random bytes,
+	// hex-encoded, minted with the key and replaced with it.
+	//
+	// It is not a secret: it travels in the greeting, in the clear, to a client
+	// that has proved nothing yet. What it is for is making the stretch
+	// specific to this machine, so that work done against one installation is
+	// worth nothing against the next.
+	pairingSalt string
+	sessions    map[string]*session // active session tokens
 
 	// byAddr holds failures per remote address rather than one global counter.
 	// A global counter is a remote kill switch once the port is reachable from
@@ -125,13 +139,40 @@ func NewManagerWithOptions(opts Options) (*Manager, error) {
 		return nil, fmt.Errorf("supplied pairing key is not a valid 16-digit key")
 	}
 
+	salt := opts.PairingSalt
+	if salt == "" {
+		minted, err := generatePairingSalt()
+		if err != nil {
+			return nil, err
+		}
+		salt = minted
+	}
+
 	return &Manager{
-		opts:       opts.withDefaults(),
-		pairingKey: key,
-		sessions:   make(map[string]*session),
-		byAddr:     make(map[string]*attempts),
-		now:        time.Now,
+		opts:        opts.withDefaults(),
+		pairingKey:  key,
+		pairingSalt: salt,
+		sessions:    make(map[string]*session),
+		byAddr:      make(map[string]*attempts),
+		now:         time.Now,
 	}, nil
+}
+
+// PairingSalt returns the salt this machine's key is stretched under.
+func (m *Manager) PairingSalt() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pairingSalt
+}
+
+// generatePairingSalt mints one. Thirty-two bytes, which is the width of the
+// hash the stretch feeds, so the salt is never the narrow part.
+func generatePairingSalt() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate pairing salt: %w", err)
+	}
+	return hex.EncodeToString(buf), nil
 }
 
 // MaxSessions returns the configured concurrent session cap.
@@ -417,7 +458,16 @@ func (m *Manager) Regenerate() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("generate pairing key: %w", err)
 	}
+	salt, err := generatePairingSalt()
+	if err != nil {
+		return "", err
+	}
+
 	m.pairingKey = key
+	// Replaced with the key, because it belongs to the key: a salt kept across
+	// a rotation would let work done against the old key carry over to the new
+	// one, which is most of what rotating is for.
+	m.pairingSalt = salt
 	m.sessions = make(map[string]*session)
 	m.byAddr = make(map[string]*attempts)
 

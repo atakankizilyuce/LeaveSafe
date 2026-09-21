@@ -11,6 +11,52 @@ diff is small.
 
 ## [Unreleased]
 
+### Security
+
+- **The pairing handshake is now v2, and it is not compatible with older
+  applications.** Both ends refuse the other's v1 exchange, and both say which
+  one is out of date. Update the application and the daemon together.
+
+- **Sealing can no longer be talked out of.** The field naming the construction
+  the two ends agree to encrypt under sat outside both proofs, which made it the
+  one part of the exchange a machine on the path could edit and be believed
+  about: delete it from the auth message and the laptop reads an application
+  that cannot seal, delete it from the acceptance and the phone reads a laptop
+  that cannot. Both proofs still verified, both ends still believed each other,
+  and the conversation carried on in the clear — with a `disarm` to inject, a
+  PIN to read as it was typed, and an alarm frame to drop, which is the single
+  thing this product promises.
+
+  The field is inside both proofs now, so an edited one is a proof that does not
+  hold. And there is no longer a value of it that means "do not seal": an
+  application that will not is refused, in the same words an application too old
+  to prove itself already got.
+
+- **The proofs and the session key are computed under a stretched key.**
+  Argon2id over the sixteen digits — 32 MiB, three passes, salted with a value
+  this machine mints alongside its pairing key — rather than the digits
+  themselves.
+
+  A proof is guessable offline: anything that watched one pairing on a café
+  network has both nonces and both proofs, and can then work through every
+  possible key at home for as long as it likes. There are 10^15 of them, and
+  under a bare HMAC that is one hash per guess — a few graphics cards do ten
+  billion a second, so fifty bits falls in about a day and a half. Memory-hard,
+  each guess needs its own 32 MiB, and the same search runs to millennia. HKDF
+  is fast by design, so the session key was open to the same search and is
+  derived from the stretched key for the same reason.
+
+  The salt travels in the greeting and is not a secret. What it buys is that the
+  work is specific to one machine: a table built against one installation is
+  worth nothing against the next, and rotating the key mints a new salt with it.
+  It is stored beside a persisted key, so a restart costs no phone a fresh
+  derivation, and a key file written before it existed is given one rather than
+  replaced.
+
+  The owner pays a fifth of a second, once per key: the result is cached on both
+  ends and only changes when the key does. The alternative was a longer key, and
+  it is a worse one — these digits are read off a screen and typed into a phone.
+
 ## [1.4.1] - 2026-09-13
 
 ### Fixed

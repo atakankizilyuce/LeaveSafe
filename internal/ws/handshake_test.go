@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -18,11 +19,17 @@ import (
 // other. fixedKey is a real 16-digit pairing key, check digit and all, so it can
 // also be handed to an auth.Manager.
 const (
-	fixedKey         = "4839201746583123"
+	fixedKey = "4839201746583123"
+	// The salt this worked example stretches under. A real one is minted per
+	// key and sent in the greeting; this is a fixed one so the numbers below
+	// can be written down.
+	fixedSalt        = "5eed5a17feedfaceba5eba11c0ffee00d15ea5edb01dfacedeadbeef0ddba11a"
 	fixedServerNonce = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
 	fixedClientNonce = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
-	fixedClientProof = "f785b21993fb53c846fb29a00730f0a0d6c66b2d6a4bc96786191da158633221"
-	fixedServerProof = "5c874905866a1293e83eef4fd52a74c78b0bf5fc57d8e279d63cc0817a23622e"
+	// The stretched key the proofs are really computed under, hex-encoded.
+	fixedStretched   = "1c98c60bd6350ef74e3ac95e224901d403db6de0199c63f26f3b173e68917558"
+	fixedClientProof = "ff7c364107eb0e2030afebb00a3ccb32e5c333ff62337b53cde06f3df2a51978"
+	fixedServerProof = "c6bbd45257fd67086208923095d0b13d93534a21201847be848b9dd6d71357a5"
 )
 
 // greeted returns a stand-in phone that has been greeted, so it is holding the
@@ -32,6 +39,7 @@ func greeted(t *testing.T, hub *Hub) (*Client, *recorder, string) {
 	t.Helper()
 	rec := &recorder{}
 	client := hub.RegisterExternalClient(rec, nil)
+	rec.watching(client)
 	hub.greet(client)
 	hello, ok := rec.saw(MsgTypeHello)
 	if !ok {
@@ -43,21 +51,31 @@ func greeted(t *testing.T, hub *Hub) (*Client, *recorder, string) {
 	return client, rec, hello.Nonce
 }
 
-// authWithProof builds what a current app sends: a nonce of its own and a proof
-// over both nonces, and no key at all.
+// authWithProof builds what a current app sends: a nonce of its own, the
+// construction it wants the rest sealed with, and a proof over all of it. No
+// key at all.
 func authWithProof(key, serverNonce, clientNonce string) ClientMessage {
 	return ClientMessage{
-		Type:  MsgTypeAuth,
-		Nonce: clientNonce,
-		Proof: handshakeProof(key, proofRoleClient, serverNonce, clientNonce),
+		Type:    MsgTypeAuth,
+		Nonce:   clientNonce,
+		Encrypt: encChaCha,
+		Proof: handshakeProof(stretchedForTest(key), proofRoleClient,
+			serverNonce, clientNonce, encChaCha),
 	}
 }
+
+// stretchedForTest is stretchedKey under the name these tests reach for.
+//
+// It was a cache of its own while the production one held a single entry. The
+// production one is now a table shared by the whole process, which is what
+// these tests wanted from theirs, so this is the same call.
+func stretchedForTest(key string) []byte { return stretchedKey(key, fixedSalt) }
 
 // hubWithKey returns a hub whose pairing key is fixed, so a test can assert
 // against proofs computed by hand.
 func hubWithKey(t *testing.T, key string) *Hub {
 	t.Helper()
-	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingKey: key})
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingKey: key, PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}
@@ -71,6 +89,7 @@ func wrongKeyReason(t *testing.T) string {
 	hub := testHub(t)
 	rec := &recorder{}
 	client := challenged(hub.RegisterExternalClient(rec, nil))
+	rec.watching(client)
 	hub.handleMessage(client, provingAuth(client, "0000000000000000"))
 	fail, ok := rec.saw(MsgTypeAuthFail)
 	if !ok {
@@ -247,6 +266,7 @@ func TestAProofOnAConnectionThatWasNeverChallengedIsRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rec := &recorder{}
 			client := hub.RegisterExternalClient(rec, nil)
+			rec.watching(client)
 
 			hub.handleMessage(client, authWithProof(key, serverNonce, fixedClientNonce))
 
@@ -358,10 +378,18 @@ func TestEachConnectionIsChallengedWithItsOwnNonce(t *testing.T) {
 // against itself while no app can pair. These are the exact bytes both sides
 // agreed on, pinned here so that cannot happen quietly.
 func TestTheProofsAreTheOnesTheSpecDescribes(t *testing.T) {
-	if got := handshakeProof(fixedKey, proofRoleClient, fixedServerNonce, fixedClientNonce); got != fixedClientProof {
+	// The stretched key first: it is the input to both proofs and to the
+	// session, so a change to the Argon2 parameters or to the salt would move
+	// every one of them at once and this is where that shows up by name.
+	if got := hex.EncodeToString(stretchedForTest(fixedKey)); got != fixedStretched {
+		t.Errorf("stretched key is %s, want %s", got, fixedStretched)
+	}
+	if got := handshakeProof(stretchedForTest(fixedKey), proofRoleClient,
+		fixedServerNonce, fixedClientNonce, encChaCha); got != fixedClientProof {
 		t.Errorf("client proof is %s, want %s", got, fixedClientProof)
 	}
-	if got := handshakeProof(fixedKey, proofRoleServer, fixedServerNonce, fixedClientNonce); got != fixedServerProof {
+	if got := handshakeProof(stretchedForTest(fixedKey), proofRoleServer,
+		fixedServerNonce, fixedClientNonce, encChaCha); got != fixedServerProof {
 		t.Errorf("server proof is %s, want %s", got, fixedServerProof)
 	}
 	if fixedClientProof == fixedServerProof {
@@ -376,12 +404,14 @@ func TestAuthOKCarriesTheServersProof(t *testing.T) {
 	hub := hubWithKey(t, fixedKey)
 	rec := &recorder{}
 	client := challenged(hub.RegisterExternalClient(rec, nil))
+	rec.watching(client)
 	client.serverNonce = fixedServerNonce
 
 	hub.handleMessage(client, ClientMessage{
-		Type:  MsgTypeAuth,
-		Nonce: fixedClientNonce,
-		Proof: fixedClientProof,
+		Type:    MsgTypeAuth,
+		Nonce:   fixedClientNonce,
+		Encrypt: encChaCha,
+		Proof:   fixedClientProof,
 	})
 
 	authOK, ok := rec.saw(MsgTypeAuthOK)
@@ -416,6 +446,7 @@ func TestTheChallengeGivesNothingElseAway(t *testing.T) {
 	hub := testHub(t)
 	rec := &recorder{}
 	client := challenged(hub.RegisterExternalClient(rec, nil))
+	rec.watching(client)
 	hub.greet(client)
 
 	hello, ok := rec.saw(MsgTypeHello)
@@ -469,12 +500,14 @@ func TestAnAppThatAsksForASessionGetsOne(t *testing.T) {
 	rec.reset()
 	client.send(ServerMessage{Type: MsgTypeAlarmActive, Reason: "the cable came out"})
 
-	sealed, ok := rec.saw(sealedType)
+	// The bytes rather than what the recorder made of them: the recorder opens
+	// what it is given, and the question here is what went down the wire.
+	onTheWire, ok := rec.raw(sealedType)
 	if !ok {
 		t.Fatal("a message after the acceptance went out in the clear")
 	}
-	if sealed.Reason != "" {
-		t.Errorf("the sealed frame still carries its contents: reason %q", sealed.Reason)
+	if strings.Contains(string(onTheWire), "the cable came out") {
+		t.Errorf("the sealed frame still carries its contents: %s", onTheWire)
 	}
 }
 
@@ -490,7 +523,7 @@ func TestWhatTheDaemonSealsTheAppCanOpen(t *testing.T) {
 
 	client.send(ServerMessage{Type: MsgTypeAlarmActive, Reason: "the cable came out"})
 
-	app, err := newSession(key, serverNonce, fixedClientNonce, false)
+	app, err := newSession(stretchedForTest(key), serverNonce, fixedClientNonce, false)
 	if err != nil {
 		t.Fatalf("newSession: %v", err)
 	}
@@ -512,41 +545,119 @@ func TestWhatTheDaemonSealsTheAppCanOpen(t *testing.T) {
 	}
 }
 
-// An app that asks for something this daemon does not know is not refused. It
-// is answered without a construction named, and carries on in the clear —
-// which is what keeps a daemon and an app of different ages working together.
-func TestAnUnknownConstructionLeavesTheConnectionInTheClear(t *testing.T) {
-	hub := testHub(t)
-	client, rec, serverNonce := greeted(t, hub)
+// An app that asks for something this daemon does not know is refused, and so
+// is one that asks for nothing.
+//
+// Both used to pair and carry on in the clear, which was a kindness to old apps
+// and was also the whole of the downgrade: a machine on the path edited this
+// one field — it sat outside both proofs — and the laptop obligingly held a
+// plaintext conversation with a phone that had asked for an encrypted one.
+// There is no longer a value of it that means "do not seal".
+func TestAnAppThatWillNotSealIsRefused(t *testing.T) {
+	for name, asked := range map[string]string{
+		"a construction nobody has implemented": "something-nobody-has-implemented",
+		"nothing at all":                        "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			hub := testHub(t)
+			client, rec, serverNonce := greeted(t, hub)
 
-	msg := authWithProof(hub.authManager.RawPairingKey(), serverNonce, fixedClientNonce)
-	msg.Encrypt = "something-nobody-has-implemented"
-	hub.handleMessage(client, msg)
+			msg := authWithProof(hub.authManager.RawPairingKey(), serverNonce, fixedClientNonce)
+			msg.Encrypt = asked
+			hub.handleMessage(client, msg)
 
-	authOK, ok := rec.saw(MsgTypeAuthOK)
-	if !ok {
-		t.Fatal("an app asking for an unknown construction was refused outright")
-	}
-	if authOK.Encrypt != "" {
-		t.Errorf("auth_ok named %q, want nothing", authOK.Encrypt)
-	}
-	if client.sealed != nil {
-		t.Error("the connection was sealed under a construction nobody agreed on")
+			if _, ok := rec.saw(MsgTypeAuthOK); ok {
+				t.Fatal("an app that would not seal was paired anyway")
+			}
+			fail, ok := rec.saw(MsgTypeAuthFail)
+			if !ok {
+				t.Fatal("an app that would not seal was told nothing")
+			}
+			if !strings.Contains(fail.Reason, "too old") {
+				t.Errorf("refused with %q, want a reason naming which end is out of date", fail.Reason)
+			}
+			if client.sealed != nil || client.authenticated {
+				t.Error("the connection was paired under a construction nobody agreed on")
+			}
+		})
 	}
 }
 
-// An app that does not ask gets what it has always got.
-func TestAnAppThatDoesNotAskIsNotSealed(t *testing.T) {
+// And the field is inside both proofs, so it cannot be edited on the way here
+// either. An app that asks to seal and has its request stripped on the path
+// does not pair: the proof it sent covers what it asked for, and the laptop
+// checks it against what arrived.
+func TestStrippingTheConstructionBreaksTheProof(t *testing.T) {
 	hub := testHub(t)
 	client, rec, serverNonce := greeted(t, hub)
 
-	hub.handleMessage(client, authWithProof(hub.authManager.RawPairingKey(), serverNonce, fixedClientNonce))
+	// What an honest app sends, with the one field a machine on the path would
+	// have deleted deleted — and nothing else touched.
+	msg := authWithProof(hub.authManager.RawPairingKey(), serverNonce, fixedClientNonce)
+	msg.Encrypt = encChaCha + " but not really"
+	hub.handleMessage(client, msg)
 
-	authOK, ok := rec.saw(MsgTypeAuthOK)
-	if !ok {
-		t.Fatal("a proving auth was not accepted")
+	if _, ok := rec.saw(MsgTypeAuthOK); ok {
+		t.Fatal("an edited auth message was believed")
 	}
-	if authOK.Encrypt != "" || client.sealed != nil {
-		t.Error("a connection that asked for nothing was sealed anyway")
+}
+
+// The proofs are computed under the stretched key, not the digits, and a proof
+// over the digits does not pair.
+//
+// This is the whole of what the Argon2 buys. Anything that can watch one
+// pairing on a café network records both nonces and both proofs, and can then
+// work through the 10^15 possible keys offline for as long as it likes. Under a
+// bare HMAC that is one hash per guess — a few graphics cards do ten billion a
+// second, and fifty bits falls in about a day and a half. Under a memory-hard
+// derivation each guess costs thirty-two mebibytes and a fifth of a second, and
+// the same search is three thousand years.
+func TestAProofOverTheBareDigitsDoesNotPair(t *testing.T) {
+	hub := testHub(t)
+	client, rec, serverNonce := greeted(t, hub)
+	key := hub.authManager.RawPairingKey()
+
+	hub.handleMessage(client, ClientMessage{
+		Type:    MsgTypeAuth,
+		Nonce:   fixedClientNonce,
+		Encrypt: encChaCha,
+		// What the old protocol signed: an HMAC keyed on the digits themselves.
+		Proof: handshakeProof([]byte(key), proofRoleClient,
+			serverNonce, fixedClientNonce, encChaCha),
+	})
+
+	if _, ok := rec.saw(MsgTypeAuthOK); ok {
+		t.Fatal("a proof over the bare digits was accepted")
+	}
+}
+
+// The stretch is cached, because Argon2 is a fifth of a second by design and a
+// phone reconnects every time its screen unlocks.
+func TestTheStretchIsCachedPerKey(t *testing.T) {
+	first := stretchedKey(fixedKey, fixedSalt)
+	if again := stretchedKey(fixedKey, fixedSalt); &again[0] != &first[0] {
+		t.Error("the same key was stretched twice")
+	}
+
+	other := stretchedKey("8791234567890129", fixedSalt)
+	if string(other) == string(first) {
+		t.Fatal("two different keys stretched to the same thing")
+	}
+	// And a second key does not evict the first: the table holds several, so a
+	// rotation does not cost every phone still holding the old one.
+	if back := stretchedKey(fixedKey, fixedSalt); &back[0] != &first[0] {
+		t.Error("a second key pushed the first out of a table with room for both")
+	}
+}
+
+// The salt is what makes the work specific to one machine. The same key under
+// another installation's salt is another stretched key, so a table built
+// against one is worth nothing against the next — and a rotation, which mints a
+// new salt with the new key, throws away whatever was built against the old.
+func TestTheSaltMakesTheStretchThisMachinesOwn(t *testing.T) {
+	const elsewhere = "0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff"
+
+	if string(stretchedKey(fixedKey, fixedSalt)) == string(stretchedKey(fixedKey, elsewhere)) {
+		t.Error("the salt did not reach the derivation")
 	}
 }

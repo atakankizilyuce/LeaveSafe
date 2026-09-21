@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,6 +16,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"golang.org/x/crypto/argon2"
+
 	"github.com/leavesafe/leavesafe/internal/ws"
 )
 
@@ -33,6 +37,16 @@ type Phone struct {
 	greeted     chan struct{}
 	greetedOnce sync.Once
 	serverNonce string
+	// serverSalt is what the greeting said this machine's key is stretched
+	// under. Both ends have to use it or neither can check the other's proof.
+	serverSalt string
+
+	// sealed is what this phone writes under and reads under once it has
+	// paired. Everything after the acceptance is sealed, in both directions, so
+	// a harness that did not have one would be a harness that could pair and
+	// then say nothing.
+	sealedMu sync.Mutex
+	sealed   *phoneSession
 }
 
 // Dial connects to a running app and starts the reader.
@@ -68,14 +82,25 @@ func Dial(t *testing.T, port int) *Phone {
 
 func (p *Phone) readLoop() {
 	for {
-		var msg ws.ServerMessage
-		if err := wsjson.Read(p.ctx, p.conn, &msg); err != nil {
+		var raw json.RawMessage
+		if err := wsjson.Read(p.ctx, p.conn, &raw); err != nil {
 			close(p.inbox)
 			return
 		}
+
+		msg, err := p.decode(raw)
+		if err != nil {
+			// Not a frame this phone could have been sent. Nobody else can
+			// produce one, so the connection is over rather than the frame
+			// being skipped — which is what the application does too.
+			close(p.inbox)
+			return
+		}
+
 		if msg.Type == ws.MsgTypeHello {
 			p.greetedOnce.Do(func() {
 				p.serverNonce = msg.Nonce
+				p.serverSalt = msg.Salt
 				close(p.greeted)
 			})
 		}
@@ -87,14 +112,70 @@ func (p *Phone) readLoop() {
 	}
 }
 
-// Send writes one client message.
+// Send writes one client message, sealed once this phone has paired.
 func (p *Phone) Send(msg ws.ClientMessage) {
 	p.t.Helper()
 	ctx, cancel := context.WithTimeout(p.ctx, 10*time.Second)
 	defer cancel()
-	if err := wsjson.Write(ctx, p.conn, msg); err != nil {
+
+	plain, err := json.Marshal(msg)
+	if err != nil {
+		p.t.Fatalf("encode %s: %v", msg.Type, err)
+	}
+
+	if sealed := p.session(); sealed != nil {
+		framed, err := sealed.seal(plain)
+		if err != nil {
+			p.t.Fatalf("seal %s: %v", msg.Type, err)
+		}
+		plain = framed
+	}
+
+	if err := p.conn.Write(ctx, websocket.MessageText, plain); err != nil {
 		p.t.Fatalf("send %s: %v", msg.Type, err)
 	}
+}
+
+// session returns what this phone is sealing under, or nil before it pairs.
+func (p *Phone) session() *phoneSession {
+	p.sealedMu.Lock()
+	defer p.sealedMu.Unlock()
+	return p.sealed
+}
+
+// sealFrom is called with the session the acceptance settled on. Only after
+// the acceptance: that is the last message either end sends in the clear.
+func (p *Phone) sealFrom(s *phoneSession) {
+	p.sealedMu.Lock()
+	defer p.sealedMu.Unlock()
+	p.sealed = s
+}
+
+// decode turns one frame off the wire into a message, opening it first when
+// this phone has a session.
+func (p *Phone) decode(raw json.RawMessage) (ws.ServerMessage, error) {
+	var msg ws.ServerMessage
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		return msg, err
+	}
+	if msg.Type != sealedType {
+		return msg, nil
+	}
+
+	sealed := p.session()
+	if sealed == nil {
+		return msg, errors.New("a sealed frame arrived before the session did")
+	}
+	plain, err := sealed.open(raw)
+	if err != nil {
+		return msg, err
+	}
+
+	var inside ws.ServerMessage
+	if err := json.Unmarshal(plain, &inside); err != nil {
+		return inside, err
+	}
+	return inside, nil
 }
 
 // Expect waits for the next message of the given type, discarding others.
@@ -180,11 +261,21 @@ func (p *Phone) Authenticate(key string) ws.ServerMessage {
 	// how long that would take to work out.
 	key = strings.ReplaceAll(key, "-", "")
 
+	// Stretched once, here, because the proofs and the session keys are both
+	// computed under it rather than under the digits.
+	strong := stretchKey(key, p.serverSalt)
+
 	clientNonce := freshNonce(p.t)
 	p.Send(ws.ClientMessage{
 		Type:  ws.MsgTypeAuth,
 		Nonce: clientNonce,
-		Proof: proofFor(key, "client", p.serverNonce, clientNonce),
+		// Asked for by name, and inside the proof. A daemon that is not told
+		// which construction this phone wants refuses it now, and a machine on
+		// the path that deleted the request would be deleting part of what was
+		// signed.
+		Encrypt: encryption,
+		Proof: proofFor(strong, "client", p.serverNonce, clientNonce,
+			encryption),
 	})
 
 	deadline := time.After(10 * time.Second)
@@ -200,10 +291,22 @@ func (p *Phone) Authenticate(key string) ws.ServerMessage {
 				// auth_ok without checking this would pass against a daemon
 				// that had stopped proving anything, which is the failure this
 				// whole handshake exists to catch.
-				want := proofFor(key, "server", p.serverNonce, clientNonce)
+				//
+				// The construction the daemon granted is inside its proof, so
+				// checking the proof is also checking that the field naming it
+				// was not edited on the way here.
+				want := proofFor(strong, "server", p.serverNonce, clientNonce,
+					msg.Encrypt)
 				if msg.Proof != want {
 					p.t.Fatalf("the daemon's proof was %q, want %q", msg.Proof, want)
 				}
+				if msg.Encrypt != encryption {
+					p.t.Fatalf("the daemon named %q, want %q — it will not seal",
+						msg.Encrypt, encryption)
+				}
+				// Only now. Everything after the acceptance is sealed, in both
+				// directions, from this line.
+				p.sealFrom(newPhoneSession(p.t, strong, p.serverNonce, clientNonce))
 				return msg
 			case ws.MsgTypeAuthFail:
 				return msg
@@ -256,10 +359,24 @@ func (p *Phone) AuthenticateWithoutProof(key string) ws.ServerMessage {
 // construction, including about a change nobody meant to make. These few lines
 // are the contract as the application implements it — the same string, built
 // from literals — so a change to either side has to be made twice on purpose.
-func proofFor(key, role, serverNonce, clientNonce string) string {
-	mac := hmac.New(sha256.New, []byte(key))
-	mac.Write([]byte("leavesafe/v1|" + role + "|" + serverNonce + "|" + clientNonce))
+// The same reasoning covers the stretch and the session below it.
+func proofFor(key []byte, role, serverNonce, clientNonce, encrypt string) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte("leavesafe/v2|" + role + "|" + serverNonce + "|" +
+		clientNonce + "|" + encrypt))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// stretchKey turns the sixteen digits into the key the proofs and the session
+// are really computed under.
+//
+// Argon2id, because a proof is guessable offline: anything that watched one
+// pairing has both nonces and both proofs, and sixteen digits under a bare
+// HMAC is about a day and a half of a few graphics cards. Memory-hard, the
+// same search runs to millennia.
+func stretchKey(key, salt string) []byte {
+	return argon2.IDKey([]byte(key), []byte("leavesafe/v2 lan pairing key|"+salt),
+		3, 32*1024, 1, 32)
 }
 
 // freshNonce is the client's half of the challenge: thirty-two random bytes,

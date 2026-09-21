@@ -32,7 +32,9 @@ func runInstallService() int {
 	// would be locked out by a key it never saw. Writing the key now makes the
 	// pairing survive the restart the service exists to cover.
 	keyPath := filepath.Join(config.ConfigDir(), auth.KeyFileName)
-	key, err := auth.LoadOrCreateKeyFile(keyPath)
+	// The salt is read with the key and written with it; nothing here shows it,
+	// because it is not a secret and nobody types it. See auth.LoadOrCreateKeyFile.
+	key, _, err := auth.LoadOrCreateKeyFile(keyPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not prepare the pairing key: %v\n", err)
 		return 1

@@ -66,7 +66,7 @@ func TestPairingDoesNotWaitOnASensorProbe(t *testing.T) {
 	sensorMgr.Register(slow)
 	t.Cleanup(func() { close(slow.done) })
 
-	authMgr, err := auth.NewManager()
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestBroadcastDoesNotWaitOnASensorProbe(t *testing.T) {
 	sensorMgr.Register(slow)
 	t.Cleanup(func() { close(slow.done) })
 
-	authMgr, err := auth.NewManager()
+	authMgr, err := auth.NewManagerWithOptions(auth.Options{PairingSalt: fixedSalt})
 	if err != nil {
 		t.Fatalf("auth manager: %v", err)
 	}

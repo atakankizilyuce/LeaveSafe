@@ -49,8 +49,8 @@ const (
 	// than one, so that a counter on one side can never name the same
 	// (key, nonce) pair as a counter on the other — which is the one mistake
 	// this construction does not survive.
-	infoToApp    = "leavesafe/v1 session server-to-app"
-	infoToDaemon = "leavesafe/v1 session app-to-server"
+	infoToApp    = "leavesafe/v2 session server-to-app"
+	infoToDaemon = "leavesafe/v2 session app-to-server"
 )
 
 // errNotSealed says a frame is not one of ours. It is worth its own error
@@ -90,27 +90,32 @@ type session struct {
 	seen bool
 }
 
-// newSession derives the session keys from the pairing key and the two nonces
-// the handshake already exchanged.
+// newSession derives the session keys from the stretched pairing key and the
+// two nonces the handshake already exchanged.
 //
 // Nothing new is sent to establish it. Both ends have all three inputs by the
 // time the acceptance is written, which is what makes this a change to what
 // the handshake produces rather than another round trip somebody has to wait
 // through.
 //
-// key is the pairing key as the proofs use it: sixteen digits, no dashes.
-func newSession(key, serverNonce, clientNonce string, forServer bool) (*session, error) {
-	if key == "" || serverNonce == "" || clientNonce == "" {
+// key is the stretched key the proofs use, not the digits. HKDF is an extract
+// and an expand, neither of which is slow, so deriving straight from sixteen
+// digits would have left a recorded conversation open to the same offline
+// search the proofs were: guess the digits, derive the keys, try to open a
+// frame. The Argon2 in front of it is what that guess has to pay. See
+// stretchedKey in handshake.go.
+func newSession(key []byte, serverNonce, clientNonce string, forServer bool) (*session, error) {
+	if len(key) == 0 || serverNonce == "" || clientNonce == "" {
 		return nil, errors.New("ws: a session needs the key and both nonces")
 	}
 
 	salt := []byte(serverNonce + clientNonce)
 
-	toApp, err := hkdf.Key(sha256.New, []byte(key), salt, infoToApp, chacha20poly1305.KeySize)
+	toApp, err := hkdf.Key(sha256.New, key, salt, infoToApp, chacha20poly1305.KeySize)
 	if err != nil {
 		return nil, fmt.Errorf("ws: deriving the session key: %w", err)
 	}
-	toDaemon, err := hkdf.Key(sha256.New, []byte(key), salt, infoToDaemon, chacha20poly1305.KeySize)
+	toDaemon, err := hkdf.Key(sha256.New, key, salt, infoToDaemon, chacha20poly1305.KeySize)
 	if err != nil {
 		return nil, fmt.Errorf("ws: deriving the session key: %w", err)
 	}

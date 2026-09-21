@@ -114,7 +114,7 @@ func TestDismissAlarmTellsEveryPhone(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn := dialAndAuth(t, ctx, wsURL(srv), hub)
+	conn, app := dialAndAuth(t, ctx, wsURL(srv), hub)
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
 	hub.DismissAlarm()
@@ -130,8 +130,14 @@ func TestDismissAlarmTellsEveryPhone(t *testing.T) {
 		if err != nil {
 			t.Fatal("no alarm_cleared reached the phone")
 		}
+		// Everything after the acceptance is sealed, so what arrives is an
+		// envelope and the message is inside it.
+		plain, err := app.open(data)
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
 		var msg ServerMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
+		if err := json.Unmarshal(plain, &msg); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
 		if msg.Type == MsgTypeAlarmCleared {
