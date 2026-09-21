@@ -11,6 +11,8 @@ diff is small.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-22
+
 ### Security
 
 - **The pairing handshake is now v2, and it is not compatible with older
