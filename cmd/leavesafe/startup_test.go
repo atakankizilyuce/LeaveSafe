@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/leavesafe/leavesafe/internal/auth"
-	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/endpoint"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
@@ -797,52 +795,6 @@ func TestAnAvailableUpdateIsReportedQuietly(t *testing.T) {
 
 	if !strings.Contains(out, "9.9.9") {
 		t.Errorf("the new version was not named; output was:\n%s", out)
-	}
-}
-
-// Three things can become of the Bluetooth server, and they ask different things
-// of the user: nothing, pair over Wi-Fi instead, or a bug worth reporting.
-func TestBluetoothSaysWhichOfItsThreeOutcomesHappened(t *testing.T) {
-	a := startedApp(t, nil)
-
-	if out := captureLog(t, func() { a.reportBluetooth(nil) }); strings.Contains(out, "BLE") {
-		t.Errorf("a Bluetooth server that started fine said something anyway:\n%s", out)
-	}
-
-	out := captureLog(t, func() { a.reportBluetooth(ble.ErrNoCentralIdentity) })
-	if !strings.Contains(out, "Bluetooth pairing is off on this platform") {
-		t.Errorf("a platform without Bluetooth was not explained; output was:\n%s", out)
-	}
-	// Saying what still works is the point: the user asked for Bluetooth and is
-	// not getting it, and Wi-Fi is right there.
-	if !strings.Contains(out, "Pair over Wi-Fi instead") {
-		t.Errorf("nothing offered the alternative; output was:\n%s", out)
-	}
-
-	out = captureLog(t, func() { a.reportBluetooth(errors.New("the adapter caught fire")) })
-	if !strings.Contains(out, "the adapter caught fire") {
-		t.Errorf("an unexpected Bluetooth failure was swallowed; output was:\n%s", out)
-	}
-}
-
-// Bluetooth is off unless the config asks for it, and asking for it must not be
-// what decides whether Wi-Fi works.
-func TestBluetoothIsOnlyStartedWhenTheConfigAsksForIt(t *testing.T) {
-	a := startedApp(t, func(cfg *config.Config) { cfg.ConnectionMode = "wifi" })
-
-	if a.srv == nil || len(a.srv.URLs()) == 0 {
-		t.Error("a Wi-Fi start did not come up on the network")
-	}
-}
-
-func TestBluetoothStartsAlongsideWiFiWhenAskedForBoth(t *testing.T) {
-	a := startedApp(t, func(cfg *config.Config) { cfg.ConnectionMode = "both" })
-
-	// Whether this platform can actually offer BLE is not the point — plenty
-	// cannot, and the program says so and carries on. What must hold is that
-	// asking for it leaves the network path working.
-	if a.srv == nil || len(a.srv.URLs()) == 0 {
-		t.Error("asking for Bluetooth took the network path down with it")
 	}
 }
 

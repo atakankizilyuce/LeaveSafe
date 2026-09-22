@@ -31,8 +31,6 @@ vi.mock('../src/lib/transport', () => ({
             isOpen: () => true,
         };
     },
-    connectBluetooth: vi.fn(),
-    bluetoothSupported: () => false,
 }));
 
 // A stored session is the return-visit path: it is what makes the app pair

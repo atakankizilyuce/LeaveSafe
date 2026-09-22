@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import { groupKey } from '../lib/format';
 import { pairError, pairing } from '../lib/store';
-import { bluetoothSupported } from '../lib/transport';
 import { Icon } from './Icons';
 
 interface Props {
-    onPair(key: string, over: 'websocket' | 'bluetooth'): void;
+    onPair(key: string): void;
     initialKey: string;
 }
 
@@ -26,12 +25,12 @@ export function PairScreen({ onPair, initialKey }: Props) {
         if (initialKey) setKey(groupKey(initialKey));
     }, [initialKey]);
 
-    const submit = (over: 'websocket' | 'bluetooth') => {
+    const submit = () => {
         if (!ready) {
             pairError.value = 'That key needs 16 digits.';
             return;
         }
-        onPair(digits, over);
+        onPair(digits);
     };
 
     return (
@@ -54,7 +53,7 @@ export function PairScreen({ onPair, initialKey }: Props) {
                     maxLength={19}
                     value={key}
                     onInput={(e) => setKey(groupKey((e.target as HTMLInputElement).value))}
-                    onKeyDown={(e) => e.key === 'Enter' && submit('websocket')}
+                    onKeyDown={(e) => e.key === 'Enter' && submit()}
                 />
 
                 <div class="key-progress" aria-hidden="true">
@@ -67,7 +66,7 @@ export function PairScreen({ onPair, initialKey }: Props) {
                     type="button"
                     class="pair-go"
                     disabled={pairing.value || !ready}
-                    onClick={() => submit('websocket')}
+                    onClick={() => submit()}
                 >
                     {/* The field above this one is labelled "pairing key", so
                         the button and the field say the same word twice: once
@@ -75,13 +74,6 @@ export function PairScreen({ onPair, initialKey }: Props) {
                     <Icon name="key" />
                     {pairing.value ? 'Connecting…' : 'Connect'}
                 </button>
-
-                {bluetoothSupported() && (
-                    <button type="button" class="pair-alt" onClick={() => submit('bluetooth')}>
-                        <Icon name="bluetooth" />
-                        Connect over Bluetooth instead
-                    </button>
-                )}
 
                 {pairError.value && <p class="pair-error">{pairError.value}</p>}
             </div>

@@ -15,7 +15,6 @@ import (
 
 	"github.com/leavesafe/leavesafe/internal/alarm"
 	"github.com/leavesafe/leavesafe/internal/auth"
-	ble "github.com/leavesafe/leavesafe/internal/bluetooth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/endpoint"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
@@ -177,7 +176,6 @@ func startApp(opts appOptions) (*app, error) {
 		srv: a.srv, cfg: cfg, quit: a.quit,
 	})
 	a.superviseUpdateCheck(ctx, cfg, installMethod, updateLedger, opts.managed)
-	a.superviseBluetooth(ctx, cfg)
 
 	return a, nil
 }
@@ -620,32 +618,4 @@ func checkForRelease(ctx context.Context, channel string) (update.Result, error)
 
 func (a *app) reportUpdate(r update.Result, method update.Method) {
 	announceUpdate(a.sb, a.hub, r, method)
-}
-
-func (a *app) superviseBluetooth(ctx context.Context, cfg *config.Config) {
-	if cfg.ConnectionMode != "bluetooth" && cfg.ConnectionMode != "both" {
-		return
-	}
-
-	bleServer := ble.NewServer(a.hub)
-	safe.Supervise(ctx, "ble-server", func(c context.Context) {
-		a.reportBluetooth(bleServer.Start(c))
-	})
-}
-
-// reportBluetooth says what became of the Bluetooth server.
-//
-// A platform that will not offer it is not a fault to be retried, and not
-// something to bury in a log line the user will read as noise: they asked for
-// Bluetooth and are not getting it. Say why, and say what still works.
-func (a *app) reportBluetooth(err error) {
-	switch {
-	case err == nil:
-	case errors.Is(err, ble.ErrNoCentralIdentity):
-		a.sb.writeLine("  %s[BLE]%s Bluetooth pairing is off on this platform: %v.",
-			cYellow, cReset, err)
-		a.sb.writeLine("  %s      Pair over Wi-Fi instead — scan the QR code above.%s", cDim, cReset)
-	default:
-		log.Errorf("BLE server error: %v", err)
-	}
 }

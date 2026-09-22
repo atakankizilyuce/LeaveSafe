@@ -235,7 +235,6 @@ func writeSeedConfig(t *testing.T, dir string, opts Options) {
 		"disconnect_grace_seconds": 30,
 		"auto_arm_on_lock":         false,
 		"input_threshold":          1,
-		"connection_mode":          "wifi",
 		"alarm": map[string]any{
 			"escalation_enabled": false,
 			"levels": []map[string]any{

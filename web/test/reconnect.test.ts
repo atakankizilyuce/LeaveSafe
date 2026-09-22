@@ -34,8 +34,6 @@ vi.mock('../src/lib/transport', () => ({
             isOpen: () => true,
         };
     },
-    connectBluetooth: vi.fn(),
-    bluetoothSupported: () => false,
 }));
 
 vi.mock('../src/lib/session', () => ({

@@ -19,8 +19,6 @@ vi.mock('../src/lib/transport', () => ({
         stub.handlers = handlers;
         return { kind: 'websocket', send: () => {}, close: () => {}, isOpen: () => true };
     },
-    connectBluetooth: vi.fn(),
-    bluetoothSupported: () => false,
 }));
 
 vi.mock('../src/lib/session', () => ({

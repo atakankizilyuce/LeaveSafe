@@ -93,12 +93,6 @@ traffic it carries.
 interfaces and asks nothing of your router. A phone that is not on the same
 network cannot reach the laptop and is not told anything.
 
-**Bluetooth pairing runs on macOS only.** The Windows and Linux stacks do not
-report which device performed a write, so every device in radio range collapses
-into one client and a single phone pairing would authenticate all of them without
-the key. LeaveSafe refuses to advertise there rather than offer that. Wi-Fi
-pairing is unaffected everywhere.
-
 **The event log records when the machine was left alone.** Owner-readable only,
 so anyone who can read your home directory can read it.
 

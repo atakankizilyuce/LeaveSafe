@@ -11,6 +11,21 @@ diff is small.
 
 ## [Unreleased]
 
+### Removed
+
+- **Bluetooth pairing is gone.** It only ever ran on macOS — the Windows and
+  Linux stacks do not report which device performed a write, so a pairing there
+  could not be kept to one phone — and it never learned the v2 handshake: the
+  path that accepted a Bluetooth client never sent the greeting, so the nonce
+  and the salt both ends now need never crossed. It has been unusable since
+  1.5.0 and little-used before that. Pairing is over the local network, which
+  is what the QR code has always offered.
+
+  With it go the `connection_mode` setting, its control in the browser
+  dashboard, and the Bluetooth entries in the dashboard's pairing screen. A
+  configuration file that still names `connection_mode` is read as before; the
+  field is ignored.
+
 ## [1.5.0] - 2026-09-22
 
 ### Security

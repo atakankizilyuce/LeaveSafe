@@ -1707,12 +1707,9 @@ func (h *Hub) applyConfigUpdate(msg ClientMessage, client *Client) (*configOutco
 // applyServerSettings copies the plain settings across and says whether any of
 // them will only take effect on the next start.
 func applyServerSettings(cfg *config.Config, p *ConfigPayload) bool {
-	needsRestart := p.Port != cfg.Port || (p.ConnectionMode != "" && p.ConnectionMode != cfg.ConnectionMode)
+	needsRestart := p.Port != cfg.Port
 
 	cfg.Port = p.Port
-	if p.ConnectionMode != "" {
-		cfg.ConnectionMode = p.ConnectionMode
-	}
 	cfg.MaxSessions = p.MaxSessions
 	cfg.MaxAuthAttempts = p.MaxAuthAttempts
 	cfg.LockoutSeconds = p.LockoutSeconds
@@ -1828,7 +1825,7 @@ func (h *Hub) announceConfigChanges(out *configOutcome) {
 	}
 	if out.needsRestart {
 		h.PushAlert(NewAlert(SensorSystem, "warning",
-			"The port or the Bluetooth mode changed — restart required to take effect"))
+			"The port changed — restart required to take effect"))
 	}
 	if out.geoURLRejected {
 		h.PushAlert(NewAlert(SensorSystem, "warning", "Geolocation endpoint must use https:// — change ignored"))
@@ -1861,7 +1858,6 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	}
 
 	oldPort := cfg.Port
-	oldMode := cfg.ConnectionMode
 	*cfg = *defaults
 	cfg.EnabledSensors = nil
 
@@ -1894,9 +1890,9 @@ func (h *Hub) handleResetConfig(msg ClientMessage, client *Client) {
 	})
 	h.broadcastStatus()
 
-	if oldPort != cfg.Port || oldMode != cfg.ConnectionMode {
+	if oldPort != cfg.Port {
 		h.PushAlert(NewAlert(SensorSystem, "warning",
-			"The port or the Bluetooth mode changed — restart required to take effect"))
+			"The port changed — restart required to take effect"))
 	}
 	log.Info("Configuration reset to defaults")
 }
@@ -1933,7 +1929,6 @@ func configToPayload(cfg *config.Config) ConfigPayload {
 		DisconnectGraceSeconds: cfg.DisconnectGraceSeconds,
 		AutoArmOnLock:          cfg.AutoArmOnLock,
 		InputThreshold:         cfg.InputThreshold,
-		ConnectionMode:         cfg.ConnectionMode,
 		UpdateCheck:            cfg.UpdateCheckEnabled(),
 		UpdateChannel:          cfg.UpdateChannel,
 		UpdateCheckHours:       cfg.UpdateCheckHours,

@@ -111,7 +111,6 @@ type Config struct {
 	Language       string          `json:"language,omitempty"`
 	Alarm          AlarmConfig     `json:"alarm"`
 	PinProtection  PinProtection   `json:"pin_protection"`
-	ConnectionMode string          `json:"connection_mode,omitempty"`
 	EnabledSensors map[string]bool `json:"enabled_sensors,omitempty"`
 	Location       Location        `json:"location"`
 }
@@ -142,7 +141,6 @@ func Default() *Config {
 				{DelaySeconds: 30, Action: "full_volume", VolumePercent: 100},
 			},
 		},
-		ConnectionMode: "wifi",
 		PinProtection: PinProtection{
 			Enabled: false,
 		},
@@ -342,15 +340,6 @@ func (c *Config) dropInsecureURLs(v *adjustments) {
 // correctUnknownChoices replaces a value that is not one of the ones the program
 // knows. A typo must not stop a security monitor from starting.
 func (c *Config) correctUnknownChoices(v *adjustments) {
-	if c.ConnectionMode != "" {
-		switch c.ConnectionMode {
-		case "wifi", "bluetooth", "both":
-		default:
-			v.notef("connection_mode was %q, which is not one of wifi, bluetooth or both — using wifi", c.ConnectionMode)
-			c.ConnectionMode = "wifi"
-		}
-	}
-
 	// A value nobody recognizes is cleared rather than replaced with a guess:
 	// empty means "ask", and asking is a better answer than picking a language
 	// for someone on the strength of a typo.
