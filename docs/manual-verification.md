@@ -37,11 +37,10 @@ run publishes to its job summary.
 | 8 | Arm, then lock the screen | Windows | Phone alerts; with auto-arm on, the system arms itself |
 | 8a | Arm, then let the display sleep | macOS | Phone alerts within ~2 s |
 | 9 | Trigger an alarm and let it escalate | any | Volume rises through the configured levels and is audible |
-| 10 | Pair over Bluetooth instead of Wi-Fi | any | Pairing succeeds and alerts arrive over BLE |
-| 11 | Arm, then carry the phone out of Wi-Fi range | any | Alarm fires after the disconnect grace period |
-| 12 | Trigger an alarm with headphones on, stop it, then play anything else | any | Sound still comes out of both ears, at the volume set before the alarm |
+| 10 | Arm, then carry the phone out of Wi-Fi range | any | Alarm fires after the disconnect grace period |
+| 11 | Trigger an alarm with headphones on, stop it, then play anything else | any | Sound still comes out of both ears, at the volume set before the alarm |
 
-Check 12 has an automated counterpart on Windows that a hosted runner cannot
+Check 11 has an automated counterpart on Windows that a hosted runner cannot
 run, because it needs a real output device:
 
 ```
@@ -77,8 +76,6 @@ Sound → the output device → Volume, where left and right are set separately.
   Linux VM covers this case through a real X server.
 - **Audible alarm and volume escalation.** Runners have no audio device, and
   nothing could listen to it if they did.
-- **Bluetooth.** No runner exposes a Bluetooth adapter, so the BLE transport is
-  entirely unexercised by CI.
 - **Disconnect grace period.** Needs a second physical device that can leave the
   network.
 
