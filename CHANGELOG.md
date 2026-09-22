@@ -11,6 +11,29 @@ diff is small.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-22
+
+### Security
+
+- **Nothing leaves in the clear after the acceptance any more.** The acceptance
+  is the last frame either end writes unencrypted, and that was true of the code
+  and not of the wire: it was written on one line and the session installed on
+  the next, with nothing held in between. Anything that reached the application
+  from another goroutine in that window — an alarm the sensors had just noticed,
+  a status broadcast, a dismissal typed at the laptop — went out unencrypted on
+  a connection both ends had agreed to seal.
+
+  The window was a few microseconds wide and it was the exact downgrade the v2
+  handshake exists to make impossible: a frame anything on the network could
+  read, on a link neither end would ever know had carried one.
+
+  Sealing first and accepting afterwards would only trade it for a worse fault —
+  a racing frame arriving sealed before the acceptance that announces the seal,
+  which the application reads as a handshake message, cannot parse, and fails the
+  pairing over for a reason neither end can explain. So both halves are written
+  under one lock, and there is no instant in which a sender can find the
+  connection accepted and not yet sealed.
+
 ### Removed
 
 - **Bluetooth pairing is gone.** It only ever ran on macOS — the Windows and
