@@ -158,7 +158,54 @@ var keyPattern = regexp.MustCompile(`\d{4}-\d{4}-\d{4}-\d{4}`)
 // until it is serving. The process is stopped when the test ends.
 func Start(t *testing.T, opts Options) *App {
 	t.Helper()
-	return StartIn(t, t.TempDir(), opts)
+	return StartIn(t, homeDir(t), opts)
+}
+
+// howLongWindowsGetsToLetGo bounds the wait for a home directory to become
+// removable — see homeDir for what is being waited on.
+const howLongWindowsGetsToLetGo = 10 * time.Second
+
+// homeDir returns an isolated home directory, removed when the test ends.
+//
+// t.TempDir would do this, and did, except for who else touches the
+// directory. This is the only temp dir in the suite that a separate process
+// writes into, and on Windows that is enough for the cleanup to fail a test
+// that passed: an antivirus or indexer opens a file the app has just written,
+// with FILE_SHARE_DELETE, so the remove succeeds as delete-pending, the name
+// lingers until that last handle closes, and the rmdir of the parent reports
+// ERROR_DIR_NOT_EMPTY. testing.removeAll retries ERROR_ACCESS_DENIED and
+// ERROR_SHARING_VIOLATION and nothing else, so it never waits this one out; it
+// fails on the first try, with "The directory is not empty", after every
+// assertion in the test has already passed.
+//
+// The suite has lost runs to it on two different lifecycle tests, and neither
+// of them — nor any other test here — asserts anything about how quickly
+// Windows lets go of a file. So the directory is ours: the removal retries,
+// and when it still cannot have it, it says so and leaves it. A directory left
+// behind on a throwaway runner costs nothing. A red tick on a green test run
+// costs a merge, and teaches everybody reading it to retry CI without looking.
+func homeDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "leavesafe-home")
+	if err != nil {
+		t.Fatalf("create home dir: %v", err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(howLongWindowsGetsToLetGo)
+		for {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Logf("leaving %s behind: still not removable after %s (%v)",
+					dir, howLongWindowsGetsToLetGo, err)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	return dir
 }
 
 // StartIn launches the binary against an existing home directory. Use it to
