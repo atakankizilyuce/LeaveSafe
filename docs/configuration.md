@@ -34,7 +34,6 @@ heartbeat, a year-long lockout — are clamped with a line in the log saying so.
 | `update_check` | `true` | Ask GitHub whether a newer release exists, and say so on the dashboard and the phone |
 | `update_channel` | `stable` | Which releases count: `stable`, or `beta` for prereleases as well |
 | `update_check_hours` | `24` | How often to ask; clamped to between 6 hours and a week |
-| `connection_mode` | `wifi` | Transport mode (`wifi`, `bluetooth`, or `both`) |
 | `location.enabled` | `false` | Report where this machine is while armed |
 | `location.phone_anchor` | `true` | Use the paired phone's position when arming |
 | `location.ip_fallback` | `true` | Look up the public IP for a city-level position |
