@@ -161,7 +161,6 @@ func TestValidateClampsNonsense(t *testing.T) {
 	cfg.LockoutSeconds = 999999
 	cfg.Port = 70000
 	cfg.InputThreshold = 0
-	cfg.ConnectionMode = "carrier-pigeon"
 
 	notes := cfg.Validate()
 
@@ -182,10 +181,7 @@ func TestValidateClampsNonsense(t *testing.T) {
 	if cfg.InputThreshold < 1 {
 		t.Errorf("InputThreshold = %d, want it clamped to at least 1", cfg.InputThreshold)
 	}
-	if cfg.ConnectionMode != "wifi" {
-		t.Errorf("ConnectionMode = %q, want the unknown value replaced", cfg.ConnectionMode)
-	}
-	if len(notes) < 6 {
+	if len(notes) < 5 {
 		t.Errorf("Validate reported %d adjustments, want one per clamped field: %v", len(notes), notes)
 	}
 }

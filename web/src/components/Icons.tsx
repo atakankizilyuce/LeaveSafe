@@ -61,7 +61,6 @@ const ACTION: Record<string, Shape[]> = {
        the button and the field say the same word twice: once in text, once in
        shape. */
     key: [{ c: [7.5, 15.5, 5.5] }, { p: 'm21 2-9.6 9.6' }, { p: 'm15.5 7.5 3 3L22 7l-3-3' }],
-    bluetooth: [{ p: 'm7 7 10 10-5 5V2l5 5L7 17' }],
 
     /* Dismissing an alarm silences it. A tick would mean "yes, correct", which
        is not what the button does — it does not agree with the alert, it stops

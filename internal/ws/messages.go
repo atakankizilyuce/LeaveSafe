@@ -223,7 +223,6 @@ type ConfigPayload struct {
 	DisconnectGraceSeconds int                   `json:"disconnect_grace_seconds"`
 	AutoArmOnLock          bool                  `json:"auto_arm_on_lock"`
 	InputThreshold         int                   `json:"input_threshold"`
-	ConnectionMode         string                `json:"connection_mode,omitempty"`
 	UpdateCheck            bool                  `json:"update_check"`
 	UpdateChannel          string                `json:"update_channel,omitempty"`
 	UpdateCheckHours       int                   `json:"update_check_hours,omitempty"`

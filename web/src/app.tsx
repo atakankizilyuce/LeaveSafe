@@ -40,7 +40,7 @@ import {
     tripSensor,
     updateAvailable,
 } from './lib/store';
-import { connectBluetooth, connectWebSocket } from './lib/transport';
+import { connectWebSocket } from './lib/transport';
 
 const PING_MS = 15000;
 const RECONNECT_MS = 3000;
@@ -349,7 +349,7 @@ function handle(msg: ServerMessage) {
  * the same terms it went out on, and a later attempt with a different key must
  * not be what the old one reconnects as.
  */
-function pairHandlers(key: string, over: 'websocket' | 'bluetooth') {
+function pairHandlers(key: string) {
     return {
         onMessage: handle,
         onOpen: sendPendingKey,
@@ -365,7 +365,7 @@ function pairHandlers(key: string, over: 'websocket' | 'bluetooth') {
             if (hasToken()) {
                 link.value = 'lost';
                 warnDisconnected();
-                window.setTimeout(() => pair(key, over), RECONNECT_MS);
+                window.setTimeout(() => pair(key), RECONNECT_MS);
             } else {
                 pairing.value = false;
             }
@@ -379,13 +379,13 @@ function pairHandlers(key: string, over: 'websocket' | 'bluetooth') {
 }
 
 /**
- * Offers a pairing key to the laptop over one transport.
+ * Offers a pairing key to the laptop.
  *
  * Outside the component for the same reason handle is: it touches nothing the
  * component holds, and it outlives any one render — a dropped socket reconnects
  * through here three seconds later, whatever the page is doing by then.
  */
-function pair(key: string, over: 'websocket' | 'bluetooth') {
+function pair(key: string) {
     pairing.value = true;
     pairError.value = null;
     pendingKey = key;
@@ -397,22 +397,7 @@ function pair(key: string, over: 'websocket' | 'bluetooth') {
     authSent = false;
     sessionLive = false;
 
-    const handlers = pairHandlers(key, over);
-
-    if (over === 'bluetooth') {
-        connectBluetooth(handlers)
-            .then((t) => {
-                // Register first, then announce. The other way round sends the
-                // pairing key before there is anything to send it over.
-                setTransport(t);
-                handlers.onOpen();
-            })
-            .catch((err: Error) => {
-                pairing.value = false;
-                pairError.value = err.message;
-            });
-        return;
-    }
+    const handlers = pairHandlers(key);
 
     closeTransport();
     setTransport(connectWebSocket(handlers));
@@ -477,7 +462,7 @@ export function App() {
         if (fromQr) {
             window.history.replaceState({}, document.title, '/');
             setAutoKey(fromQr);
-            window.setTimeout(() => pair(fromQr.replace(/\D/g, ''), 'websocket'), 400);
+            window.setTimeout(() => pair(fromQr.replace(/\D/g, '')), 400);
             return;
         }
 
@@ -486,7 +471,7 @@ export function App() {
         // pairing back up rather than asking for the QR code again.
         const stored = loadSession();
         if (stored) {
-            window.setTimeout(() => pair(stored.key, 'websocket'), 100);
+            window.setTimeout(() => pair(stored.key), 100);
         }
     }, []);
 

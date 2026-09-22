@@ -48,8 +48,6 @@ vi.mock('../src/lib/transport', () => ({
             isOpen: () => true,
         };
     },
-    connectBluetooth: vi.fn(),
-    bluetoothSupported: () => false,
 }));
 
 // The return-visit path: a stored key, so the key goes out

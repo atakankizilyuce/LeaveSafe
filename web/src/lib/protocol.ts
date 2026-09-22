@@ -109,7 +109,6 @@ export interface AppConfig {
     disconnect_grace_seconds: number;
     auto_arm_on_lock: boolean;
     input_threshold: number;
-    connection_mode: string;
     update_check: boolean;
     update_channel?: string;
     update_check_hours?: number;

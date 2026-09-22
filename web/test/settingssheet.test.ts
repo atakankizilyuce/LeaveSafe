@@ -35,7 +35,6 @@ function aConfig(overrides: Partial<AppConfig> = {}): AppConfig {
         disconnect_grace_seconds: 30,
         auto_arm_on_lock: false,
         input_threshold: 3,
-        connection_mode: 'local',
         update_check: true,
         alarm: { escalation_enabled: false },
         pin_protection: { enabled: false },

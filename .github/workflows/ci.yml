@@ -424,6 +424,19 @@ jobs:
         working-directory: web
         run: npm run build
 
+      # The built bundle, whether or not it matches what is committed. A
+      # machine with no Node on it cannot produce web/dist at all — and this
+      # repository commits it, because the binary embeds it — so the only way
+      # to update it from such a machine is to take the one this job just
+      # built. Kept short: it is a build output, not a record.
+      - name: Keep the bundle this job built
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 3
+
       - name: Committed web/dist matches the source
         run: |
           if ! git diff --exit-code --stat -- web/dist; then

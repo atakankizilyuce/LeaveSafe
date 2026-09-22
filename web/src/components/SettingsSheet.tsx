@@ -144,17 +144,6 @@ export function SettingsSheet() {
                                 max={65535}
                                 onChange={(port) => patch({ port })}
                             />
-                            <Select
-                                label="Connection"
-                                hint="restart required"
-                                value={draft.connection_mode}
-                                options={[
-                                    ['wifi', 'Wi-Fi only'],
-                                    ['bluetooth', 'Bluetooth only'],
-                                    ['both', 'Wi-Fi and Bluetooth'],
-                                ]}
-                                onChange={(connection_mode) => patch({ connection_mode })}
-                            />
                         </Group>
 
                         <Group title="Keeping others out" note="Limits on pairing attempts and sessions.">

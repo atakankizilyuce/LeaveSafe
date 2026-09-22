@@ -59,9 +59,9 @@ func TestDifferentHostsAreDifferentPeers(t *testing.T) {
 	}
 }
 
-// A transport with no network address of its own — Bluetooth, and the console —
-// still has to key on something, or every one of them would share the empty
-// string with whatever else produced it.
+// A transport with no network address of its own — the console, and whatever
+// comes next — still has to key on something, or every one of them would share
+// the empty string with whatever else produced it.
 func TestATransportWithNoAddressGetsANameOfItsOwn(t *testing.T) {
 	if got := NormalizeAddr(""); got != UnknownAddr {
 		t.Errorf("NormalizeAddr(%q) = %q, want %q", "", got, UnknownAddr)
@@ -77,7 +77,7 @@ func TestSomethingThatIsNotHostPortIsKeptWhole(t *testing.T) {
 		"192.0.2.10",             // an address with no port
 		"2001:db8::1",            // bare IPv6, which SplitHostPort will not take
 		"/tmp/leavesafe.sock",    // a path, if a transport ever hands one over
-		"bluetooth-aa:bb:cc",     // a made-up identifier with colons in it
+		"radio-aa:bb:cc",         // a made-up identifier with colons in it
 		strings.Repeat("x", 300), // something absurd
 	}
 	for _, addr := range cases {

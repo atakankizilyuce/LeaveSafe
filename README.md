@@ -29,7 +29,7 @@ Run it, scan the QR code, tap *Arm*, and walk away. The moment anyone touches yo
 
 Sometimes you have to leave your laptop on the table — the counter, the bathroom, a phone call outside. LeaveSafe watches it while you are gone: the charger, the lid, the USB ports, the screen, the network and the input devices. If any of them changes, you know within a second.
 
-No account. No server. No internet needed. Your phone talks straight to your laptop over your local network or Bluetooth, and the 16-digit pairing key never leaves the two of them.
+No account. No server. No internet needed. Your phone talks straight to your laptop over your local network, and the 16-digit pairing key never leaves the two of them.
 
 > The phone is the convenience, not the alarm. It has to be on the same network with the page open: when its screen locks, the operating system freezes the page, so an alert may not reach it until you open it again — and off that network it hears nothing at all. The laptop sounds regardless.
 
@@ -90,7 +90,6 @@ The pairing keys and the local address visible in the screenshots are per-run va
 - **Tap to arm, hold to disarm** — disarming asks for a second and a half of deliberate intent
 - **A local siren with volume escalation**, so the laptop sounds whether or not your phone is awake
 - **Disconnect alarm** if every phone drops off while armed, plus an optional scrypt-hashed disarm PIN
-- **Wi-Fi everywhere, Bluetooth Low Energy on macOS**
 - **Optional [location](docs/location.md)** — off by default, switchable while it runs
 - **[Starts when you log in](docs/service.md)**, survives a panicking sensor, and reports the gap after a crash
 - **An audit log** of every security event, and **signed provenance** on every release artifact
@@ -294,7 +293,7 @@ Settings persist in a config file between runs — [Configuration](docs/configur
 <img src="docs/assets/flow.svg" alt="Three steps: scan the QR code, arm from the phone, get told the moment a sensor changes" width="100%">
 </div>
 
-The binary runs three things at once: the sensor monitor that reads the operating system, a WebSocket (and optionally Bluetooth) server your phone connects to, and the terminal dashboard. Nothing else is involved — no broker, no relay, no account, no telemetry.
+The binary runs three things at once: the sensor monitor that reads the operating system, a WebSocket server your phone connects to, and the terminal dashboard. Nothing else is involved — no broker, no relay, no account, no telemetry.
 
 ### The sensors
 
@@ -316,9 +315,6 @@ Each is implemented natively per platform — `/sys` and `/proc` on Linux, Win32
 | Power · Lid · USB · Screen · Network · Input | ✅ | ✅ | ✅ |
 | Local alarm siren | ✅ | ✅ | ✅ |
 | Wi-Fi positioning | ✅ | ✅ | ❌ |
-| Bluetooth Low Energy | ❌ | ❌ | ✅ |
-
-Bluetooth pairing runs on macOS only: the Windows and Linux stacks do not tell the application *which* device sent a message, and a pairing that cannot be kept to one phone would authenticate every device in radio range. Wi-Fi pairing — what the QR code uses — works on all three.
 
 <details>
 <summary><b>The pairing handshake, step by step</b></summary>
