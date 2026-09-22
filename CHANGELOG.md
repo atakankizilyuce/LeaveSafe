@@ -11,6 +11,8 @@ diff is small.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-22
+
 ### Removed
 
 - **Bluetooth pairing is gone.** It only ever ran on macOS — the Windows and
