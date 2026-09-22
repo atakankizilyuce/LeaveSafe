@@ -1468,11 +1468,11 @@ func (h *Hub) handleAuth(client *Client, msg ClientMessage) {
 	// Only now, to a client that has proved it holds the pairing key. See
 	// ServerMessage.Addresses.
 	authOK.Addresses = h.addresses()
-	client.send(authOK)
-	// Only now. The acceptance is what tells the app the answer, so it is the
-	// last message either end writes in the clear; everything after it is
-	// sealed, in both directions, from this line.
-	client.sealFrom(sealed)
+	// The acceptance is what tells the app the answer, so it is the last
+	// message either end writes in the clear; everything after it is sealed,
+	// in both directions. Both halves under one lock — see acceptAndSeal —
+	// because a broadcast arriving between them used to go out unencrypted.
+	client.acceptAndSeal(authOK, sealed)
 
 	// An alarm already sounding is the first thing this phone needs, before the
 	// update notice and before anything else. A phone reconnects every time its
