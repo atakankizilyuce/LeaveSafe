@@ -75,6 +75,18 @@ type Client struct {
 	// pointer has a lock of its own; this one is over the pointer.
 	sealedMu sync.RWMutex
 	sealed   *session
+
+	// writeMu makes "is this connection sealed yet" a question with one answer
+	// for the whole of a write, rather than one answered and then acted on.
+	//
+	// Reading the pointer under sealedMu is not enough on its own. The
+	// acceptance is the last frame either end writes in the clear, and the
+	// session is installed immediately after it — so between those two lines
+	// there was a window in which any other goroutine's alarm, status or
+	// alarm_cleared went out unencrypted on a connection both ends had just
+	// agreed to seal. Narrow, and the exact downgrade the handshake exists to
+	// make impossible. See acceptAndSeal.
+	writeMu sync.Mutex
 }
 
 // sealedSession returns the session this connection agreed on, or nil.
@@ -84,9 +96,11 @@ func (c *Client) sealedSession() *session {
 	return c.sealed
 }
 
-// sealFrom seals everything this connection sends from here on. Called once,
-// from handleAuth, after the acceptance has gone out — the acceptance is the
-// last message either end writes in the clear.
+// sealFrom seals everything this connection sends from here on.
+//
+// Called only by acceptAndSeal, which holds the write lock across this and the
+// acceptance that precedes it. Called on its own it would reopen the window it
+// exists to close.
 func (c *Client) sealFrom(s *session) {
 	c.sealedMu.Lock()
 	defer c.sealedMu.Unlock()
@@ -143,6 +157,31 @@ func (c *Client) close() {
 
 // send marshals and writes a message to the client.
 func (c *Client) send(msg ServerMessage) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	c.sendLocked(msg)
+}
+
+// acceptAndSeal writes the acceptance in the clear and seals everything after
+// it, with nothing able to slip between the two.
+//
+// One lock over both halves, because the order alone cannot be made safe. Seal
+// first and a broadcast racing this reaches a phone as a sealed frame before
+// the acceptance that tells it a seal was agreed, which reads as a handshake
+// message that will not parse. Send first and the same broadcast goes out in
+// the clear. Holding the write lock across both leaves no instant in which
+// either is possible: every other sender waits, and what it waits for is the
+// connection becoming sealed.
+func (c *Client) acceptAndSeal(msg ServerMessage, s *session) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	// Still in the clear: the session is not installed until the line below,
+	// and the phone cannot open anything before it has read this.
+	c.sendLocked(msg)
+	c.sealFrom(s)
+}
+
+func (c *Client) sendLocked(msg ServerMessage) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		log.Errorf("marshal message: %v", err)
