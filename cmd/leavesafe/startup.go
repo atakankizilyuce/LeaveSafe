@@ -619,4 +619,3 @@ func checkForRelease(ctx context.Context, channel string) (update.Result, error)
 func (a *app) reportUpdate(r update.Result, method update.Method) {
 	announceUpdate(a.sb, a.hub, r, method)
 }
-
