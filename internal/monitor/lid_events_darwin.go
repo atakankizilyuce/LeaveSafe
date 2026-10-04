@@ -104,9 +104,12 @@ func (api *lidIO) subscribe(ctx context.Context) (<-chan bool, func(), error) {
 	events := make(chan bool, 8)
 	ready := make(chan error, 1)
 	finished := make(chan struct{})
-	runCtx, cancel := context.WithCancel(ctx)
+	cancelReady := make(chan context.CancelFunc, 1)
 	ref := uintptr(nextLidSubscription.Add(1))
 	go func() {
+		runCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		cancelReady <- cancel
 		defer close(finished)
 		defer close(events)
 		runtime.LockOSThread()
@@ -115,6 +118,7 @@ func (api *lidIO) subscribe(ctx context.Context) (<-chan bool, func(), error) {
 			ready <- err
 		}
 	}()
+	cancel := <-cancelReady
 	stop := func() { cancel(); <-finished }
 	select {
 	case err := <-ready:

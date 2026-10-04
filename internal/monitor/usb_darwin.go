@@ -15,10 +15,12 @@ import (
 type USBSensor struct {
 	lastHash        string
 	lastDeviceNames []string
+	read            func() (string, []string, error)
+	every           time.Duration
 }
 
 func NewUSBSensor() *USBSensor {
-	return &USBSensor{}
+	return &USBSensor{read: getUSBSnapshotDarwin, every: 3 * time.Second}
 }
 
 func (s *USBSensor) Name() string        { return "usb" }
@@ -30,14 +32,14 @@ func (s *USBSensor) Available() bool {
 }
 
 func (s *USBSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	hash, names, err := getUSBSnapshotDarwin()
+	hash, names, err := s.read()
 	if err != nil {
 		return err
 	}
 	s.lastHash = hash
 	s.lastDeviceNames = names
 
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(s.every)
 	defer ticker.Stop()
 
 	for {
@@ -45,15 +47,16 @@ func (s *USBSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			hash, names, err := getUSBSnapshotDarwin()
+			hash, names, err := s.read()
 			if err != nil {
 				continue
 			}
 			if hash != s.lastHash {
-				alerts <- Alert{
-					Sensor:  "usb",
-					Level:   AlertCritical,
+				if !sendAlert(ctx, alerts, Alert{
+					Sensor: "usb", Level: AlertCritical,
 					Message: "USB device configuration changed!",
+				}) {
+					return nil
 				}
 				s.lastHash = hash
 				s.lastDeviceNames = names
@@ -66,7 +69,7 @@ func (s *USBSensor) Stop() error { return nil }
 
 func getUSBSnapshotDarwin() (string, []string, error) {
 	return usbSnapshotDarwin(func(kind string) ([]byte, error) {
-		return exec.Command("system_profiler", kind, "-detailLevel", "mini").Output()
+		return exec.Command("/usr/sbin/system_profiler", kind, "-detailLevel", "mini").Output()
 	})
 }
 

@@ -3,8 +3,11 @@
 package monitor
 
 import (
+	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestDisplayRead(t *testing.T) {
@@ -59,5 +62,109 @@ func TestUSBProfilerFallback(t *testing.T) {
 	denied := errors.New("permission denied")
 	if _, _, err := usbSnapshotDarwin(func(string) ([]byte, error) { return nil, denied }); !errors.Is(err, denied) {
 		t.Fatalf("profiler failure was hidden: %v", err)
+	}
+}
+
+func TestUSBFallbackFailure(t *testing.T) {
+	denied := errors.New("profiler unavailable")
+	_, _, err := usbSnapshotDarwin(func(kind string) ([]byte, error) {
+		if kind == "SPUSBDataType" {
+			return nil, nil
+		}
+		return nil, denied
+	})
+	if !errors.Is(err, denied) {
+		t.Fatalf("fallback failure hidden: %v", err)
+	}
+}
+
+func TestUSBWatchingChangesAndCancellation(t *testing.T) {
+	s := NewUSBSensor()
+	s.every = time.Millisecond
+	var reads atomic.Int32
+	s.read = func() (string, []string, error) {
+		switch reads.Add(1) {
+		case 1:
+			return "baseline", []string{"keyboard"}, nil
+		case 2:
+			return "", nil, errors.New("temporary profiler failure")
+		default:
+			return "changed", []string{"keyboard", "mouse"}, nil
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	alerts := make(chan Alert, 8)
+	done := make(chan error, 1)
+	go func() { done <- s.Start(ctx, alerts) }()
+	select {
+	case alert := <-alerts:
+		if alert.Sensor != "usb" || alert.Level != AlertCritical {
+			t.Fatal(alert)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("USB change was not reported")
+	}
+	// Repeated identical snapshots must not generate repeated alarms.
+	for reads.Load() < 6 {
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if len(alerts) != 0 || s.lastHash != "changed" || len(s.lastDeviceNames) != 2 {
+		t.Fatal("duplicate USB alert or stale snapshot")
+	}
+}
+
+func TestUSBStopUnblocksAlertAndReportsBaselineFailure(t *testing.T) {
+	s := NewUSBSensor()
+	s.every = time.Millisecond
+	denied := errors.New("profiler denied")
+	s.read = func() (string, []string, error) { return "", nil, denied }
+	if err := s.Start(context.Background(), make(chan Alert)); !errors.Is(err, denied) {
+		t.Fatal(err)
+	}
+	var reads atomic.Int32
+	pending := make(chan struct{})
+	s.read = func() (string, []string, error) {
+		if reads.Add(1) == 1 {
+			return "before", nil, nil
+		}
+		close(pending)
+		return "after", nil, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.Start(ctx, make(chan Alert)) }()
+	<-pending
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("disarming blocked on USB alert delivery")
+	}
+}
+
+func TestDisplayAvailabilityAndReadAdapter(t *testing.T) {
+	savedMain, savedAsleep := mainDisplayID, displayIsAsleep
+	defer func() { mainDisplayID, displayIsAsleep = savedMain, savedAsleep }()
+	mainDisplayID, displayIsAsleep = nil, nil
+	if NewScreenSensor().Available() {
+		t.Fatal("missing display services are available")
+	}
+	mainDisplayID = func() uint32 { return 1 }
+	displayIsAsleep = func(uint32) int32 { return 0 }
+	if !NewScreenSensor().Available() {
+		t.Fatal("display services unavailable")
+	}
+	on, err := isScreenOnDarwin()
+	if err != nil || !on {
+		t.Fatalf("on=%v err=%v", on, err)
 	}
 }

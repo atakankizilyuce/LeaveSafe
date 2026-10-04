@@ -51,11 +51,11 @@ func TestLidSubscriptionRoutesEventsAndCleansUp(t *testing.T) {
 	}
 	deliverLidEvent(ref, 0, 123, 1)
 	deliverLidEvent(ref, 0, clamshellChanged, 1)
-	if open := <-events; open {
+	if <-events {
 		t.Fatal("closed lid reported as open")
 	}
 	deliverLidEvent(ref, 0, clamshellChanged, 0)
-	if open := <-events; !open {
+	if !<-events {
 		t.Fatal("open lid reported as closed")
 	}
 	// A full queue cannot block a native callback and stall the system run loop.
@@ -177,4 +177,20 @@ func TestLidCancellationUnblocksAlertDelivery(t *testing.T) {
 	go func() { defer wg.Done(); _ = s.Start(ctx, make(chan Alert)) }()
 	cancel()
 	wg.Wait()
+}
+
+func TestLidNativeAdapterReportsUnavailableServices(t *testing.T) {
+	savedIO, savedError := nativeLidIO, nativeLidError
+	defer func() { nativeLidIO, nativeLidError = savedIO, savedError }()
+	denied := errors.New("IOKit unavailable")
+	nativeLidError = denied
+	if _, _, err := subscribeLid(context.Background()); !errors.Is(err, denied) {
+		t.Fatal(err)
+	}
+	nativeLidIO, nativeLidError = fakeLidIO(), nil
+	_, stop, err := subscribeLid(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
 }
