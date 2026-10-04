@@ -4,6 +4,7 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,14 +17,16 @@ type LidSensor struct {
 	// read is how the lid is asked and every is how often. Both are filled
 	// in by the constructor; a test replaces them to drive the loop without the
 	// hardware, and without waiting two seconds for every reading.
-	read  func(context.Context) (bool, error)
-	every time.Duration
+	read   func(context.Context) (bool, error)
+	every  time.Duration
+	events func(context.Context) (<-chan bool, func(), error)
 }
 
 func NewLidSensor() *LidSensor {
 	return &LidSensor{
-		read:  func(context.Context) (bool, error) { return isLidOpenDarwin() },
-		every: 2 * time.Second,
+		read:   func(context.Context) (bool, error) { return isLidOpenDarwin() },
+		every:  2 * time.Second,
+		events: subscribeLid,
 	}
 }
 
@@ -39,12 +42,44 @@ func (s *LidSensor) Available() bool {
 }
 
 func (s *LidSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	return poll{
-		every: s.every,
-		read:  s.read,
-		alert: lidAlert,
-		watch: &s.watch,
-	}.run(ctx, alerts)
+	events, stop, err := s.events(ctx)
+	if err != nil {
+		return err
+	}
+	defer stop()
+	s.watch.forget()
+	open, err := s.read(ctx)
+	if err != nil {
+		return err
+	}
+	s.watch.sample(open)
+	ticker := time.NewTicker(s.every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case now, ok := <-events:
+			if !ok {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("lid notifications stopped")
+			}
+			if !s.report(ctx, alerts, now) {
+				return nil
+			}
+		case <-ticker.C:
+			now, err := s.read(ctx)
+			if err == nil && !s.report(ctx, alerts, now) {
+				return nil
+			}
+		}
+	}
+}
+
+func (s *LidSensor) report(ctx context.Context, alerts chan<- Alert, open bool) bool {
+	return !s.watch.sample(open) || sendAlert(ctx, alerts, lidAlert(open))
 }
 
 func (s *LidSensor) Stop() error { return nil }

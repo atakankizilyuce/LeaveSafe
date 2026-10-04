@@ -4,9 +4,33 @@ package monitor
 
 import (
 	"context"
-	"os/exec"
+	"fmt"
 	"time"
+
+	"github.com/ebitengine/purego"
 )
+
+var (
+	mainDisplayID   func() uint32
+	displayIsAsleep func(uint32) int32
+)
+
+func init() {
+	lib, err := purego.Dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", purego.RTLD_LAZY)
+	if err != nil {
+		return
+	}
+	main, err := purego.Dlsym(lib, "CGMainDisplayID")
+	if err != nil {
+		return
+	}
+	asleep, err := purego.Dlsym(lib, "CGDisplayIsAsleep")
+	if err != nil {
+		return
+	}
+	purego.RegisterFunc(&mainDisplayID, main)
+	purego.RegisterFunc(&displayIsAsleep, asleep)
+}
 
 // ScreenSensor monitors the display/screen state on macOS.
 type ScreenSensor struct {
@@ -28,7 +52,7 @@ func NewScreenSensor() *ScreenSensor {
 
 func (s *ScreenSensor) Name() string        { return "screen" }
 func (s *ScreenSensor) DisplayName() string { return "Screen/Display" }
-func (s *ScreenSensor) Available() bool     { return true }
+func (s *ScreenSensor) Available() bool     { return mainDisplayID != nil && displayIsAsleep != nil }
 
 func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 	return poll{
@@ -42,9 +66,22 @@ func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 func (s *ScreenSensor) Stop() error { return nil }
 
 func isScreenOnDarwin() (bool, error) {
-	out, err := exec.Command("ioreg", "-r", "-d", "1", "-c", "IODisplayWrangler").Output()
-	if err != nil {
-		return true, err
+	return readDisplayOn(mainDisplayID, displayIsAsleep)
+}
+
+// Modern Apple Silicon no longer exposes DevicePowerState on
+// IODisplayWrangler. Use Quartz instead of treating a missing field as "on".
+func readDisplayOn(main func() uint32, asleep func(uint32) int32) (bool, error) {
+	if main == nil || asleep == nil {
+		return false, fmt.Errorf("CoreGraphics display services unavailable")
 	}
-	return parseDisplayOn(string(out)), nil
+	id := main()
+	if id == 0 {
+		return false, fmt.Errorf("no main display available")
+	}
+	state := asleep(id)
+	if state < 0 {
+		return false, fmt.Errorf("cannot read display sleep state")
+	}
+	return state == 0, nil
 }

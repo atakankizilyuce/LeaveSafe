@@ -107,6 +107,7 @@ func TestASensorThatCannotTakeItsFirstReadingSaysSo(t *testing.T) {
 func onLid(t *testing.T, script *readings[bool]) chan Alert {
 	t.Helper()
 	lid := NewLidSensor()
+	prepareLidTest(lid)
 	lid.every = pollFast
 	lid.read = script.asked
 	alerts, _, _ := watching(t, lid)
@@ -203,6 +204,7 @@ func polling(t *testing.T) map[string]Sensor {
 	power.read = scripted(true).asked
 
 	lid := NewLidSensor()
+	prepareLidTest(lid)
 	lid.every = pollFast
 	lid.read = scripted(open).asked
 
