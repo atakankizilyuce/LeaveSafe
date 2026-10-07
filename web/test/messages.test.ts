@@ -126,7 +126,12 @@ async function pairedApp(accept: Record<string, unknown> = {}) {
     // Opening the socket sends the held key, which is what lets the acceptance
     // below be believed rather than ignored as unbidden.
     handlers.onOpen();
-    handlers.onMessage({ type: 'auth_ok', token: 'a-token', sensors: [], ...accept });
+    handlers.onMessage({
+        type: 'auth_ok',
+        token: 'a-token',
+        sensors: [],
+        ...accept,
+    });
 
     return handlers;
 }
@@ -230,7 +235,9 @@ it('carries a sensor failure through to the panel', async () => {
 
     handlers.onMessage({
         type: 'status',
-        sensor_states: { usb: { enabled: true, status: 'failed', failure: 'device gone' } },
+        sensor_states: {
+            usb: { enabled: true, status: 'failed', failure: 'device gone' },
+        },
     });
 
     expect(sensors.value[0].failure).toBe('device gone');
@@ -265,7 +272,11 @@ it('logs an alert at the time the laptop stamped it', async () => {
     handlers.onMessage({
         type: 'alert',
         ts: 1_700_000_000,
-        alert: { sensor: 'power', level: 'critical', message: 'Charger disconnected' },
+        alert: {
+            sensor: 'power',
+            level: 'critical',
+            message: 'Charger disconnected',
+        },
     });
 
     expect(log.value[0].at).toBe(1_700_000_000_000);
@@ -278,7 +289,11 @@ it('logs an unstamped alert at the time it arrived', async () => {
 
     handlers.onMessage({
         type: 'alert',
-        alert: { sensor: 'power', level: 'critical', message: 'Charger disconnected' },
+        alert: {
+            sensor: 'power',
+            level: 'critical',
+            message: 'Charger disconnected',
+        },
     });
 
     expect(log.value[0].at).toBe(Date.now());
@@ -314,7 +329,10 @@ it('raises the overlay for an alarm that was already sounding', async () => {
 it('gives a wordless alarm something to say', async () => {
     const handlers = await pairedApp();
 
-    handlers.onMessage({ type: 'alarm_active', alert: { sensor: 'lid', level: 'critical', message: '' } });
+    handlers.onMessage({
+        type: 'alarm_active',
+        alert: { sensor: 'lid', level: 'critical', message: '' },
+    });
 
     expect(alarm.value?.message).toBe('Something touched your laptop.');
 });
@@ -365,7 +383,11 @@ it('takes the position the laptop reports', async () => {
 
     handlers.onMessage({
         type: 'location',
-        location: { enabled: true, available: true, fix: { lat: 51.5, lon: -0.1, accuracy_m: 30 } },
+        location: {
+            enabled: true,
+            available: true,
+            fix: { lat: 51.5, lon: -0.1, accuracy_m: 30 },
+        },
     });
 
     expect(position.value?.fix?.lat).toBe(51.5);
@@ -378,7 +400,12 @@ it('marks an available update without interrupting anything', async () => {
 
     handlers.onMessage({
         type: 'update_available',
-        update: { running: '1.0.0', latest: '1.1.0', url: 'https://example.invalid', channel: 'stable' },
+        update: {
+            running: '1.0.0',
+            latest: '1.1.0',
+            url: 'https://example.invalid',
+            channel: 'stable',
+        },
     });
 
     expect(updateAvailable.value?.latest).toBe('1.1.0');
@@ -424,7 +451,7 @@ it('answers a refusal on a live session with a toast, not by unpairing', async (
 
     handlers.onMessage({ type: 'auth_fail', reason: 'Wrong PIN' });
 
-    expect(toast.value).toBe('Wrong PIN');
+    expect(toast.value).toBe('Could not complete this action. Check your entry and try again.');
 });
 
 it('says something even when a refusal on a live session gives no reason', async () => {
@@ -432,7 +459,7 @@ it('says something even when a refusal on a live session gives no reason', async
 
     handlers.onMessage({ type: 'auth_fail' });
 
-    expect(toast.value).toBe('Refused');
+    expect(toast.value).toBe('Could not complete this action. Check your entry and try again.');
 });
 
 // Nothing but the handshake is acted on before the laptop has been accepted.

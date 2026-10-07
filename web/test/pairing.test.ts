@@ -6,9 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { App } from '../src/app';
 import { pairError } from '../src/lib/store';
 
-// What the phone says when a pairing key is refused. The count of attempts left
-// is the only thing telling the user whether the next try is worth making, and
-// it is the difference between a typo and a laptop that has rotated its key.
+// Pairing errors use fixed copy; peer details and attempt counters stay private.
 
 const stub = vi.hoisted(() => ({
     handlers: null as Record<string, (arg?: unknown) => void> | null,
@@ -17,7 +15,12 @@ const stub = vi.hoisted(() => ({
 vi.mock('../src/lib/transport', () => ({
     connectWebSocket: (handlers: Record<string, (arg?: unknown) => void>) => {
         stub.handlers = handlers;
-        return { kind: 'websocket', send: () => {}, close: () => {}, isOpen: () => true };
+        return {
+            kind: 'websocket',
+            send: () => {},
+            close: () => {},
+            isOpen: () => true,
+        };
     },
 }));
 
@@ -68,7 +71,7 @@ function refuse(alert: Record<string, unknown>): string | null {
 // One mount, then every refusal in turn. The app is mounted exactly once in
 // production, and each of these is just another message arriving on the socket
 // it already has.
-it('says how many tries are left when a key is refused', async () => {
+it('does not expose peer errors or attempt counts when pairing is refused', async () => {
     await act(async () => {
         render(h(App, {}), host);
     });
@@ -84,21 +87,29 @@ it('says how many tries are left when a key is refused', async () => {
 
     handlers.onOpen();
 
-    expect(refuse({ reason: 'That key is wrong.', remaining_attempts: 3 })).toBe(
-        'That key is wrong. 3 attempts left.',
-    );
+    expect(
+        refuse({
+            reason: 'SQLSTATE secret-key /private/config',
+            remaining_attempts: 3,
+        }),
+    ).toBe('Could not pair with the device. Check the code and try again.');
 
     // The last attempt is written in the singular, because "1 attempts left" is
     // the sort of thing that makes a user doubt the rest of the sentence.
-    expect(refuse({ reason: 'That key is wrong.', remaining_attempts: 1 })).toBe(
-        'That key is wrong. 1 attempt left.',
-    );
+    expect(
+        refuse({
+            reason: 'SQLSTATE secret-key /private/config',
+            remaining_attempts: 1,
+        }),
+    ).toBe('Could not pair with the device. Check the code and try again.');
 
     // An older laptop sends no count. Saying nothing about attempts is better
     // than guessing at a number the user would then act on.
-    expect(refuse({ reason: 'That key is wrong.' })).toBe('That key is wrong.');
+    expect(refuse({ reason: 'SQLSTATE secret-key /private/config' })).toBe(
+        'Could not pair with the device. Check the code and try again.',
+    );
 
     // No count and no reason either: the phone still has to say something, and
     // what it knows for certain is that the key did not open the laptop.
-    expect(refuse({})).toBe('That key was refused.');
+    expect(refuse({})).toBe('Could not pair with the device. Check the code and try again.');
 });

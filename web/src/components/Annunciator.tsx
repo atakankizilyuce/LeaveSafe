@@ -234,7 +234,7 @@ function capState(sensor: SensorInfo, lit: boolean): string {
 /** Why this one is standing outside the shield, in the user's own terms. */
 function whyNot(sensor: SensorInfo): string {
     if (!sensor.available) return 'no sensor on this machine';
-    if (sensor.failure) return 'its driver stopped answering';
+    if (sensor.failure) return 'it is not working right now';
     return 'you switched it off';
 }
 
@@ -277,8 +277,8 @@ function Reference() {
                         )}
                         {sensor.available && sensor.failure && (
                             <p class="sref-warn">
-                                This sensor is not watching right now: {sensor.failure}. The laptop is
-                                restarting it, and the station clears when it comes back.
+                                This sensor is not working right now. Check it on the device before turning
+                                protection on.
                             </p>
                         )}
                     </div>
