@@ -57,7 +57,11 @@ export function Log() {
                     {entries.map((entry) => (
                         <li key={entry.id} class="log-entry" data-level={entry.level}>
                             <span class="log-time figure">{clock(entry.at)}</span>
-                            <span class="log-msg">{entry.message}</span>
+                            <span class="log-msg">
+                                {entry.sensor === 'system'
+                                    ? 'A setting needs attention. Check the settings on the device.'
+                                    : entry.message}
+                            </span>
                         </li>
                     ))}
                 </ol>

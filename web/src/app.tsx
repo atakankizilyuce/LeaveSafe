@@ -116,11 +116,6 @@ function afterPairing() {
     }
 }
 
-/** "3 attempts left." — what is left after a pairing key was refused. */
-function attemptsLeft(count: number): string {
-    return `${count} attempt${count === 1 ? '' : 's'} left.`;
-}
-
 /** Sends the held key, if there is one still waiting. */
 function sendPendingKey() {
     if (pendingKey === null) return;
@@ -196,26 +191,31 @@ function onAuthOk(msg: ServerMessage) {
     void offerPushSubscription(msg.push_key);
 }
 
-function onAuthFail(msg: ServerMessage) {
+function onAuthFail(_msg: ServerMessage) {
     pairing.value = false;
     if (hasToken()) {
-        showToast(msg.reason ?? 'Refused');
+        showToast('Could not complete this action. Check your entry and try again.');
         return;
     }
 
     // The stored key no longer opens this laptop — rotated, or from a different
     // one. Keeping it would retry forever.
     clearSession();
-    const reason = msg.reason ?? 'That key was refused.';
-    const left = msg.remaining_attempts;
-    pairError.value = left ? `${reason} ${attemptsLeft(left)}` : reason;
+    pairError.value = 'Could not pair with the device. Check the code and try again.';
 }
 
 /** Folds a status update's sensor states onto the list the panel is showing. */
 function applySensorStates(states: Record<string, SensorState>) {
     sensors.value = sensors.value.map((s) => {
         const next = states[s.name];
-        return next ? { ...s, enabled: next.enabled, status: next.status, failure: next.failure } : s;
+        return next
+            ? {
+                  ...s,
+                  enabled: next.enabled,
+                  status: next.status,
+                  failure: next.failure,
+              }
+            : s;
     });
 }
 
@@ -233,7 +233,10 @@ function onAlert(msg: ServerMessage) {
     if (!msg.alert) return;
 
     appendLog({
-        message: msg.alert.message,
+        message:
+            msg.alert.sensor === SYSTEM_NOTICE
+                ? 'A setting needs attention. Check the settings on the device.'
+                : msg.alert.message,
         level: msg.alert.level,
         sensor: msg.alert.sensor,
         at: msg.ts ? msg.ts * 1000 : Date.now(),
@@ -249,7 +252,7 @@ function onAlert(msg: ServerMessage) {
     // answers are "pause this sensor" and "stop using this sensor", and there is
     // no sensor called system to do either to.
     if (msg.alert.sensor === SYSTEM_NOTICE) {
-        showToast(msg.alert.message);
+        showToast('A setting needs attention. Check the settings on the device.');
         return;
     }
 

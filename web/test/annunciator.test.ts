@@ -96,7 +96,13 @@ it('reads "unavailable" on a machine that has no such sensor', () => {
 // "unavailable" is said first — the other words would all be claims about
 // something that is not there.
 it('says "unavailable" ahead of everything else', () => {
-    expect(stateOf({ available: false, enabled: false, failure: 'this never applies' })).toBe('unavailable');
+    expect(
+        stateOf({
+            available: false,
+            enabled: false,
+            failure: 'this never applies',
+        }),
+    ).toBe('unavailable');
 });
 
 // A trip is what the user opened the panel to read. A sensor that tripped and
@@ -146,7 +152,11 @@ it('sends the ones that are not covering you out, with a reason each', () => {
         sensor(),
         sensor({ name: 'lid', display_name: 'Lid', available: false }),
         sensor({ name: 'usb', display_name: 'USB', enabled: false }),
-        sensor({ name: 'input', display_name: 'Input', failure: 'the driver stopped answering' }),
+        sensor({
+            name: 'input',
+            display_name: 'Input',
+            failure: 'the driver stopped answering',
+        }),
     ]);
 
     const out = Array.from(host.querySelectorAll('.snode[data-place="out"]'));
@@ -156,7 +166,7 @@ it('sends the ones that are not covering you out, with a reason each', () => {
     expect(reasons).toEqual([
         'no sensor on this machine',
         'you switched it off',
-        'its driver stopped answering',
+        'it is not working right now',
     ]);
 });
 
@@ -249,7 +259,8 @@ it('says in the reference that a faulted sensor is not watching right now', () =
 
     tap('.ring-more');
 
-    expect(host.querySelector('.sref-warn')?.textContent).toContain('the charger driver stopped answering');
+    expect(host.textContent).not.toContain('the charger driver stopped answering');
+    expect(host.querySelector('.sref-warn')?.textContent).toContain('This sensor is not working right now.');
 });
 
 it('says in the reference that the machine has no such sensor', () => {
@@ -257,6 +268,7 @@ it('says in the reference that the machine has no such sensor', () => {
 
     tap('.ring-more');
 
+    expect(host.textContent).not.toContain('the charger driver stopped answering');
     expect(host.querySelector('.sref-warn')?.textContent).toContain('has no sensor for that');
 });
 

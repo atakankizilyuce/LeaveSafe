@@ -118,7 +118,7 @@ it('answers a laptop notice with a toast and a real sensor alert with the alarm'
         alert: { sensor: 'system', level: 'warning', message: 'Restart required' },
     });
 
-    expect(toast.value).toBe('Restart required');
+    expect(toast.value).toBe('A setting needs attention. Check the settings on the device.');
     expect(stub.startSiren).not.toHaveBeenCalled();
     // The full-screen overlay offers "pause this sensor" and "stop using this
     // sensor", and there is no sensor called system to do either to — so it
@@ -127,7 +127,11 @@ it('answers a laptop notice with a toast and a real sensor alert with the alarm'
 
     handlers.onMessage({
         type: 'alert',
-        alert: { sensor: 'power', level: 'critical', message: 'Charger disconnected' },
+        alert: {
+            sensor: 'power',
+            level: 'critical',
+            message: 'Charger disconnected',
+        },
     });
 
     expect(stub.startSiren).toHaveBeenCalledWith('Charger disconnected');
