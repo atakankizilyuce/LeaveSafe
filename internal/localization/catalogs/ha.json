@@ -9,7 +9,7 @@
   "  %s  State    %s": "  %s  Yanayi    %s",
   "  %s%s%s  %sDevice Security Monitor%s": "  %s%s%s  %sMai Lura da Tsaron Na'ura%s",
   "  %s%s[!] LeaveSafe was ARMED when it last stopped (armed at %s).%s": "  %s%s[!] Kariya ta LeaveSafe tana KUNNE lokacin tsayawarsa na ƙarshe (an kunna a %s).%s",
-  "  %sARMED%s since %s (%s ago)": "  %sKARIYA A KUNNE%s tun %s (da ya wuce %s)",
+  "  %sARMED%s since %s (%s ago)": "  %sKARIYA A KUNNE%s tun %s (%s da suka wuce)",
   "  %sDISARMED%s": "  %sKARIYA A KASHE%s",
   "  %sNo QR code for %s: %v — open the address by hand.%s\n": "  %sBabu lambar QR don %s: %v — buɗe adireshin da kanka.%s\n",
   "  %sScan to connect:%s": "  %sDuba lambar don haɗawa:%s",

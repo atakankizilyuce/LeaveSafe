@@ -171,7 +171,7 @@
   "NETWORK": "網絡",
   "Watches the network interfaces. Fires when the IP address changes.": "監察網絡介面。IP 位址改變時會觸發。",
   "INPUT": "輸入",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "監察鍵盤同觸控板。防護期間有任何輸入都會觸發。",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "監察鍵盤同觸控板。防護期間，輸入活動達到設定嘅靈敏度門檻時就會觸發。",
   "Language": "語言",
   "Use the device language": "使用裝置語言",
   "just now": "啱啱",

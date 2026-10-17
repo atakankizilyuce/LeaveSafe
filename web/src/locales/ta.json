@@ -22,7 +22,7 @@
   "Show map": "வரைபடத்தைக் காட்டு",
   "Cancel": "ரத்துசெய்",
   "Hold to disarm": "பாதுகாப்பை நிறுத்த அழுத்திப் பிடிக்கவும்",
-  "Armed. If your phone sleeps the alert may not arrive — the laptop still sounds its own alarm.": "கண்காணிக்கிறது. தொலைபேசி உறக்க நிலைக்குச் சென்றால் எச்சரிக்கை வராமல் போகலாம் — மடிக்கணினியின் சொந்த அலாரம் தொடர்ந்து ஒலிக்கும்.",
+  "Armed. If your phone sleeps the alert may not arrive — the laptop still sounds its own alarm.": "கண்காணிக்கிறது. தொலைபேசி உறக்க நிலைக்குச் சென்றால் எச்சரிக்கை வராமல் போகலாம் — மடிக்கணினியின் சொந்த அலாரம் அப்போதும் ஒலிக்கும்.",
   "Leave it. We'll watch it.": "வைத்துவிட்டுச் செல்லுங்கள். நாங்கள் கண்காணிப்போம்.",
   "Enter the key shown on your laptop, or scan its code to fill this in.": "மடிக்கணினியில் காட்டப்படும் விசையை உள்ளிடவும் அல்லது இதை நிரப்ப அதன் குறியீட்டை ஸ்கேன் செய்யவும்.",
   "Pairing key": "இணைத்தல் விசை",
@@ -76,7 +76,7 @@
   "Done": "முடிந்தது",
   "Loading settings…": "அமைப்புகளை ஏற்றுகிறது…",
   "The laptop does not depend on your phone. It keeps watching every sensor you enabled and sounds its own alarm whether or not a phone is connected — and losing the connection is not itself treated as an intrusion, so a phone in your pocket will not set it off.": "மடிக்கணினி தொலைபேசியைச் சார்ந்திருக்காது. தொலைபேசி இணைந்திருந்தாலும் இல்லாவிட்டாலும், நீங்கள் இயக்கிய ஒவ்வொரு உணரியையும் கண்காணித்துத் தனது அலாரத்தை ஒலிக்கச் செய்கிறது. இணைப்பு துண்டிப்பதை மட்டும் ஊடுருவலாகக் கருதுவதில்லை; எனவே சட்டைப்பையில் இருக்கும் தொலைபேசி அலாரத்தைத் தூண்டாது.",
-  "Forget this phone": "இந்தத் தொலைபேசியின் இணைத்தலை மற",
+  "Forget this phone": "இந்தத் தொலைபேசியின் இணைத்தலை நீக்கு",
   "Reset everything": "அனைத்தையும் மீட்டமை",
   "Open the releases page": "வெளியீடுகள் பக்கத்தைத் திற",
   "Put every setting back to its default?": "எல்லா அமைப்புகளையும் இயல்புநிலைக்கு மீட்டமைக்கவா?",
@@ -149,10 +149,12 @@
   "off": "நிறுத்தப்பட்டது",
   "unavailable": "கிடைக்கவில்லை",
   "Watching {count} sensors · {since}": {
-    "other": "{count} உணரிகளைக் கண்காணிக்கிறது · {since}"
+    "other": "{count} உணரிகளைக் கண்காணிக்கிறது · {since}",
+    "one": "{count} உணரியைக் கண்காணிக்கிறது · {since}"
   },
   "{count} sensors ready": {
-    "other": "{count} உணரிகள் தயார்"
+    "other": "{count} உணரிகள் தயார்",
+    "one": "{count} உணரி தயார்"
   },
   "Moved {distance} from where you armed it": "பாதுகாப்பை இயக்கிய இடத்திலிருந்து {distance} நகர்ந்துள்ளது",
   "Accurate to about {distance}": "சுமார் {distance} துல்லியம்",

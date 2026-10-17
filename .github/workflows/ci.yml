@@ -397,10 +397,7 @@ jobs:
       - name: Localization catalogs and bundled glyph coverage
         run: |
           python3 tools/localization/check.py
-          python3 tools/localization/reviews.py
-          if [ "$GITHUB_REF" = refs/heads/main ] || [[ "$GITHUB_REF" = refs/tags/* ]]; then
-            python3 tools/localization/reviews.py --require-all
-          fi
+          python3 tools/localization/reviews.py --require-all
           python3 tools/localization/assets.py --check
           python3 -m pip install --target "$RUNNER_TEMP/leavesafe-fonttools" fonttools==4.65.0 coverage==7.16.2
           export PYTHONPATH="$RUNNER_TEMP/leavesafe-fonttools"

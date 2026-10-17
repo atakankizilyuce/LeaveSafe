@@ -1,0 +1,14 @@
+{
+  "locale": "pnb-Arab",
+  "reviewer": "/root/review_web_pnb",
+  "sources": {
+    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/pnb-Arab.json": "23d0adc27dafa36c76c5d9ab6b80e7d5d2f36ab3e55ada9f7d01e89c8ee5dd37",
+    "internal/localization/catalogs/pnb-Arab.json": "f8233ded0ec0d560e59b9a03655c1a52a27aab8ccd257550a3f57cb0cb9e3a18",
+    "internal/localization/service/pnb-Arab.json": "4fa2c09ab15c45d295efd13e4f5dd55823ec9f5c8e00a799cf0708ff4a51d2d7"
+  }
+}

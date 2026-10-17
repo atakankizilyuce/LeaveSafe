@@ -1,0 +1,14 @@
+{
+  "locale": "ja",
+  "reviewer": "/root/review_web_ja",
+  "sources": {
+    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/ja.json": "a2e85509ce1ac4ccd4a5c795bd88ba5f8aa55b5668eab554d3d1b52258c6fcd6",
+    "internal/localization/catalogs/ja.json": "5ef072fa29c85da00eb17e29c33e89e87d3cd0721cc51f3ccc962fc2d71c02d6",
+    "internal/localization/service/ja.json": "bf25e43626bb52725b0ecd948852c0927fdf917bc99b6e99127564d1bfde4ddd"
+  }
+}

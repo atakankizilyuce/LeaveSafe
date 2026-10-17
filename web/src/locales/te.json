@@ -149,9 +149,11 @@
   "off": "ఆఫ్",
   "unavailable": "అందుబాటులో లేదు",
   "Watching {count} sensors · {since}": {
+    "one": "{count} సెన్సర్‌ను పర్యవేక్షిస్తోంది · {since}",
     "other": "{count} సెన్సర్లను పర్యవేక్షిస్తోంది · {since}"
   },
   "{count} sensors ready": {
+    "one": "{count} సెన్సర్ సిద్ధం",
     "other": "{count} సెన్సర్లు సిద్ధం"
   },
   "Moved {distance} from where you armed it": "రక్షణ ఆన్ చేసిన స్థానం నుండి {distance} కదిలింది",

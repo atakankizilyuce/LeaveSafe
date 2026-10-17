@@ -53,7 +53,7 @@
   "  Phones connected: %d": "  Simu zilizounganishwa: %d",
   "  Stored in %s, readable only by you.\n": "  Imehifadhiwa katika %s, inayosomeka na wewe tu.\n",
   "  The background copy has no screen to show a QR code on, so it reuses this\n": "  Nakala ya chinichini haina skrini ya kuonyesha msimbo wa QR, hivyo hutumia\n",
-  "  This is a development build (%s), so there is nothing to compare against.": "  Huu ni mjengo wa maendeleo (%s), kwa hiyo hakuna toleo la kulinganisha nao.",
+  "  This is a development build (%s), so there is nothing to compare against.": "  Hili ni toleo la utengenezaji (%s), kwa hiyo hakuna toleo la kulinganisha nalo.",
   "  Unknown command: %q  (type 'help')": "  Amri isiyojulikana: %q  (andika 'help')",
   "  Unknown sensor: %q  (type 'help')": "  Kihisi kisichojulikana: %q  (andika 'help')",
   "  Update checking is off. Set %s\"update_check\": true%s in the config to turn it back on.": "  Ukaguzi wa masasisho umezimwa. Weka %s\"update_check\": true%s kwenye usanidi kuuwasha tena.",

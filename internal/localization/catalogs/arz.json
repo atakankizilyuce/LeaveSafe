@@ -65,7 +65,7 @@
   "Could not prepare the pairing key: %v\n": "مقدرناش نجهّز مفتاح الاقتران: %v\n",
   "Could not read the autostart entry: %v\n": "مقدرناش نقرا إدخال التشغيل التلقائي: %v\n",
   "Could not remove the autostart entry: %v\n": "مقدرناش نشيل إدخال التشغيل التلقائي: %v\n",
-  "Could not resolve this program's path: %v\n": "مقدرناش نحل مسار البرنامج ده: %v\n",
+  "Could not resolve this program's path: %v\n": "مقدرناش نحدد المسار الفعلي للبرنامج ده: %v\n",
   "LeaveSafe starts automatically.\n\n%s\n": "LeaveSafe بيبدأ تلقائيًا.\n\n%s\n",
   "LeaveSafe will now start when you log in.\n\n%s\n\n": "LeaveSafe هيبدأ دلوقتي لما تسجّل دخول.\n\n%s\n\n",
   "Pairing key: %s\n": "مفتاح الاقتران: %s\n",

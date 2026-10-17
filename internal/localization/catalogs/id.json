@@ -65,7 +65,7 @@
   "Could not prepare the pairing key: %v\n": "Tidak dapat menyiapkan kunci pemasangan: %v\n",
   "Could not read the autostart entry: %v\n": "Tidak dapat membaca entri mulai otomatis: %v\n",
   "Could not remove the autostart entry: %v\n": "Tidak dapat menghapus entri mulai otomatis: %v\n",
-  "Could not resolve this program's path: %v\n": "Tidak dapat menyelesaikan jalur program ini: %v\n",
+  "Could not resolve this program's path: %v\n": "Tidak dapat menentukan jalur sebenarnya dari program ini: %v\n",
   "LeaveSafe starts automatically.\n\n%s\n": "LeaveSafe dimulai secara otomatis.\n\n%s\n",
   "LeaveSafe will now start when you log in.\n\n%s\n\n": "LeaveSafe kini akan dimulai saat Anda masuk ke sistem.\n\n%s\n\n",
   "Pairing key: %s\n": "Kunci pemasangan: %s\n",

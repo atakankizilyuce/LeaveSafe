@@ -4,7 +4,7 @@
   "\n  %s●%s  URL      %s%s%s\n": "\n  %s●%s  URL      %s%s%s\n",
   "  %s         Set \"update_check\": false in the config to stop checking.%s": "  %s         Đặt \"update_check\": false trong cấu hình để ngừng kiểm tra.%s",
   "  %s    Re-arming, as restore_armed_state is enabled.%s": "  %s    Đang bật lại bảo vệ vì restore_armed_state đã được bật.%s",
-  "  %s    Starting disarmed. Set \"restore_armed_state\": true in the config to re-arm automatically.%s": "  %s    Khởi động với bảo vệ tắt. Đặt \"restore_armed_state\": true để tự bật lại.%s",
+  "  %s    Starting disarmed. Set \"restore_armed_state\": true in the config to re-arm automatically.%s": "  %s    Khởi động với bảo vệ tắt. Đặt \"restore_armed_state\": true trong cấu hình để tự bật lại bảo vệ.%s",
   "  %s    This machine has not been monitored since then.%s": "  %s    Máy này đã không được theo dõi kể từ lúc đó.%s",
   "  %s  State    %s": "  %s  Trạng thái  %s",
   "  %s%s%s  %sDevice Security Monitor%s": "  %s%s%s  %sTheo dõi an ninh thiết bị%s",

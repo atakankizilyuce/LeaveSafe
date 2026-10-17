@@ -171,7 +171,7 @@
   "NETWORK": "MẠNG",
   "Watches the network interfaces. Fires when the IP address changes.": "Theo dõi giao diện mạng. Kích hoạt khi địa chỉ IP thay đổi.",
   "INPUT": "ĐẦU VÀO",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "Theo dõi bàn phím và bàn di chuột. Kích hoạt khi có bất kỳ thao tác nhập nào trong lúc bảo vệ.",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "Theo dõi bàn phím và bàn di chuột. Kích hoạt khi hoạt động đầu vào đạt ngưỡng độ nhạy đã cấu hình trong lúc bảo vệ.",
   "Language": "Ngôn ngữ",
   "Use the device language": "Dùng ngôn ngữ của thiết bị",
   "just now": "vừa xong",

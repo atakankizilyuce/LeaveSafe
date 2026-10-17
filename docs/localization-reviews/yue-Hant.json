@@ -1,0 +1,14 @@
+{
+  "locale": "yue-Hant",
+  "reviewer": "/root/review_web_yue",
+  "sources": {
+    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/yue-Hant.json": "6dec2db91e0af33b384674ae0e5fa8873177b33977f5a6c39cd0b622fa9e49a0",
+    "internal/localization/catalogs/yue-Hant.json": "2a3c8c7ce088a3e9806c6dd11e583df10ad96ba5b8886374f2411fa283dcfa80",
+    "internal/localization/service/yue-Hant.json": "4506ff66f562aca50a76ee6fa1ae86005846e24cb46b8e11b2651c0b95de91f5"
+  }
+}

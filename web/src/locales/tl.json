@@ -173,7 +173,7 @@
   "NETWORK": "NETWORK",
   "Watches the network interfaces. Fires when the IP address changes.": "Binabantayan ang mga network interface. Nati-trigger kapag nagbago ang IP address.",
   "INPUT": "INPUT",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "Binabantayan ang keyboard at trackpad. Anumang input habang aktibo ang proteksyon ay magti-trigger nito.",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "Binabantayan ang keyboard at trackpad. Nati-trigger kapag umabot ang input sa nakatakdang limitasyon ng sensitibidad habang aktibo ang proteksyon.",
   "Language": "Wika",
   "Use the device language": "Gamitin ang wika ng device",
   "just now": "ngayon lang",

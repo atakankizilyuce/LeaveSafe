@@ -179,7 +179,7 @@
   "NETWORK": "الشبكة",
   "Watches the network interfaces. Fires when the IP address changes.": "بيراقب واجهات الشبكة. بينبّه لما عنوان IP يتغيّر.",
   "INPUT": "الإدخال",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "بيراقب الكيبورد ولوحة اللمس. بينبّه عند أي إدخال والمراقبة شغّالة.",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "بيراقب الكيبورد ولوحة اللمس. بينبّه لما الإدخال يوصل لحد الحساسية المحدد في الإعدادات والمراقبة شغّالة.",
   "Language": "اللغة",
   "Use the device language": "استخدم لغة الجهاز",
   "just now": "دلوقتي حالًا",

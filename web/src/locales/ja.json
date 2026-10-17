@@ -171,7 +171,7 @@
   "NETWORK": "ネットワーク",
   "Watches the network interfaces. Fires when the IP address changes.": "ネットワークインターフェースを監視します。IP アドレスの変化を検知します。",
   "INPUT": "入力",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "キーボードとトラックパッドを監視します。監視中のすべての入力を検知します。",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "キーボードとトラックパッドを監視します。監視中に入力が設定された感度のしきい値に達すると作動します。",
   "Language": "言語",
   "Use the device language": "デバイスの言語を使用",
   "just now": "たった今",

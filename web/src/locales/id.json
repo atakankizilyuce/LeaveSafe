@@ -171,7 +171,7 @@
   "NETWORK": "JARINGAN",
   "Watches the network interfaces. Fires when the IP address changes.": "Memantau antarmuka jaringan. Terpicu saat alamat IP berubah.",
   "INPUT": "INPUT",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "Memantau papan ketik dan trackpad. Terpicu oleh input apa pun saat perlindungan aktif.",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "Memantau papan ketik dan trackpad. Terpicu ketika input mencapai ambang sensitivitas yang diatur saat perlindungan aktif.",
   "Language": "Bahasa",
   "Use the device language": "Gunakan bahasa perangkat",
   "just now": "baru saja",
