@@ -377,12 +377,44 @@ jobs:
         working-directory: site
         run: npm ci --ignore-scripts
 
+      - name: Check browser and landing-page dependency vulnerabilities
+        run: |
+          npm --prefix web audit
+          npm --prefix site audit
+
       # Biome is a devDependency rather than an `npx` download, so its version
       # comes from the lock file along with everything else. Run from the
       # repository root, because that is where biome.json is and its paths are
       # written relative to it.
       - name: Biome check
         run: web/node_modules/.bin/biome ci . --error-on-warnings
+
+      - name: Set up Python for localization tools
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Localization catalogs and bundled glyph coverage
+        run: |
+          python3 tools/localization/check.py
+          python3 tools/localization/reviews.py
+          if [ "$GITHUB_REF" = refs/heads/main ] || [[ "$GITHUB_REF" = refs/tags/* ]]; then
+            python3 tools/localization/reviews.py --require-all
+          fi
+          python3 tools/localization/assets.py --check
+          python3 -m pip install --target "$RUNNER_TEMP/leavesafe-fonttools" fonttools==4.65.0 coverage==7.16.2
+          export PYTHONPATH="$RUNNER_TEMP/leavesafe-fonttools"
+          python3 tools/localization/fonts.py --check
+          python3 -m coverage run --data-file="$RUNNER_TEMP/localization.coverage" --source=tools/localization --omit='*_test.py' -m unittest discover -s tools/localization -p '*_test.py'
+          python3 -m coverage report --data-file="$RUNNER_TEMP/localization.coverage" --fail-under=80
+          python3 -m coverage xml --data-file="$RUNNER_TEMP/localization.coverage" -o "$RUNNER_TEMP/localization-coverage.xml"
+
+      - name: Upload localization tool coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: localization-coverage
+          path: ${{ runner.temp }}/localization-coverage.xml
+          if-no-files-found: error
 
       - name: Typecheck
         working-directory: web
@@ -637,10 +669,28 @@ jobs:
           name: site-coverage
           path: site/coverage
 
+      - name: Fetch localization helper coverage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: localization-coverage
+          path: localization-coverage
+
       - name: Scan
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Node for Sonar evidence
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+
+      - name: Enforce zero new issues, clear security and coverage
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.ref_name }}
+        run: node tools/quality/sonar-evidence.mjs
 
   # ---------------------------------------------------------------------------
   # Single required status check for branch protection. Fails if any job above

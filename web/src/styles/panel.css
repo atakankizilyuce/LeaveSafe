@@ -1383,3 +1383,17 @@
     padding: 11px;
     border-radius: var(--radius-sm);
 }
+
+/* Logical flow mirrors controls while fixed sensor geometry remains unchanged. */
+.state-word { overflow-wrap: anywhere; font-size: clamp(2rem, 9vw, 4.6rem); letter-spacing: var(--script-tracking, -0.045em); line-height: 1.2; }
+.snode-name, .core-label, .sref-state { letter-spacing: var(--script-tracking, 0.06em); overflow-wrap: anywhere; }
+.log-order, .sref-state { margin-left: 0; margin-inline-start: auto; }
+.log-entry { border-left: 0; border-inline-start: 2px solid transparent; }
+.log-entry[data-level='critical'] { border-inline-start-color: var(--trip); }
+.log-entry[data-level='warning'] { border-inline-start-color: var(--warn); }
+.setting-text { min-width: 0; overflow-wrap: anywhere; }
+.field-num { text-align: end; }
+:root[dir='rtl'] .switch-knob { left: auto; right: 3px; }
+:root[dir='rtl'] .switch[aria-checked='true'] .switch-knob { transform: translateX(-18px); }
+
+.state-word-wrap { height: auto; min-height: clamp(2.4rem, 13vw, 3.4rem); }

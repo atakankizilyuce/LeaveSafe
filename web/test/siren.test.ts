@@ -115,6 +115,7 @@ function installBrowser(support: AudioSupport = 'standard') {
     const ctor = support === 'refused' ? refusing : FakeAudioContext;
 
     const win: Record<string, unknown> = {
+        addEventListener: vi.fn(),
         setInterval: (fn: () => void, ms: number) => globalThis.setInterval(fn, ms),
         clearInterval: (id: number) => globalThis.clearInterval(id),
         setTimeout: (fn: () => void, ms: number) => globalThis.setTimeout(fn, ms),
@@ -124,8 +125,8 @@ function installBrowser(support: AudioSupport = 'standard') {
     if (support === 'prefixed') win.webkitAudioContext = ctor;
     if (support === 'refused') win.AudioContext = ctor;
 
-    const doc = { title: 'LeaveSafe' };
-    const nav = { vibrate: vi.fn(() => true) };
+    const doc = { title: 'LeaveSafe', documentElement: { lang: '', dir: '' }, querySelector: () => null };
+    const nav = { vibrate: vi.fn(() => true), languages: ['en'] };
 
     vi.stubGlobal('window', win);
     vi.stubGlobal('document', doc);

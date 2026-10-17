@@ -1,0 +1,44 @@
+[
+  {
+    "name": "NotoSans",
+    "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf",
+    "sha256": "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d",
+    "license": "web/public/fonts/licenses/NotoSans-OFL.txt"
+  },
+  {
+    "name": "NotoSansArabic",
+    "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
+    "sha256": "63111b5b2e074dd48cc67692e0a2726d86ee94c1c37fe8598257b7b4e87e869e",
+    "license": "web/public/fonts/licenses/NotoSansArabic-OFL.txt"
+  },
+  {
+    "name": "NotoSansDevanagari",
+    "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf",
+    "sha256": "14ec4af41f27482216d1c2229f417ff9b1425e1babb014e57d1d40d03229853e",
+    "license": "web/public/fonts/licenses/NotoSansDevanagari-OFL.txt"
+  },
+  {
+    "name": "NotoSansBengali",
+    "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosansbengali/NotoSansBengali%5Bwdth%2Cwght%5D.ttf",
+    "sha256": "dcd42978094e584a849c84a51450eeac40c8826057d566ea6d4b9627a403a05a",
+    "license": "web/public/fonts/licenses/NotoSansBengali-OFL.txt"
+  },
+  {
+    "name": "NotoSansTamil",
+    "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosanstamil/NotoSansTamil%5Bwdth%2Cwght%5D.ttf",
+    "sha256": "aa3a9b321f4b0bb2c40203ffbde9af89713227866e0e13f76e5b9eeea727cf88",
+    "license": "web/public/fonts/licenses/NotoSansTamil-OFL.txt"
+  },
+  {
+    "name": "NotoSansTelugu",
+    "url": "https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/notosanstelugu/NotoSansTelugu%5Bwdth%2Cwght%5D.ttf",
+    "sha256": "e618af7bf999df192ed4f388eba2e563f2b5015034e9cbb317b5bd793bd7334d",
+    "license": "web/public/fonts/licenses/NotoSansTelugu-OFL.txt"
+  },
+  {
+    "name": "NotoSansCJK",
+    "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/Variable/TTF/NotoSansCJKsc-VF.ttf",
+    "sha256": "990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f",
+    "license": "web/public/fonts/licenses/NotoSansCJK-OFL.txt"
+  }
+]

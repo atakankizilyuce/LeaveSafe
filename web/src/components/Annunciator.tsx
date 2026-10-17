@@ -1,5 +1,7 @@
 import { useState } from 'preact/hooks';
-import { SENSOR_CAPTIONS, SENSOR_DESCRIPTIONS, type SensorInfo } from '../lib/protocol';
+import { t } from '../lib/i18n';
+import type { SensorInfo } from '../lib/protocol';
+import { sensorCaption, sensorDescription } from '../lib/sensorCopy';
 import { armed, send, sensors, setSensorEnabled, showToast, tripped } from '../lib/store';
 import { Icon, SensorIcon, StateBadge } from './Icons';
 
@@ -54,11 +56,15 @@ export function Annunciator() {
 
     const toggle = (sensor: SensorInfo) => {
         if (!sensor.available) {
-            showToast(`This machine has no ${sensor.display_name.toLowerCase()} to watch`);
+            showToast(
+                t('This machine has no {sensor} to watch', {
+                    sensor: sensorCaption(sensor.name, sensor.display_name),
+                }),
+            );
             return;
         }
         if (armed.value) {
-            showToast('Disarm before changing sensors');
+            showToast(t('Disarm before changing sensors'));
             return;
         }
         const next = !sensor.enabled;
@@ -69,8 +75,8 @@ export function Annunciator() {
     return (
         <section class="card">
             <div class="card-head">
-                <h2 class="readout">Sensors</h2>
-                <span class="readout">{isArmed ? 'Disarm to change' : 'Tap to turn on or off'}</span>
+                <h2 class="readout">{t('Sensors')}</h2>
+                <span class="readout">{isArmed ? t('Disarm to change') : t('Tap to turn on or off')}</span>
             </div>
 
             <div
@@ -90,7 +96,10 @@ export function Annunciator() {
                                 role="switch"
                                 aria-checked={sensor.enabled}
                                 aria-disabled={!sensor.available}
-                                aria-label={`${sensor.display_name} — ${state}`}
+                                aria-label={t('{sensor} — {state}', {
+                                    sensor: sensorCaption(sensor.name, sensor.display_name),
+                                    state: t(state),
+                                })}
                                 data-sensor={sensor.name}
                                 data-state={state}
                                 data-place={isArmed ? place(state) : 'station'}
@@ -107,7 +116,7 @@ export function Annunciator() {
                             >
                                 <SensorIcon name={sensor.name} />
                                 <span class="snode-name">
-                                    {SENSOR_CAPTIONS[sensor.name] ?? sensor.display_name}
+                                    {sensorCaption(sensor.name, sensor.display_name)}
                                 </span>
                                 <span class="snode-badge" aria-hidden="true">
                                     <StateBadge state={state} />
@@ -120,7 +129,7 @@ export function Annunciator() {
                         closed and the excluded ones have somewhere to be. */}
                     {isArmed && outRows > 0 && (
                         <div class="ring-out" aria-hidden="true">
-                            <div class="ring-out-head readout">Not watching</div>
+                            <div class="ring-out-head readout">{t('Not watching')}</div>
                             {outgoing.map((p) => {
                                 const slot = slots.get(p.sensor.name) ?? { x: 50, y: 118 };
                                 return (
@@ -129,7 +138,7 @@ export function Annunciator() {
                                         class="ring-out-why"
                                         style={{ left: `${slot.x}%`, top: `${slot.y + 17}%` }}
                                     >
-                                        <b>{SENSOR_CAPTIONS[p.sensor.name] ?? p.sensor.display_name}</b>
+                                        <b>{sensorCaption(p.sensor.name, p.sensor.display_name)}</b>
                                         <span>{whyNot(p.sensor)}</span>
                                     </div>
                                 );
@@ -150,8 +159,8 @@ export function Annunciator() {
                         <span class="core-mark" aria-hidden="true">
                             <Icon name={isArmed ? 'eye' : 'eyeOff'} size={26} />
                         </span>
-                        <span class="core-label readout">{isArmed ? 'watching' : 'not watching'}</span>
-                        {!isArmed && <span class="core-hint readout">tap to arm</span>}
+                        <span class="core-label readout">{isArmed ? t('watching') : t('not watching')}</span>
+                        {!isArmed && <span class="core-hint readout">{t('tap to arm')}</span>}
 
                         <span class="core-held" aria-hidden="true">
                             {held.map((p) => (
@@ -170,7 +179,7 @@ export function Annunciator() {
                 aria-expanded={explaining}
                 onClick={() => setExplaining(!explaining)}
             >
-                {explaining ? 'Hide what these watch' : 'What these sensors watch'}
+                {explaining ? t('Hide what these watch') : t('What these sensors watch')}
             </button>
 
             {explaining && <Reference />}
@@ -233,9 +242,9 @@ function capState(sensor: SensorInfo, lit: boolean): string {
 
 /** Why this one is standing outside the shield, in the user's own terms. */
 function whyNot(sensor: SensorInfo): string {
-    if (!sensor.available) return 'no sensor on this machine';
-    if (sensor.failure) return 'it is not working right now';
-    return 'you switched it off';
+    if (!sensor.available) return t('no sensor on this machine');
+    if (sensor.failure) return t('it is not working right now');
+    return t('you switched it off');
 }
 
 /**
@@ -258,27 +267,28 @@ function Reference() {
                             <span class="sref-mark" aria-hidden="true">
                                 <SensorIcon name={sensor.name} size={15} />
                             </span>
-                            <strong>{sensor.display_name}</strong>
-                            <span class="sref-state readout">{state}</span>
+                            <strong>{sensorCaption(sensor.name, sensor.display_name)}</strong>
+                            <span class="sref-state readout">{t(state)}</span>
                             <button
                                 type="button"
                                 class="chip"
                                 disabled={!sensor.available}
                                 onClick={() => send({ type: 'trigger_sensor', sensor: sensor.name })}
                             >
-                                Test it
+                                {t('Test it')}
                             </button>
                         </div>
-                        <p class="sref-desc">{SENSOR_DESCRIPTIONS[sensor.name] ?? ''}</p>
+                        <p class="sref-desc">{sensorDescription(sensor.name)}</p>
                         {!sensor.available && (
                             <p class="sref-warn">
-                                This machine has no sensor for that, so it cannot be used.
+                                {t('This machine has no sensor for that, so it cannot be used.')}
                             </p>
                         )}
                         {sensor.available && sensor.failure && (
                             <p class="sref-warn">
-                                This sensor is not working right now. Check it on the device before turning
-                                protection on.
+                                {t(
+                                    'This sensor is not working right now. Check it on the device before turning protection on.',
+                                )}
                             </p>
                         )}
                     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { captureAnchor } from '../lib/geo';
+import { t } from '../lib/i18n';
 import { primeSiren } from '../lib/siren';
 import { armed, send, showToast } from '../lib/store';
 import { Icon } from './Icons';
@@ -13,8 +14,8 @@ const HOLD_MS = 1500;
  * that is not yet armed would be the wrong promise.
  */
 function buttonLabel(counting: number | null, isArmed: boolean): string {
-    if (counting !== null) return 'Cancel';
-    return isArmed ? 'Hold to disarm' : 'Arm';
+    if (counting !== null) return t('Cancel');
+    return isArmed ? t('Hold to disarm') : t('Arm');
 }
 
 /**
@@ -74,7 +75,9 @@ export function ArmControl({ counting, onCountdown }: Props) {
                 // time, but it only changes what someone does at the moment they
                 // are about to put the phone away.
                 showToast(
-                    'Armed. If your phone sleeps the alert may not arrive — the laptop still sounds its own alarm.',
+                    t(
+                        'Armed. If your phone sleeps the alert may not arrive — the laptop still sounds its own alarm.',
+                    ),
                 );
             } else {
                 onCountdown(left);

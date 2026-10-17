@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { t } from '../lib/i18n';
 import { pinPrompt, send } from '../lib/store';
 import { Scrim } from './Scrim';
 
@@ -17,7 +18,7 @@ export function PinDialog() {
 
     const submit = () => {
         if (!pin.trim()) {
-            setError('Enter your PIN to disarm.');
+            setError(t('Enter your PIN to disarm.'));
             return;
         }
         send({ type: 'disarm_with_pin', pin: pin.trim() });
@@ -25,10 +26,10 @@ export function PinDialog() {
     };
 
     return (
-        <Scrim onClose={close} label="Enter your PIN to disarm">
+        <Scrim onClose={close} label={t('Enter your PIN to disarm')}>
             <div class="dialog rise">
-                <h2 class="readout">Disarm</h2>
-                <p class="dialog-lead">Enter your PIN.</p>
+                <h2 class="readout">{t('Disarm')}</h2>
+                <p class="dialog-lead">{t('Enter your PIN.')}</p>
                 <input
                     class="field figure"
                     type="password"
@@ -44,10 +45,10 @@ export function PinDialog() {
                 {error && <p class="dialog-error">{error}</p>}
                 <div class="dialog-actions">
                     <button type="button" class="chip" onClick={close}>
-                        Cancel
+                        {t('Cancel')}
                     </button>
                     <button type="button" class="alarm-primary" onClick={submit}>
-                        Disarm
+                        {t('Disarm')}
                     </button>
                 </div>
             </div>

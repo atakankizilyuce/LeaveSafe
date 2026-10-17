@@ -1,0 +1,7 @@
+@font-face { font-family: "NotoSans"; src: url("/fonts/NotoSans.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "NotoSansArabic"; src: url("/fonts/NotoSansArabic.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "NotoSansDevanagari"; src: url("/fonts/NotoSansDevanagari.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "NotoSansBengali"; src: url("/fonts/NotoSansBengali.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "NotoSansTamil"; src: url("/fonts/NotoSansTamil.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "NotoSansTelugu"; src: url("/fonts/NotoSansTelugu.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "NotoSansCJK"; src: url("/fonts/NotoSansCJK.ttf") format("truetype"); font-weight: 400; font-display: swap; }
