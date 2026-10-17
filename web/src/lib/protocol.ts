@@ -156,23 +156,3 @@ export interface ClientMessage {
     location?: LocationFix;
     push?: PushSub;
 }
-
-/** Descriptions shown when a sensor tile is expanded. */
-export const SENSOR_DESCRIPTIONS: Record<string, string> = {
-    power: 'Watches the charger. Fires when power is disconnected or reconnected.',
-    lid: 'Watches the lid. Fires when it is opened or closed.',
-    usb: 'Watches the USB ports. Fires when a device is plugged in or pulled out.',
-    screen: 'Watches the display. Fires when the screen turns on or off.',
-    network: 'Watches the network interfaces. Fires when the IP address changes.',
-    input: 'Watches the keyboard and trackpad. Fires on any input while armed.',
-};
-
-/** Short captions for the annunciator tiles, in the panel's own voice. */
-export const SENSOR_CAPTIONS: Record<string, string> = {
-    power: 'POWER',
-    lid: 'LID',
-    usb: 'USB',
-    screen: 'SCREEN',
-    network: 'NETWORK',
-    input: 'INPUT',
-};

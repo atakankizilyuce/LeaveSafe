@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/leavesafe/leavesafe/internal/localization"
 )
 
 // AlarmLevel defines one step in the alarm escalation chain.
@@ -100,14 +102,8 @@ type Config struct {
 	// asking only at startup means the longest-running installations are the
 	// least likely to hear that a fix exists.
 	UpdateCheckHours int `json:"update_check_hours,omitempty"`
-	// Language is which of the two languages the terminal's first-run questions
-	// are asked in: "tr" or "en". Empty means nobody has been asked yet, which
-	// is what makes the question a first-run one rather than a nag — and why it
-	// is a plain string with a meaningful zero rather than a defaulted one.
-	//
-	// It reaches no further than those questions. The dashboard, the log and the
-	// phone are in English, and claiming otherwise by translating the first
-	// screen and nothing else would be worse than not asking.
+	// Language selects terminal UI copy. Empty asks on the first interactive start.
+	// Browser language is selected independently on each connecting device.
 	Language       string          `json:"language,omitempty"`
 	Alarm          AlarmConfig     `json:"alarm"`
 	PinProtection  PinProtection   `json:"pin_protection"`
@@ -344,12 +340,11 @@ func (c *Config) correctUnknownChoices(v *adjustments) {
 	// empty means "ask", and asking is a better answer than picking a language
 	// for someone on the strength of a typo.
 	if c.Language != "" {
-		switch c.Language {
-		case "tr", "en":
-		default:
-			v.notef("language was %q, which is not one of tr or en — asking again", c.Language)
-			c.Language = ""
+		normalized := localization.Normalize(c.Language)
+		if normalized == "" {
+			v.notef("language was %q, which is unsupported — asking again", c.Language)
 		}
+		c.Language = normalized
 	}
 
 	if c.UpdateChannel != "" {

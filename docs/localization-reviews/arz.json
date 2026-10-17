@@ -1,0 +1,14 @@
+{
+  "locale": "arz",
+  "reviewer": "/root/review_web_arz",
+  "sources": {
+    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/arz.json": "c2d715221d93fd40ae0285e10d4da7e6f21368bdf42738bfedf14da57af3acf1",
+    "internal/localization/catalogs/arz.json": "87c9428b0896f82f36f12fc6ece9666267eb7a44c16e59f764403e48875b2e38",
+    "internal/localization/service/arz.json": "eb45a5d392b89ee89a962a75199274a10211cd4d786dfec3728b83a2e2c5a18c"
+  }
+}

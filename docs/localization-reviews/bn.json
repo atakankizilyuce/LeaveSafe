@@ -1,0 +1,14 @@
+{
+  "locale": "bn",
+  "reviewer": "/root/review_web_bn",
+  "sources": {
+    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/bn.json": "f8fa1084fb93963b14e8f8c5d75c3cac3b6814976d1b8d4468b3b751ea7c79a9",
+    "internal/localization/catalogs/bn.json": "031a8e4653f3cd4cd6e822a92ec5cf27604bab74528e4915ccfc5954f97dad77",
+    "internal/localization/service/bn.json": "53f9c1e5cc600080ebd403b5c035d70455a1ab9d35071a8fb1203f6b80e02df6"
+  }
+}

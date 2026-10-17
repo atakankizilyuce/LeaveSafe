@@ -8,7 +8,9 @@ import { PinDialog } from './components/PinDialog';
 import { Position } from './components/Position';
 import { SettingsSheet } from './components/SettingsSheet';
 import { StateHeader } from './components/StateHeader';
+import { alertCopy } from './lib/alertCopy';
 import { captureAnchor } from './lib/geo';
+import { syncWorkerLanguage, t } from './lib/i18n';
 import { type SensorState, type ServerMessage, SYSTEM_NOTICE } from './lib/protocol';
 import { offerPushSubscription } from './lib/pushalerts';
 import { clearSession, loadSession, saveSession } from './lib/session';
@@ -106,13 +108,16 @@ function afterPairing() {
         void Notification.requestPermission();
     }
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch((err: Error) => {
-            // Browsers refuse to register a worker on an origin with a
-            // certificate error, and this page is served over plain HTTP on
-            // the local network. Swallowing this made a notification path that
-            // never ran look like one that did.
-            console.warn('LeaveSafe: notifications are unavailable —', err.message);
-        });
+        navigator.serviceWorker
+            .register('/sw.js')
+            .then(syncWorkerLanguage)
+            .catch((err: Error) => {
+                // Browsers refuse to register a worker on an origin with a
+                // certificate error, and this page is served over plain HTTP on
+                // the local network. Swallowing this made a notification path that
+                // never ran look like one that did.
+                console.warn('LeaveSafe: notifications are unavailable —', err.message);
+            });
     }
 }
 
@@ -194,14 +199,14 @@ function onAuthOk(msg: ServerMessage) {
 function onAuthFail(_msg: ServerMessage) {
     pairing.value = false;
     if (hasToken()) {
-        showToast('Could not complete this action. Check your entry and try again.');
+        showToast(t('Could not complete this action. Check your entry and try again.'));
         return;
     }
 
     // The stored key no longer opens this laptop — rotated, or from a different
     // one. Keeping it would retry forever.
     clearSession();
-    pairError.value = 'Could not pair with the device. Check the code and try again.';
+    pairError.value = t('Could not pair with the device. Check the code and try again.');
 }
 
 /** Folds a status update's sensor states onto the list the panel is showing. */
@@ -235,7 +240,7 @@ function onAlert(msg: ServerMessage) {
     appendLog({
         message:
             msg.alert.sensor === SYSTEM_NOTICE
-                ? 'A setting needs attention. Check the settings on the device.'
+                ? t('A setting needs attention. Check the settings on the device.')
                 : msg.alert.message,
         level: msg.alert.level,
         sensor: msg.alert.sensor,
@@ -252,13 +257,13 @@ function onAlert(msg: ServerMessage) {
     // answers are "pause this sensor" and "stop using this sensor", and there is
     // no sensor called system to do either to.
     if (msg.alert.sensor === SYSTEM_NOTICE) {
-        showToast('A setting needs attention. Check the settings on the device.');
+        showToast(t('A setting needs attention. Check the settings on the device.'));
         return;
     }
 
     tripSensor(msg.alert.sensor);
     alarm.value = { message: msg.alert.message, sensor: msg.alert.sensor };
-    startSiren(msg.alert.message);
+    startSiren(alertCopy(msg.alert.message));
 }
 
 function onAlarmActive(msg: ServerMessage) {
@@ -266,10 +271,10 @@ function onAlarmActive(msg: ServerMessage) {
 
     tripSensor(msg.alert.sensor);
     alarm.value = {
-        message: msg.alert.message || 'Something touched your laptop.',
+        message: msg.alert.message || t('Something touched your laptop.'),
         sensor: msg.alert.sensor,
     };
-    startSiren(alarm.value.message);
+    startSiren(alertCopy(alarm.value.message));
 }
 
 /**
@@ -492,7 +497,7 @@ export function App() {
                     <button
                         type="button"
                         class="icon-btn"
-                        aria-label="Check the connection"
+                        aria-label={t('Check the connection')}
                         onClick={() => {
                             link.value = 'checking';
                             send({ type: 'ping' });
@@ -508,7 +513,7 @@ export function App() {
                     <button
                         type="button"
                         class="icon-btn"
-                        aria-label="Settings"
+                        aria-label={t('Settings')}
                         onClick={() => {
                             settingsOpen.value = true;
                         }}
@@ -526,16 +531,20 @@ export function App() {
                     <button
                         type="button"
                         class="foot readout foot-update"
-                        aria-label={`Version ${updateAvailable.value.latest} is available — open update settings`}
+                        aria-label={t('Version {version} is available — open update settings', {
+                            version: updateAvailable.value.latest,
+                        })}
                         onClick={() => {
                             settingsOpen.value = true;
                         }}
                     >
                         LeaveSafe {serverVersion.value ?? ''} <span class="foot-dot" aria-hidden="true" />{' '}
-                        update available
+                        {t('update available')}
                     </button>
                 ) : (
-                    <footer class="foot readout">LeaveSafe {serverVersion.value ?? ''} · no cloud</footer>
+                    <footer class="foot readout">
+                        LeaveSafe {serverVersion.value ?? ''} · {t('no cloud')}
+                    </footer>
                 )}
             </div>
 

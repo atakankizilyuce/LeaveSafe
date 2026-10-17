@@ -76,10 +76,12 @@ it('takes over from any previous worker as soon as it installs', async () => {
 it('raises a notification for an alarm posted by its own page', async () => {
     const { listeners, notifications } = await loadWorker();
 
-    listeners.message(messageEvent(ORIGIN, { type: 'alarm', message: 'Charger unplugged' }));
+    listeners.message(
+        messageEvent(ORIGIN, { type: 'alarm', message: 'Charger unplugged', title: 'LeaveSafe uyarısı' }),
+    );
 
     expect(notifications).toHaveLength(1);
-    expect(notifications[0].title).toBe('LeaveSafe ALERT');
+    expect(notifications[0].title).toBe('LeaveSafe uyarısı');
     expect(notifications[0].options.body).toBe('Charger unplugged');
     // A lock screen showing the browser's own logo is the wrong thing to see
     // when the laptop is being taken.
@@ -87,12 +89,13 @@ it('raises a notification for an alarm posted by its own page', async () => {
     expect(notifications[0].options.requireInteraction).toBe(true);
 });
 
-it('falls back to a generic body when the alarm carries no message', async () => {
+it('keeps a brand-only notification when the page supplied no localized copy', async () => {
     const { listeners, notifications } = await loadWorker();
 
     listeners.message(messageEvent(ORIGIN, { type: 'alarm' }));
 
-    expect(notifications[0].options.body).toBe('Security alarm triggered!');
+    expect(notifications[0].title).toBe('LeaveSafe');
+    expect(notifications[0].options.body).toBe('');
 });
 
 it('ignores a message that came from another origin', async () => {
@@ -190,6 +193,7 @@ it('shows the alarm that arrived over push, with no page open', async () => {
         waitUntil: (p) => waited.push(p),
     });
 
+    await Promise.all(waited);
     expect(notifications).toHaveLength(1);
     expect(notifications[0].title).toBe('LeaveSafe ALERT');
     expect(notifications[0].options.body).toBe('A door opened while the laptop was armed.');
@@ -205,6 +209,7 @@ it('shows the alarm that arrived over push, with no page open', async () => {
 // every future alarm, not just this one.
 it('still shows something when the push carries nothing it can read', async () => {
     const { listeners, notifications } = await loadWorker();
+    const waited = [];
 
     listeners.push({
         data: {
@@ -212,17 +217,59 @@ it('still shows something when the push carries nothing it can read', async () =
                 throw new Error('not text');
             },
         },
-        waitUntil: () => {},
+        waitUntil: (p) => waited.push(p),
     });
 
+    await Promise.all(waited);
     expect(notifications).toHaveLength(1);
     expect(notifications[0].options.body).toBeTruthy();
 });
 
 it('shows something for a push with no payload at all', async () => {
     const { listeners, notifications } = await loadWorker();
+    const waited = [];
 
-    listeners.push({ data: null, waitUntil: () => {} });
+    listeners.push({ data: null, waitUntil: (p) => waited.push(p) });
 
+    await Promise.all(waited);
     expect(notifications).toHaveLength(1);
+});
+
+it('remembers translated notification copy and uses it for background sensor alerts', async () => {
+    let saved;
+    const cache = {
+        put: vi.fn(async (_path, response) => {
+            saved = await response.json();
+        }),
+        match: vi.fn(async () => (saved ? new Response(JSON.stringify(saved)) : undefined)),
+    };
+    vi.stubGlobal('caches', { open: vi.fn(async () => cache) });
+    const { listeners, notifications } = await loadWorker();
+    const pending = [];
+    listeners.message({
+        origin: ORIGIN,
+        data: {
+            type: 'locale',
+            title: 'LeaveSafe uyarısı',
+            fallback: 'Müdahale algılandı.',
+            messages: {
+                'Charger disconnected!': 'Şarj bağlantısı kesildi!',
+                'USB removed: {device}': 'USB çıkarıldı: {device}',
+            },
+        },
+        waitUntil: (promise) => pending.push(promise),
+    });
+    await Promise.all(pending);
+    expect(saved.title).toBe('LeaveSafe uyarısı');
+    for (const message of ['Charger disconnected!', 'USB removed: My Device', '']) {
+        listeners.push({ data: { text: () => message }, waitUntil: (promise) => pending.push(promise) });
+    }
+    await Promise.all(pending);
+    expect(notifications.map((entry) => entry.options.body)).toEqual([
+        'Şarj bağlantısı kesildi!',
+        'USB çıkarıldı: My Device',
+        'Müdahale algılandı.',
+    ]);
+    expect(notifications.every((entry) => entry.title === 'LeaveSafe uyarısı')).toBe(true);
+    vi.unstubAllGlobals();
 });

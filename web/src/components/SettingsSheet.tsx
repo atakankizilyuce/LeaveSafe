@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useId, useState } from 'preact/hooks';
 import { useDragDismiss } from '../lib/dragDismiss';
+import { t } from '../lib/i18n';
 import type { AppConfig, ClientMessage } from '../lib/protocol';
 import { clearSession } from '../lib/session';
 import {
@@ -14,6 +15,7 @@ import {
     updateAvailable,
 } from '../lib/store';
 import { Icon } from './Icons';
+import { LanguagePicker } from './LanguagePicker';
 import { Scrim } from './Scrim';
 
 /**
@@ -50,7 +52,7 @@ export function SettingsSheet() {
         (pin !== '' || geoKey !== '' || JSON.stringify(draft) !== JSON.stringify(current));
 
     const close = useCallback(() => {
-        if (unsaved) showToast('Closed without saving');
+        if (unsaved) showToast(t('Closed without saving'));
         settingsOpen.value = false;
     }, [unsaved]);
 
@@ -91,31 +93,31 @@ export function SettingsSheet() {
         // only when it is actually required keeps the common case to one tap.
         const pinWasOn = current?.pin_protection.enabled ?? false;
         if (pinWasOn && (!draft.pin_protection.enabled || pin !== '')) {
-            const confirmPin = window.prompt('Enter your current PIN to change PIN settings:');
+            const confirmPin = window.prompt(t('Enter your current PIN to change PIN settings:'));
             if (!confirmPin) return;
             message.pin = confirmPin;
         }
 
         send(message);
         setSaved(true);
-        showToast('Settings saved');
+        showToast(t('Settings saved'));
         window.setTimeout(() => setSaved(false), 2000);
     };
 
     const reset = () => {
-        if (!window.confirm('Put every setting back to its default?')) return;
+        if (!window.confirm(t('Put every setting back to its default?'))) return;
         if (current?.pin_protection.enabled) {
-            const confirmPin = window.prompt('Enter your current PIN to confirm:');
+            const confirmPin = window.prompt(t('Enter your current PIN to confirm:'));
             if (!confirmPin) return;
             send({ type: 'reset_config', pin: confirmPin });
         } else {
             send({ type: 'reset_config' });
         }
-        showToast('Settings reset');
+        showToast(t('Settings reset'));
     };
 
     return (
-        <Scrim onClose={close} label="Settings">
+        <Scrim onClose={close} label={t('Settings')}>
             <div class="sheet" ref={sheetRef}>
                 {/* Grip and title in one strip, which stays put while the list
                     scrolls under it: the way out of a sheet this long should
@@ -124,21 +126,22 @@ export function SettingsSheet() {
                 <div class="sheet-handle">
                     <div class="sheet-grip" aria-hidden="true" />
                     <div class="sheet-head">
-                        <h2 class="readout">Settings</h2>
+                        <h2 class="readout">{t('Settings')}</h2>
                         <button type="button" class="chip" onClick={close}>
-                            Done
+                            {t('Done')}
                         </button>
                     </div>
                 </div>
 
                 {!draft ? (
-                    <p class="empty">Loading settings…</p>
+                    <p class="empty">{t('Loading settings…')}</p>
                 ) : (
                     <div class="sheet-body">
-                        <Group title="Getting in" note="How your phone reaches this laptop.">
+                        <LanguagePicker />
+                        <Group title={t('Getting in')} note={t('How your phone reaches this laptop.')}>
                             <Num
-                                label="Port"
-                                hint="restart required"
+                                label={t('Port')}
+                                hint={t('restart required')}
                                 value={draft.port}
                                 min={0}
                                 max={65535}
@@ -146,31 +149,34 @@ export function SettingsSheet() {
                             />
                         </Group>
 
-                        <Group title="Keeping others out" note="Limits on pairing attempts and sessions.">
+                        <Group
+                            title={t('Keeping others out')}
+                            note={t('Limits on pairing attempts and sessions.')}
+                        >
                             <Num
-                                label="Phones at once"
+                                label={t('Phones at once')}
                                 value={draft.max_sessions}
                                 min={1}
                                 max={10}
                                 onChange={(max_sessions) => patch({ max_sessions })}
                             />
                             <Num
-                                label="Wrong keys before lockout"
+                                label={t('Wrong keys before lockout')}
                                 value={draft.max_auth_attempts}
                                 min={1}
                                 max={20}
                                 onChange={(max_auth_attempts) => patch({ max_auth_attempts })}
                             />
                             <Num
-                                label="Lockout length"
-                                unit="seconds"
+                                label={t('Lockout length')}
+                                unit={t('seconds')}
                                 value={draft.lockout_seconds}
                                 min={10}
                                 max={600}
                                 onChange={(lockout_seconds) => patch({ lockout_seconds })}
                             />
                             <Toggle
-                                label="Require a PIN to disarm"
+                                label={t('Require a PIN to disarm')}
                                 value={draft.pin_protection.enabled}
                                 onChange={(enabled) =>
                                     patch({ pin_protection: { ...draft.pin_protection, enabled } })
@@ -178,12 +184,12 @@ export function SettingsSheet() {
                             />
                             {draft.pin_protection.enabled && (
                                 <Text
-                                    label="New PIN"
+                                    label={t('New PIN')}
                                     password
                                     placeholder={
                                         draft.pin_protection.has_pin
-                                            ? 'Leave blank to keep the current PIN'
-                                            : 'Choose a PIN'
+                                            ? t('Leave blank to keep the current PIN')
+                                            : t('Choose a PIN')
                                     }
                                     value={pin}
                                     onChange={setPin}
@@ -191,91 +197,93 @@ export function SettingsSheet() {
                             )}
                         </Group>
 
-                        <Group title="Watching" note="How closely it watches, and when it starts.">
+                        <Group title={t('Watching')} note={t('How closely it watches, and when it starts.')}>
                             <Num
-                                label="Status update every"
-                                unit="seconds"
+                                label={t('Status update every')}
+                                unit={t('seconds')}
                                 value={draft.heartbeat_seconds}
                                 min={5}
                                 max={60}
                                 onChange={(heartbeat_seconds) => patch({ heartbeat_seconds })}
                             />
                             <Num
-                                label="Wait after your phone drops"
-                                unit="seconds"
+                                label={t('Wait after your phone drops')}
+                                unit={t('seconds')}
                                 value={draft.disconnect_grace_seconds}
                                 min={5}
                                 max={120}
                                 onChange={(disconnect_grace_seconds) => patch({ disconnect_grace_seconds })}
                             />
                             <Num
-                                label="Input sensitivity"
-                                unit="seconds"
+                                label={t('Input sensitivity')}
+                                unit={t('seconds')}
                                 value={draft.input_threshold}
                                 min={1}
                                 max={10}
                                 onChange={(input_threshold) => patch({ input_threshold })}
                             />
                             <Toggle
-                                label="Arm itself when the screen locks"
+                                label={t('Arm itself when the screen locks')}
                                 value={draft.auto_arm_on_lock}
                                 onChange={(auto_arm_on_lock) => patch({ auto_arm_on_lock })}
                             />
                             <Toggle
-                                label="Build the alarm up gradually"
-                                hint="Notify your phone first, then half volume, then full."
+                                label={t('Build the alarm up gradually')}
+                                hint={t('Notify your phone first, then half volume, then full.')}
                                 value={draft.alarm.escalation_enabled}
                                 onChange={(escalation_enabled) => patch({ alarm: { escalation_enabled } })}
                             />
                         </Group>
 
                         <Group
-                            title="Where it is"
-                            note="Off by default. With it off, nothing is scanned and no lookup leaves the laptop. Restart required."
+                            title={t('Where it is')}
+                            note={t(
+                                'Off by default. With it off, nothing is scanned and no lookup leaves the laptop. Restart required.',
+                            )}
                         >
                             <Toggle
-                                label="Report its position while armed"
+                                label={t('Report its position while armed')}
                                 value={draft.location.enabled}
                                 onChange={(enabled) => patch({ location: { ...draft.location, enabled } })}
                             />
                             <Toggle
-                                label="Use your phone's position when arming"
-                                hint="The most precise source, and it stays on your network."
+                                label={t("Use your phone's position when arming")}
+                                hint={t('The most precise source, and it stays on your network.')}
                                 value={draft.location.phone_anchor}
                                 onChange={(phone_anchor) =>
                                     patch({ location: { ...draft.location, phone_anchor } })
                                 }
                             />
                             <Toggle
-                                label="Look up the public IP"
-                                hint="City level, roughly 25 km."
+                                label={t('Look up the public IP')}
+                                hint={t('City level, roughly 25 km.')}
                                 value={draft.location.ip_fallback}
                                 onChange={(ip_fallback) =>
                                     patch({ location: { ...draft.location, ip_fallback } })
                                 }
                             />
                             <Toggle
-                                label="Use Wi-Fi positioning"
-                                hint="Around 30 m. Needs an API key. Not available on macOS."
+                                label={t('Use Wi-Fi positioning')}
+                                hint={t('Around 30 m. Needs an API key. Not available on macOS.')}
                                 value={draft.location.wifi_enabled}
                                 onChange={(wifi_enabled) =>
                                     patch({ location: { ...draft.location, wifi_enabled } })
                                 }
                             />
                             <Text
-                                label="Geolocation API key"
+                                label={t('Geolocation API key')}
                                 password
                                 placeholder={
                                     draft.location.has_geolocate_key
-                                        ? 'A key is set — leave blank to keep it'
-                                        : 'No key set'
+                                        ? t('A key is set — leave blank to keep it')
+                                        : t('No key set')
                                 }
                                 value={geoKey}
                                 onChange={setGeoKey}
                             />
                             <Num
-                                label="Update position every"
-                                unit="seconds"
+                                label={t('Update position every')}
+                                unit={t('seconds')}
                                 value={draft.location.poll_seconds}
                                 min={15}
                                 max={3600}
@@ -286,22 +294,24 @@ export function SettingsSheet() {
                         </Group>
 
                         <Group
-                            title="Updates"
-                            note="LeaveSafe asks GitHub whether a newer release exists. It never downloads or replaces anything."
+                            title={t('Updates')}
+                            note={t(
+                                'LeaveSafe asks GitHub whether a newer release exists. It never downloads or replaces anything.',
+                            )}
                         >
                             <Toggle
-                                label="Check for updates"
+                                label={t('Check for updates')}
                                 value={draft.update_check}
                                 onChange={(update_check) => patch({ update_check })}
                             />
                             {draft.update_check && (
                                 <Select
-                                    label="Channel"
-                                    hint="Beta means prereleases as well, not instead."
+                                    label={t('Channel')}
+                                    hint={t('Beta means prereleases as well, not instead.')}
                                     value={draft.update_channel || 'stable'}
                                     options={[
-                                        ['stable', 'Stable releases only'],
-                                        ['beta', 'Include betas'],
+                                        ['stable', t('Stable releases only')],
+                                        ['beta', t('Include betas')],
                                     ]}
                                     onChange={(update_channel) => patch({ update_channel })}
                                 />
@@ -310,21 +320,22 @@ export function SettingsSheet() {
                         </Group>
 
                         <Group
-                            title="When your phone is asleep"
-                            note="LeaveSafe talks straight to your laptop, with no cloud in between. That is also the limit: when your phone locks its screen or you switch apps, the operating system freezes this page and closes the connection, so an alert may not reach you until you open it again."
+                            title={t('When your phone is asleep')}
+                            note={t(
+                                'LeaveSafe talks straight to your laptop, with no cloud in between. That is also the limit: when your phone locks its screen or you switch apps, the operating system freezes this page and closes the connection, so an alert may not reach you until you open it again.',
+                            )}
                         >
                             <p class="group-note">
-                                The laptop does not depend on your phone. It keeps watching every sensor you
-                                enabled and sounds its own alarm whether or not a phone is connected — and
-                                losing the connection is not itself treated as an intrusion, so a phone in
-                                your pocket will not set it off.
+                                {t(
+                                    'The laptop does not depend on your phone. It keeps watching every sensor you enabled and sounds its own alarm whether or not a phone is connected — and losing the connection is not itself treated as an intrusion, so a phone in your pocket will not set it off.',
+                                )}
                             </p>
                         </Group>
 
                         <div class="sheet-actions">
                             <button type="button" class="alarm-primary" onClick={save}>
                                 <Icon name="check" />
-                                {saved ? 'Saved' : 'Save settings'}
+                                {saved ? t('Saved') : t('Save settings')}
                             </button>
                             <button
                                 type="button"
@@ -340,11 +351,11 @@ export function SettingsSheet() {
                                 {/* A chain with its middle gone: this breaks
                                     the pairing rather than undoing a setting. */}
                                 <Icon name="unlink" />
-                                Forget this phone
+                                {t('Forget this phone')}
                             </button>
                             <button type="button" class="sheet-reset" onClick={reset}>
                                 <Icon name="undo" />
-                                Reset everything
+                                {t('Reset everything')}
                             </button>
                         </div>
                     </div>
@@ -394,7 +405,9 @@ function UpdateStatus() {
     if (!found) {
         return (
             <p class="group-note">
-                Running {serverVersion.value ?? 'an unknown version'}. Nothing newer has been found.
+                {t('Running {version}. Nothing newer has been found.', {
+                    version: serverVersion.value ?? t('an unknown version'),
+                })}
             </p>
         );
     }
@@ -410,30 +423,30 @@ function UpdateStatus() {
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1500);
             })
-            .catch(() => showToast('Could not copy — select the command instead'));
+            .catch(() => showToast(t('Could not copy — select the command instead')));
     };
 
     return (
         <>
-            <Field label="Running">
+            <Field label={t('Running')}>
                 <span class="field-readout figure">{found.running}</span>
             </Field>
-            <Field label="Available">
+            <Field label={t('Available')}>
                 <span class="field-readout figure">{found.latest}</span>
             </Field>
             {found.command ? (
                 <div class="setting setting-stack">
                     <code class="update-command">{found.command}</code>
                     <button type="button" class="chip" onClick={copy}>
-                        {copied ? 'Copied' : 'Copy'}
+                        {copied ? t('Copied') : t('Copy')}
                     </button>
                 </div>
             ) : (
                 <p class="group-note">
                     <a href={safeHttpUrl(found.url)} target="_blank" rel="noreferrer noopener">
-                        Open the releases page
+                        {t('Open the releases page')}
                     </a>{' '}
-                    to download it. Nothing is installed for you.
+                    {t('Download it yourself. Nothing is installed for you.')}
                 </p>
             )}
         </>
@@ -456,14 +469,6 @@ function Group({
             {children}
         </section>
     );
-}
-
-/** A stable DOM id from a setting's label. Labels are unique in this sheet. */
-function fieldId(label: string): string {
-    return `set-${label
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')}`;
 }
 
 /**
@@ -526,7 +531,7 @@ function Num({
     max: number;
     onChange(value: number): void;
 }) {
-    const id = fieldId(label);
+    const id = useId();
     return (
         <Field label={label} hint={hint} htmlFor={id}>
             <span class="setting-num">
@@ -560,7 +565,7 @@ function Text({
     password?: boolean;
     onChange(value: string): void;
 }) {
-    const id = fieldId(label);
+    const id = useId();
     return (
         <Field label={label} hint={hint} htmlFor={id}>
             <input
@@ -589,7 +594,7 @@ function Select({
     options: Array<[string, string]>;
     onChange(value: string): void;
 }) {
-    const id = fieldId(label);
+    const id = useId();
     return (
         <Field label={label} hint={hint} htmlFor={id}>
             <select

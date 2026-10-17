@@ -18,6 +18,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/endpoint"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
+	"github.com/leavesafe/leavesafe/internal/localization"
 	"github.com/leavesafe/leavesafe/internal/logsink"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/push"
@@ -207,7 +208,7 @@ func (a *app) shutdown() {
 	// longer had: the status grid repainted across the user's shell with their
 	// cursor left on whichever row the input row had been.
 	a.sb.handBack()
-	fmt.Printf("  %sShutting down…%s\n", cDim, cReset)
+	fmt.Printf(localization.Text(a.sb.languageCode(), "  %sShutting down…%s\n"), cDim, cReset)
 
 	a.cancel()
 	a.alarm.Stop()
@@ -438,6 +439,7 @@ func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager, keyPath stri
 	if opts.headless || opts.plain {
 		sb := newHeadlessStatusBar(a.hub, a.sensors, authMgr.PairingKey(), authMgr.RawPairingKey(),
 			a.srv.URLs(), keyPath)
+		sb.language = opts.cfg.Language
 		mode := "headless"
 		if opts.plain {
 			mode = "without the dashboard"
@@ -453,7 +455,7 @@ func (a *app) drawInterface(opts appOptions, authMgr *auth.Manager, keyPath stri
 		return sb
 	}
 
-	sb := buildDashboard(opts.out, opts.in, a.srv, authMgr, a.hub, a.sensors)
+	sb := buildDashboard(opts.out, opts.in, a.srv, authMgr, a.hub, a.sensors, opts.cfg.Language)
 	// The dashboard owns the terminal, so log lines have to be routed through it
 	// to land inside its scrolling region rather than on top of the QR code.
 	// Headless has no such constraint.

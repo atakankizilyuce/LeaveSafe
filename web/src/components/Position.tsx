@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { ago, distance } from '../lib/format';
 import { captureAnchor } from '../lib/geo';
+import { t } from '../lib/i18n';
 import { armed, location, send, showToast } from '../lib/store';
 
 const SOURCE: Record<string, string> = {
@@ -26,11 +27,12 @@ export function Position() {
     const lat = Number(fix?.lat);
     const lon = Number(fix?.lon);
     const usable = fix !== undefined && Number.isFinite(lat) && Number.isFinite(lon);
+    const sourceLabel = SOURCE[fix?.source ?? ''];
 
     return (
         <section class="card">
             <div class="card-head">
-                <h2 class="readout">Position</h2>
+                <h2 class="readout">{t('Position')}</h2>
                 <button
                     type="button"
                     class="chip"
@@ -39,40 +41,48 @@ export function Position() {
                         if (armed.value) captureAnchor();
                     }}
                 >
-                    Refresh
+                    {t('Refresh')}
                 </button>
             </div>
 
             {!usable ? (
                 <p class="empty">
                     {loc.available
-                        ? 'Looking for a position…'
-                        : 'No position source works on this machine. The README lists what each platform supports.'}
+                        ? t('Looking for a position…')
+                        : t(
+                              'No position source works on this machine. The README lists what each platform supports.',
+                          )}
                 </p>
             ) : (
                 <>
                     {loc.moved && (
                         <div class="moved">
-                            Moved {distance(Number(loc.moved_m) || 0)} from where you armed it
+                            {t('Moved {distance} from where you armed it', {
+                                distance: distance(Number(loc.moved_m) || 0),
+                            })}
                         </div>
                     )}
 
                     <div class="coords figure">
                         {lat.toFixed(5)}, {lon.toFixed(5)}
                     </div>
-                    <div class="coords-note">Accurate to about {distance(Number(fix.accuracy_m) || 0)}</div>
+                    <div class="coords-note">
+                        {t('Accurate to about {distance}', {
+                            distance: distance(Number(fix.accuracy_m) || 0),
+                        })}
+                    </div>
 
                     <div class="row">
-                        <span>Source</span>
-                        <span>{SOURCE[fix.source ?? ''] ?? fix.source ?? 'unknown'}</span>
+                        <span>{t('Source')}</span>
+                        <span>{sourceLabel ? t(sourceLabel) : (fix.source ?? t('unknown'))}</span>
                     </div>
                     <div class="row">
-                        <span>Updated</span>
+                        <span>{t('Updated')}</span>
                         <span class="figure">{ago(fix.ts)}</span>
                     </div>
                     {fix.label && (
                         <div class="row">
-                            <span>Place</span>
+                            <span>{t('Place')}</span>
                             <span>{fix.label}</span>
                         </div>
                     )}
@@ -85,11 +95,11 @@ export function Position() {
                                 const text = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
                                 navigator.clipboard
                                     ?.writeText(text)
-                                    .then(() => showToast('Coordinates copied'))
-                                    .catch(() => showToast('Could not copy'));
+                                    .then(() => showToast(t('Coordinates copied')))
+                                    .catch(() => showToast(t('Could not copy')));
                             }}
                         >
-                            Copy
+                            {t('Copy')}
                         </button>
                         <a
                             class="chip"
@@ -97,7 +107,7 @@ export function Position() {
                             rel="noopener noreferrer"
                             href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`}
                         >
-                            Open in maps
+                            {t('Open in maps')}
                         </a>
                         <button
                             type="button"
@@ -105,7 +115,7 @@ export function Position() {
                             aria-pressed={mapOpen}
                             onClick={() => setMapOpen(!mapOpen)}
                         >
-                            {mapOpen ? 'Hide map' : 'Show map'}
+                            {mapOpen ? t('Hide map') : t('Show map')}
                         </button>
                     </div>
 
@@ -129,11 +139,11 @@ function TileMap({ lat, lon, accuracy }: { lat: number; lon: number; accuracy: n
         <>
             <iframe
                 class="map rise"
-                title="Map of the reported position"
+                title={t('Map of the reported position')}
                 loading="lazy"
                 src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`}
             />
-            <p class="map-note readout">Tiles loaded from openstreetmap.org</p>
+            <p class="map-note readout">{t('Tiles loaded from openstreetmap.org')}</p>
         </>
     );
 }

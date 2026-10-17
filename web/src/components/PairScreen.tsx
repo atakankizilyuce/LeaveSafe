@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import { groupKey } from '../lib/format';
+import { t } from '../lib/i18n';
 import { pairError, pairing } from '../lib/store';
 import { Icon } from './Icons';
+import { LanguagePicker } from './LanguagePicker';
 
 interface Props {
     onPair(key: string): void;
@@ -27,7 +29,7 @@ export function PairScreen({ onPair, initialKey }: Props) {
 
     const submit = () => {
         if (!ready) {
-            pairError.value = 'That key needs 16 digits.';
+            pairError.value = t('That key needs 16 digits.');
             return;
         }
         onPair(digits);
@@ -36,12 +38,15 @@ export function PairScreen({ onPair, initialKey }: Props) {
     return (
         <main class="pair">
             <div class="pair-inner rise">
+                <LanguagePicker />
                 <div class="pair-mark readout">LeaveSafe</div>
-                <h1 class="pair-title">Leave it. We'll watch it.</h1>
-                <p class="pair-lead">Enter the key shown on your laptop, or scan its code to fill this in.</p>
+                <h1 class="pair-title">{t("Leave it. We'll watch it.")}</h1>
+                <p class="pair-lead">
+                    {t('Enter the key shown on your laptop, or scan its code to fill this in.')}
+                </p>
 
                 <label class="pair-label readout" htmlFor="key">
-                    Pairing key
+                    {t('Pairing key')}
                 </label>
                 <input
                     id="key"
@@ -72,7 +77,7 @@ export function PairScreen({ onPair, initialKey }: Props) {
                         the button and the field say the same word twice: once
                         in text and once in shape. */}
                     <Icon name="key" />
-                    {pairing.value ? 'Connecting…' : 'Connect'}
+                    {pairing.value ? t('Connecting…') : t('Connect')}
                 </button>
 
                 {pairError.value && <p class="pair-error">{pairError.value}</p>}
