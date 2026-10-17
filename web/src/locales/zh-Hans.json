@@ -171,7 +171,7 @@
   "NETWORK": "网络",
   "Watches the network interfaces. Fires when the IP address changes.": "监测网络接口。IP 地址发生变化时触发。",
   "INPUT": "输入",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "监测键盘和触控板。防护期间的任何输入都会触发。",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "监测键盘和触控板。防护期间，输入活动达到所设定的灵敏度阈值时触发。",
   "Language": "语言",
   "Use the device language": "使用设备语言",
   "just now": "刚刚",

@@ -177,7 +177,7 @@
   "NETWORK": "СЕТЬ",
   "Watches the network interfaces. Fires when the IP address changes.": "Следит за сетевыми интерфейсами. Срабатывает при изменении IP-адреса.",
   "INPUT": "ВВОД",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "Следит за клавиатурой и трекпадом. Срабатывает при любом вводе во время охраны.",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "Следит за клавиатурой и трекпадом. Во время охраны срабатывает, когда активность ввода достигает заданного порога чувствительности.",
   "Language": "Язык",
   "Use the device language": "Использовать язык устройства",
   "just now": "только что",

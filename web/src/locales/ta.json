@@ -171,7 +171,7 @@
   "NETWORK": "பிணையம்",
   "Watches the network interfaces. Fires when the IP address changes.": "பிணைய இடைமுகங்களைக் கண்காணிக்கும். IP முகவரி மாறினால் தூண்டப்படும்.",
   "INPUT": "விசைப்பலகை மற்றும் சுட்டி",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "விசைப்பலகை மற்றும் டிராக்பேடைக் கண்காணிக்கும். பாதுகாப்பு இயங்கும்போது எந்த உள்ளீட்டிலும் தூண்டப்படும்.",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "விசைப்பலகை மற்றும் டிராக்பேடைக் கண்காணிக்கும். பாதுகாப்பு இயங்கும்போது உள்ளீடு அமைத்த உணர்திறன் வரம்பை எட்டினால் தூண்டப்படும்.",
   "Language": "மொழி",
   "Use the device language": "சாதனத்தின் மொழியைப் பயன்படுத்து",
   "just now": "இப்போதுதான்",

@@ -9,8 +9,8 @@ export function evaluateEvidence(gate, issues, measures, hotspots) {
     if (values.vulnerabilities !== 0 || values.new_vulnerabilities !== 0) failures.push('Security vulnerabilities are present or unavailable');
     if (!Number.isFinite(values.new_lines_to_cover)) failures.push('New-code coverage scope is unavailable');
     if (values.security_rating !== 1 || values.new_security_rating !== 1) failures.push('Security rating is not A');
-    if (!(values.coverage >= 80)) failures.push('Overall coverage is below 80% or unavailable');
-    if (values.new_lines_to_cover > 0 && !(values.new_coverage >= 80)) failures.push('New-code coverage is below 80% or unavailable');
+    if (!Number.isFinite(values.coverage) || values.coverage < 80) failures.push('Overall coverage is below 80% or unavailable');
+    if (values.new_lines_to_cover > 0 && (!Number.isFinite(values.new_coverage) || values.new_coverage < 80)) failures.push('New-code coverage is below 80% or unavailable');
     if (failures.length) throw new Error(failures.join('; '));
     return values;
 }
@@ -36,5 +36,11 @@ export async function readEvidence({ token, project, branch, pullRequest, fetche
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.join(import.meta.dirname, 'sonar-evidence.mjs')) {
     const evidence = await readEvidence({ token: process.env.SONAR_TOKEN, project: 'atakankizilyuce_LeaveSafe', branch: process.env.BRANCH, pullRequest: process.env.PR_NUMBER });
-    console.log(JSON.stringify(evidence, null, 2));
+    // Only numeric measurements reach the CI log; remote descriptions are not logged.
+    console.log('Sonar gate OK; issues=%d; hotspots=%d; vulnerabilities=%d; new vulnerabilities=%d; coverage=%d; new coverage=%d; new lines=%d; security rating=%d; new security rating=%d',
+        Number(evidence.issueCount), Number(evidence.hotspotCount),
+        Number(evidence.values.vulnerabilities), Number(evidence.values.new_vulnerabilities),
+        Number(evidence.values.coverage), Number(evidence.values.new_coverage),
+        Number(evidence.values.new_lines_to_cover), Number(evidence.values.security_rating),
+        Number(evidence.values.new_security_rating));
 }

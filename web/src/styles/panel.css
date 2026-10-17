@@ -164,14 +164,15 @@
     display: flex;
     align-items: baseline;
     gap: 14px;
-    height: clamp(2.4rem, 13vw, 3.4rem);
+    min-height: clamp(2.4rem, 13vw, 3.4rem);
 }
 
 .state-word {
-    font-size: clamp(2.4rem, 13vw, 3.4rem);
+    overflow-wrap: anywhere;
+    font-size: clamp(2rem, 9vw, 4.6rem);
     font-weight: 750;
-    letter-spacing: -0.045em;
-    line-height: 1;
+    letter-spacing: var(--script-tracking, -0.045em);
+    line-height: 1.2;
     color: var(--text);
     transition: color var(--state-shift);
 }
@@ -594,7 +595,7 @@
     .core-shield,
     .core-held,
     .ring-out {
-        transition-duration: 1ms !important;
+        transition-duration: 1ms;
     }
 
     .snode[data-state='tripped'] {
@@ -815,7 +816,7 @@
     align-items: baseline;
     padding: 8px 0 8px 10px;
     border-top: 1px solid var(--edge);
-    border-left: 2px solid transparent;
+    border-inline-start: 2px solid transparent;
     font-size: 0.86rem;
 }
 
@@ -824,11 +825,11 @@
 }
 
 .log-entry[data-level='critical'] {
-    border-left-color: var(--trip);
+    border-inline-start-color: var(--trip);
 }
 
 .log-entry[data-level='warning'] {
-    border-left-color: var(--warn);
+    border-inline-start-color: var(--warn);
 }
 
 .log-time {
@@ -1122,6 +1123,7 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .setting-label {
@@ -1143,7 +1145,7 @@
 .field-num {
     width: 88px;
     padding: 8px 10px;
-    text-align: right;
+    text-align: end;
 }
 
 .field-num::-webkit-inner-spin-button,
@@ -1385,15 +1387,7 @@
 }
 
 /* Logical flow mirrors controls while fixed sensor geometry remains unchanged. */
-.state-word { overflow-wrap: anywhere; font-size: clamp(2rem, 9vw, 4.6rem); letter-spacing: var(--script-tracking, -0.045em); line-height: 1.2; }
 .snode-name, .core-label, .sref-state { letter-spacing: var(--script-tracking, 0.06em); overflow-wrap: anywhere; }
 .log-order, .sref-state { margin-left: 0; margin-inline-start: auto; }
-.log-entry { border-left: 0; border-inline-start: 2px solid transparent; }
-.log-entry[data-level='critical'] { border-inline-start-color: var(--trip); }
-.log-entry[data-level='warning'] { border-inline-start-color: var(--warn); }
-.setting-text { min-width: 0; overflow-wrap: anywhere; }
-.field-num { text-align: end; }
 :root[dir='rtl'] .switch-knob { left: auto; right: 3px; }
 :root[dir='rtl'] .switch[aria-checked='true'] .switch-knob { transform: translateX(-18px); }
-
-.state-word-wrap { height: auto; min-height: clamp(2.4rem, 13vw, 3.4rem); }

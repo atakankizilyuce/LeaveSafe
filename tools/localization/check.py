@@ -42,38 +42,40 @@ def validate(source, target, allow_incomplete=False):
     return errors
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--allow-incomplete', action='store_true', help='development only; missing translations stay unavailable in the picker')
-    args = parser.parse_args()
-    directory = ROOT / 'web/src/locales'
+def validate_directory(directory, allow_incomplete, terminal=False):
     source = json.loads((directory / 'en.json').read_text())
     errors = []
     for locale in LOCALES:
         path = directory / f'{locale}.json'
+        label = f'{directory.name}/{locale}' if terminal else locale
         if not path.exists():
-            errors.append(f'{locale}: missing catalog')
+            if not terminal or not allow_incomplete:
+                errors.append(f'{label}: missing catalog')
             continue
         target = json.loads(path.read_text())
-        errors.extend(f'{locale}: {error}' for error in validate(source, target, args.allow_incomplete))
+        errors.extend(f'{label}: {error}' for error in validate(source, target, allow_incomplete))
+        if terminal:
+            errors.extend(f'{label}: {error}' for error in validate_go_formats(source, target))
+    return errors, len(source)
+
+
+def validate_go_formats(source, target):
     formatting = re.compile(r'%[-+ #0-9.]*[a-zA-Z]')
+    return [f'changed Go formatting: {key}' for key in set(source) & set(target)
+            if not isinstance(target[key], str) or formatting.findall(key) != formatting.findall(target[key])]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--allow-incomplete', action='store_true', help='development only; missing translations stay unavailable in the picker')
+    args = parser.parse_args()
+    errors, source_count = validate_directory(ROOT / 'web/src/locales', args.allow_incomplete)
     for section in ('catalogs', 'service'):
-        terminal = ROOT / 'internal/localization' / section
-        terminal_source = json.loads((terminal / 'en.json').read_text())
-        for locale in LOCALES:
-            path = terminal / f'{locale}.json'
-            if not path.exists():
-                if not args.allow_incomplete:
-                    errors.append(f'{section}/{locale}: missing catalog')
-                continue
-            target = json.loads(path.read_text())
-            errors.extend(f'{section}/{locale}: {error}' for error in validate(terminal_source, target, args.allow_incomplete))
-            for key in set(terminal_source) & set(target):
-                if not isinstance(target[key], str) or formatting.findall(key) != formatting.findall(target[key]):
-                    errors.append(f'{section}/{locale}: changed Go formatting: {key}')
+        problems, _ = validate_directory(ROOT / 'internal/localization' / section, args.allow_incomplete, terminal=True)
+        errors.extend(problems)
     if errors:
         raise SystemExit('\n'.join(errors))
-    print(f'{len(LOCALES)} catalogs validated against {len(source)} source messages')
+    print(f'{len(LOCALES)} catalogs validated against {source_count} source messages')
 
 
 if __name__ == '__main__':

@@ -173,7 +173,7 @@
   "NETWORK": "RED",
   "Watches the network interfaces. Fires when the IP address changes.": "Vigila las interfaces de red. Se dispara al cambiar la dirección IP.",
   "INPUT": "ENTRADA",
-  "Watches the keyboard and trackpad. Fires on any input while armed.": "Vigila el teclado y el panel táctil. Se dispara con cualquier entrada mientras la protección está activada.",
+  "Watches the keyboard and trackpad. Fires on any input while armed.": "Vigila el teclado y el panel táctil. Se dispara cuando la entrada alcanza el umbral de sensibilidad configurado mientras la protección está activada.",
   "Language": "Idioma",
   "Use the device language": "Usar el idioma del dispositivo",
   "just now": "ahora mismo",

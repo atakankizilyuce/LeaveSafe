@@ -1,0 +1,14 @@
+{
+  "locale": "zh-Hans",
+  "reviewer": "/root/review_web_zh",
+  "sources": {
+    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/zh-Hans.json": "e7dafe7fd85ce6b8d5b85742c34610feb772a65ecf0ae4dbc4fa38993a65de64",
+    "internal/localization/catalogs/zh-Hans.json": "a7f9a5e39d47ea075be8a43ac72af2453d4a2a49467688826a949bbabb4769e0",
+    "internal/localization/service/zh-Hans.json": "74e1c86475b0ef670d36561a59ae009a65a9c7df1730e03b2ca478aa6cab7e1d"
+  }
+}
