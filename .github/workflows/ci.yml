@@ -81,7 +81,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: crate-ci/typos@d43b6c087ac471e2ea7b8af622ff15f05c0c365b # v1.50.1
+      - uses: crate-ci/typos@7f9d0819ca1c008ade73f4b41fa9d258d48f605b # v1.51.1
 
   # ---------------------------------------------------------------------------
   # Lint runs once per target OS. Half of this codebase sits behind build tags
@@ -176,7 +176,7 @@ jobs:
         run: mv coverage.out coverage-${{ matrix.label }}.out
 
       - name: Upload the coverage profile
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-report-${{ matrix.label }}
           path: coverage-${{ matrix.label }}.out
@@ -188,7 +188,7 @@ jobs:
       # sonar-project.properties.
       - name: Upload the coverage HTML report
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-html
           path: coverage.html
@@ -333,7 +333,7 @@ jobs:
 
       - name: Upload the VM console log on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sandbox-vm-console
           path: test/sandbox/linuxvm/.work/vm-console.log
@@ -355,7 +355,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -407,7 +407,7 @@ jobs:
           python3 -m coverage xml --data-file="$RUNNER_TEMP/localization.coverage" -o "$RUNNER_TEMP/localization-coverage.xml"
 
       - name: Upload localization tool coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: localization-coverage
           path: ${{ runner.temp }}/localization-coverage.xml
@@ -429,7 +429,7 @@ jobs:
         run: sed -i 's|^SF:|SF:web/|' web/coverage/lcov.info
 
       - name: Upload the phone interface's coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: web-coverage
           path: web/coverage/lcov.info
@@ -443,7 +443,7 @@ jobs:
         run: sed -i 's|^SF:|SF:site/|' site/coverage/lcov.info
 
       - name: Upload the landing page's coverage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: site-coverage
           path: site/coverage/lcov.info
@@ -460,7 +460,7 @@ jobs:
       # built. Kept short: it is a build output, not a record.
       - name: Keep the bundle this job built
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: web-dist
           path: web/dist
@@ -551,7 +551,7 @@ jobs:
             ./cmd/leavesafe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
@@ -622,7 +622,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Fetch every platform's coverage profile
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: coverage-report-*
           merge-multiple: true
@@ -655,30 +655,30 @@ jobs:
           echo "### Coverage across all three platforms: $total" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch the phone interface's coverage
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: web-coverage
           path: web/coverage
 
       - name: Fetch the landing page's coverage
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: site-coverage
           path: site/coverage
 
       - name: Fetch localization helper coverage
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: localization-coverage
           path: localization-coverage
 
       - name: Scan
-        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Node for Sonar evidence
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
 
