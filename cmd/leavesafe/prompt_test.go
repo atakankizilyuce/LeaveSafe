@@ -6,7 +6,7 @@ import (
 )
 
 // The language question is the one that cannot be asked in its own answer, so
-// it names both languages — and its default has to be the number it prints.
+// it names languages in their own writing — and defaults to the number printed.
 func TestTheLanguageQuestionOffersBothAndDefaultsToTheNumberItShows(t *testing.T) {
 	cases := map[string]struct {
 		typed string
@@ -59,18 +59,21 @@ func TestTheBoxKeepsItsShape(t *testing.T) {
 // `lang` must tell "leave it alone" apart from a choice: someone who types the
 // command to see what it says must not change their language by reading the
 // answer.
-func TestParseLanguageChoiceOnlyAcceptsOneOrTwo(t *testing.T) {
+func TestParseLanguageChoiceAcceptsAvailableNumbersAndLocaleCodes(t *testing.T) {
 	cases := map[string]struct {
 		typed  string
 		want   string
 		wantOK bool
 	}{
-		"1 is turkish":         {"1", "tr", true},
-		"2 is english":         {"2", "en", true},
-		"padded still counts":  {" 1 ", "tr", true},
-		"enter leaves alone":   {"", "", false},
-		"nonsense left alone":  {"deutsch", "", false},
-		"a third option is no": {"3", "", false},
+		"1 is turkish":                {"1", "tr", true},
+		"2 is english":                {"2", "en", true},
+		"padded still counts":         {" 1 ", "tr", true},
+		"enter leaves alone":          {"", "", false},
+		"nonsense left alone":         {"deutsch", "", false},
+		"third is simplified chinese": {"3", "zh-Hans", true},
+		"locale code":                 {"de", "de", true},
+		"zero is not an option":       {"0", "", false},
+		"outside target languages":    {"26", "", false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -91,7 +94,7 @@ func TestLanguageByCodeFallsBackToEnglish(t *testing.T) {
 	if got := languageByCode("tr"); got.code != "tr" {
 		t.Errorf("languageByCode(\"tr\") = %q, want tr", got.code)
 	}
-	for _, code := range []string{"en", "", "de", "TR"} {
+	for _, code := range []string{"en", "", "xx"} {
 		if got := languageByCode(code); got.code != "en" {
 			t.Errorf("languageByCode(%q) = %q, want en", code, got.code)
 		}

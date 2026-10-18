@@ -1,3 +1,4 @@
+@import "./fonts.css";
 @import './tokens.css';
 
 *,
@@ -61,10 +62,6 @@ button {
     letter-spacing: -0.01em;
 }
 
-.hidden {
-    display: none !important;
-}
-
 /* ── Panel chrome ──────────────────────────────────────────────────────── */
 
 /* The bottom padding clears the fixed arm control, which is the tallest thing
@@ -94,7 +91,7 @@ button {
     letter-spacing: 0.3em;
     text-transform: uppercase;
     color: var(--text);
-    margin-right: auto;
+    margin-inline-end: auto;
 }
 
 .wordmark span {
@@ -221,3 +218,14 @@ button {
         animation: none;
     }
 }
+
+/* Let each script shape naturally; Latin tracking breaks connected Arabic and Indic glyphs. */
+:root:lang(ar), :root:lang(arz), :root:lang(ur), :root:lang(pnb),
+:root:lang(hi), :root:lang(bn), :root:lang(mr), :root:lang(te), :root:lang(ta),
+:root:lang(zh), :root:lang(ja), :root:lang(yue) {
+    --script-tracking: 0;
+}
+:root .readout { letter-spacing: var(--script-tracking, 0.18em); }
+.language-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-block: 1rem; }
+.language-picker select { max-width: 100%; min-width: 0; color: var(--text); background: var(--raised); border: 1px solid var(--edge); border-radius: 6px; padding: 0.5rem; font: inherit; }
+.key-field, .coords, .update-command { direction: ltr; unicode-bidi: isolate; }

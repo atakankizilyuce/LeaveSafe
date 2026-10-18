@@ -7,6 +7,7 @@ import (
 
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/localization"
 )
 
 // runInstallService registers this binary to start when the user logs in.
@@ -18,12 +19,12 @@ import (
 func runInstallService() int {
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not determine this program's path: %v\n", err)
+		fmt.Fprintf(os.Stderr, localization.Text(localization.SystemLanguage(), "Could not determine this program's path: %v\n"), err)
 		return 1
 	}
 	exe, err = filepath.EvalSymlinks(exe)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not resolve this program's path: %v\n", err)
+		fmt.Fprintf(os.Stderr, localization.Text(localization.SystemLanguage(), "Could not resolve this program's path: %v\n"), err)
 		return 1
 	}
 
@@ -36,36 +37,36 @@ func runInstallService() int {
 	// because it is not a secret and nobody types it. See auth.LoadOrCreateKeyFile.
 	key, _, err := auth.LoadOrCreateKeyFile(keyPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not prepare the pairing key: %v\n", err)
+		fmt.Fprintf(os.Stderr, localization.Text(localization.SystemLanguage(), "Could not prepare the pairing key: %v\n"), err)
 		return 1
 	}
 
 	detail, err := installAutostart(exe)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not install the autostart entry: %v\n", err)
+		fmt.Fprintf(os.Stderr, localization.Text(localization.SystemLanguage(), "Could not install the autostart entry: %v\n"), err)
 		return 1
 	}
 
-	fmt.Printf("LeaveSafe will now start when you log in.\n\n%s\n\n", indent(detail, "  "))
-	fmt.Printf("Pairing key: %s\n", formatKey(key))
-	fmt.Printf("  Stored in %s, readable only by you.\n", keyPath)
-	fmt.Printf("  The background copy has no screen to show a QR code on, so it reuses this\n")
-	fmt.Printf("  key every start — which is what lets your phone reconnect after a reboot.\n")
-	fmt.Printf("  Delete the file to force a new key on the next start.\n\n")
-	fmt.Printf("Run 'leavesafe service-status' to check on it, or 'leavesafe uninstall-service' to remove it.\n")
+	fmt.Printf(localization.Text(localization.SystemLanguage(), "LeaveSafe will now start when you log in.\n\n%s\n\n"), indent(detail, "  "))
+	fmt.Printf(localization.Text(localization.SystemLanguage(), "Pairing key: %s\n"), formatKey(key))
+	fmt.Printf(localization.Text(localization.SystemLanguage(), "  Stored in %s, readable only by you.\n"), keyPath)
+	fmt.Print(localization.Text(localization.SystemLanguage(), "  The background copy has no screen to show a QR code on, so it reuses this\n"))
+	fmt.Print(localization.Text(localization.SystemLanguage(), "  key every start — which is what lets your phone reconnect after a reboot.\n"))
+	fmt.Print(localization.Text(localization.SystemLanguage(), "  Delete the file to force a new key on the next start.\n\n"))
+	fmt.Print(localization.Text(localization.SystemLanguage(), "Run 'leavesafe service-status' to check on it, or 'leavesafe uninstall-service' to remove it.\n"))
 	return 0
 }
 
 // runUninstallService removes the autostart entry.
 func runUninstallService() int {
 	if err := uninstallAutostart(); err != nil {
-		fmt.Fprintf(os.Stderr, "Could not remove the autostart entry: %v\n", err)
+		fmt.Fprintf(os.Stderr, localization.Text(localization.SystemLanguage(), "Could not remove the autostart entry: %v\n"), err)
 		return 1
 	}
-	fmt.Println("LeaveSafe will no longer start automatically.")
-	fmt.Printf("The stored pairing key was left in place at %s.\n",
+	fmt.Println(serviceText("LeaveSafe will no longer start automatically."))
+	fmt.Printf(localization.Text(localization.SystemLanguage(), "The stored pairing key was left in place at %s.\n"),
 		filepath.Join(config.ConfigDir(), auth.KeyFileName))
-	fmt.Println("Delete that file if you want a fresh key on the next start.")
+	fmt.Println(serviceText("Delete that file if you want a fresh key on the next start."))
 	return 0
 }
 
@@ -73,15 +74,15 @@ func runUninstallService() int {
 func runServiceStatus() int {
 	installed, detail, err := autostartStatus()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not read the autostart entry: %v\n", err)
+		fmt.Fprintf(os.Stderr, localization.Text(localization.SystemLanguage(), "Could not read the autostart entry: %v\n"), err)
 		return 1
 	}
 	if !installed {
-		fmt.Println("LeaveSafe is not set to start automatically.")
-		fmt.Println("Run 'leavesafe install-service' to change that.")
+		fmt.Println(serviceText("LeaveSafe is not set to start automatically."))
+		fmt.Println(serviceText("Run 'leavesafe install-service' to change that."))
 		return 1
 	}
-	fmt.Printf("LeaveSafe starts automatically.\n\n%s\n", indent(detail, "  "))
+	fmt.Printf(localization.Text(localization.SystemLanguage(), "LeaveSafe starts automatically.\n\n%s\n"), indent(detail, "  "))
 	return 0
 }
 
@@ -91,4 +92,9 @@ func formatKey(raw string) string {
 		return raw
 	}
 	return fmt.Sprintf("%s-%s-%s-%s", raw[0:4], raw[4:8], raw[8:12], raw[12:16])
+}
+
+// serviceText localizes user-facing service descriptions, leaving OS command output opaque.
+func serviceText(source string, args ...any) string {
+	return fmt.Sprintf(localization.Text(localization.SystemLanguage(), source), args...)
 }

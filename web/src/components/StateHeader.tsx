@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { since } from '../lib/format';
+import { t } from '../lib/i18n';
 import { activeSensorCount, armed, armedSince, link } from '../lib/store';
 import { Trace } from './Trace';
 
@@ -43,8 +44,8 @@ export function StateHeader({ counting }: Props) {
  * is in, and it is the one they can still change their mind about.
  */
 function stateWord(counting: number | null, isArmed: boolean): string {
-    if (counting !== null) return 'ARMING';
-    return isArmed ? 'ARMED' : 'STANDBY';
+    if (counting !== null) return t('ARMING');
+    return isArmed ? t('ARMED') : t('STANDBY');
 }
 
 /**
@@ -61,20 +62,14 @@ function stateWord(counting: number | null, isArmed: boolean): string {
  */
 function stateDetail() {
     if (link.value === 'lost') {
-        return <span class="state-lost">Connection lost</span>;
+        return <span class="state-lost">{t('Connection lost')}</span>;
     }
 
     const count = activeSensorCount.value;
     if (armed.value) {
         return (
-            <span>
-                Watching {count} sensor{count === 1 ? '' : 's'} · {since(armedSince.value)}
-            </span>
+            <span>{t('Watching {count} sensors · {since}', { count, since: since(armedSince.value) })}</span>
         );
     }
-    return (
-        <span>
-            {count} sensor{count === 1 ? '' : 's'} ready
-        </span>
-    );
+    return <span>{t('{count} sensors ready', { count })}</span>;
 }

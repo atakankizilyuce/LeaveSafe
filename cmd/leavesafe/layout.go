@@ -304,12 +304,13 @@ func truncateVisible(s string, maxVisible int) string {
 			i += n
 			continue
 		}
-		if seen == maxVisible {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		width := columnWidth(r)
+		if seen+width > maxVisible {
 			return closeColor(b.String(), colored)
 		}
-		_, size := utf8.DecodeRuneInString(s[i:])
 		b.WriteString(s[i : i+size])
-		seen++
+		seen += width
 		i += size
 	}
 	return s

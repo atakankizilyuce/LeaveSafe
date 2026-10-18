@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/localization"
 )
 
 // versionLine describes this build in one line: the version stamped in at link
@@ -54,7 +55,7 @@ func printUsage() {
 // The destination is a parameter so a test can read what it says. A flag that
 // exists and is not described here is one nobody finds.
 func writeUsage(out io.Writer) {
-	fmt.Fprintf(out, `%s
+	fmt.Fprintf(out, localization.Text(localization.SystemLanguage(), `%s
 
 LeaveSafe turns your phone into a remote alarm for your laptop. Run it, scan the
 QR code it prints, tap Arm, and walk away.
@@ -92,7 +93,7 @@ Files:
     state.json        Whether the machine was armed when this last stopped
 
 Report bugs at %s
-`, versionLine(), config.ConfigDir(), issuesURL)
+`), versionLine(), config.ConfigDir(), issuesURL)
 }
 
 // runSubcommand dispatches a non-flag command and returns the process exit
@@ -113,7 +114,7 @@ func runSubcommand(args []string) int {
 		fmt.Println(versionLine())
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command %q.\n\nRun 'leavesafe -help' for the list of commands.\n", args[0])
+		fmt.Fprintf(os.Stderr, localization.Text(localization.SystemLanguage(), "Unknown command %q.\n\nRun 'leavesafe -help' for the list of commands.\n"), args[0])
 		return 2
 	}
 }

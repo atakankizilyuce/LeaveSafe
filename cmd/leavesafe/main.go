@@ -22,6 +22,7 @@ import (
 	"github.com/leavesafe/leavesafe/internal/auth"
 	"github.com/leavesafe/leavesafe/internal/config"
 	"github.com/leavesafe/leavesafe/internal/eventlog"
+	"github.com/leavesafe/leavesafe/internal/localization"
 	"github.com/leavesafe/leavesafe/internal/location"
 	"github.com/leavesafe/leavesafe/internal/monitor"
 	"github.com/leavesafe/leavesafe/internal/paircode"
@@ -80,6 +81,7 @@ const (
 // print on screen for the user to scan.
 type statusBar struct {
 	mu        sync.Mutex
+	language  string
 	hub       *ws.Hub
 	sensorMgr *monitor.Manager
 	out       io.Writer
@@ -239,7 +241,8 @@ func (sb *statusBar) setKey(key string) {
 	sb.refresh()
 }
 
-// visLen is how many columns a string takes on screen: its runes, not counting
+// visLen is how many columns a string takes on screen, accounting for wide and
+// combining characters and not counting
 // the color escapes, which are written to the terminal and occupy nothing.
 func visLen(s string) int {
 	n := 0
@@ -248,8 +251,8 @@ func visLen(s string) int {
 			i += e
 			continue
 		}
-		_, size := utf8.DecodeRuneInString(s[i:])
-		n++
+		r, size := utf8.DecodeRuneInString(s[i:])
+		n += columnWidth(r)
 		i += size
 	}
 	return n
@@ -301,10 +304,10 @@ func (sb *statusBar) gridHeight() int {
 }
 
 func (sb *statusBar) gridLines() []string {
-	armedLabel := cDim + "DISARMED" + cReset
+	armedLabel := cDim + localization.Text(sb.language, "DISARMED") + cReset
 	armedDot := cDim + "●" + cReset
 	if sb.hub.IsArmed() {
-		armedLabel = cRed + cBold + "● ARMED" + cReset
+		armedLabel = cRed + cBold + localization.Text(sb.language, "● ARMED") + cReset
 		armedDot = cRed + "●" + cReset
 	}
 
@@ -332,29 +335,29 @@ func (sb *statusBar) gridLines() []string {
 
 	lines := []string{
 		top,
-		sb.boxLine("  " + cBold + cCyan + "◉  STATUS" + cReset),
+		sb.boxLine("  " + cBold + cCyan + localization.Text(sb.language, "◉  STATUS") + cReset),
 		midSep,
-		sb.boxLine(fmt.Sprintf("  %s  State    %s", armedDot, armedLabel)),
-		sb.boxLine(fmt.Sprintf("  %s●%s  Clients  %s%d%s connected", cGreen, cReset, cBold, clients, cReset)),
-		sb.boxLine(fmt.Sprintf("  %s●%s  Sensors  %s%d / %d%s active", cCyan, cReset, cBold, active, total, cReset)),
+		sb.boxLine(fmt.Sprintf(localization.Text(sb.language, "  %s  State    %s"), armedDot, armedLabel)),
+		sb.boxLine(fmt.Sprintf(localization.Text(sb.language, "  %s●%s  Clients  %s%d%s connected"), cGreen, cReset, cBold, clients, cReset)),
+		sb.boxLine(fmt.Sprintf(localization.Text(sb.language, "  %s●%s  Sensors  %s%d / %d%s active"), cCyan, cReset, cBold, active, total, cReset)),
 	}
 
 	lines = append(lines, midSep)
-	lines = append(lines, sb.boxLine(fmt.Sprintf("  %s●%s  Key      %s%s%s", cYellow, cReset, cBold, sb.key, cReset)))
+	lines = append(lines, sb.boxLine(fmt.Sprintf(localization.Text(sb.language, "  %s●%s  Key      %s%s%s"), cYellow, cReset, cBold, sb.key, cReset)))
 
 	// What the application's pairing field takes: one string carrying the
 	// address and the key together, so nobody types two things. Drawn only
 	// when there is an address to build it from — see pairCode.
 	if code := sb.pairCodeLocked(); code != "" {
 		lines = append(lines, sb.boxLine(
-			fmt.Sprintf("  %s●%s  Code     %s%s%s", cYellow, cReset, cBold, code, cReset),
+			fmt.Sprintf(localization.Text(sb.language, "  %s●%s  Code     %s%s%s"), cYellow, cReset, cBold, code, cReset),
 		))
 	}
 
 	maxURLVis := w - 2 - visLen("  ●  URL      ")
 	for _, url := range sb.urls {
 		lines = append(lines, sb.boxLine(
-			fmt.Sprintf("  %s●%s  URL      %s%s%s", cGreen, cReset, cGreen,
+			fmt.Sprintf(localization.Text(sb.language, "  %s●%s  URL      %s%s%s"), cGreen, cReset, cGreen,
 				ellipsize(url, maxURLVis), cReset),
 		))
 	}
@@ -559,16 +562,25 @@ func (sb *statusBar) handBack() {
 	sb.line = nil
 }
 
+func (sb *statusBar) languageCode() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.language
+}
+
 func (sb *statusBar) writeLine(format string, args ...interface{}) {
 	if sb.headless {
 		// The escape codes and box drawing mean nothing in a log file. Strip
 		// the layout and let the logger own the line.
+		if sb.plainOut != nil {
+			format = localization.Text(sb.languageCode(), format)
+		}
 		log.Info(strings.TrimSpace(stripANSI(fmt.Sprintf(format, args...))))
 		return
 	}
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-	sb.writeLog(fmt.Sprintf(format, args...))
+	sb.writeLog(fmt.Sprintf(localization.Text(sb.language, format), args...))
 	sb.doRedrawGrid()
 }
 
@@ -707,31 +719,32 @@ func logHeadlessStartup(sb *statusBar, mode string) {
 // straight to the terminal rather than logged, because the log is a file that
 // gets attached to bug reports and the key is the whole of the front door.
 func printPairingCode(out io.Writer, sb *statusBar, rawKey string) {
+	code := sb.languageCode()
 	urls := sb.urlList()
 	if len(urls) == 0 {
 		return
 	}
 
-	fmt.Fprintf(out, "\n  %sScan to connect:%s\n\n", cDim, cReset)
+	fmt.Fprintf(out, localization.Text(code, "\n  %sScan to connect:%s\n\n"), cDim, cReset)
 	lines, err := qr.Lines(pairingURL(urls[0], rawKey))
 	if err != nil {
-		fmt.Fprintf(out, "  %sNo QR code for %s: %v — open the address by hand.%s\n",
+		fmt.Fprintf(out, localization.Text(code, "  %sNo QR code for %s: %v — open the address by hand.%s\n"),
 			cYellow, urls[0], err, cReset)
 	}
 	for _, line := range lines {
 		fmt.Fprintf(out, "  %s\n", line)
 	}
 
-	fmt.Fprintf(out, "\n  %s●%s  URL      %s%s%s\n", cGreen, cReset, cGreen, urls[0], cReset)
-	fmt.Fprintf(out, "  %s●%s  Key      %s%s%s\n", cYellow, cReset, cBold, sb.keyText(), cReset)
+	fmt.Fprintf(out, localization.Text(code, "\n  %s●%s  URL      %s%s%s\n"), cGreen, cReset, cGreen, urls[0], cReset)
+	fmt.Fprintf(out, localization.Text(code, "  %s●%s  Key      %s%s%s\n"), cYellow, cReset, cBold, sb.keyText(), cReset)
 	// The application's own code, for a phone that has it installed — the same
 	// line the dashboard draws, built from the address whose QR is above. A
 	// plain start is also what a service is, and a service that printed the
 	// key but not the code left the application with nothing to type.
 	if code := pairCodeFor(urls[0], rawKey); code != "" {
-		fmt.Fprintf(out, "  %s●%s  Code     %s%s%s\n", cYellow, cReset, cBold, code, cReset)
+		fmt.Fprintf(out, localization.Text(code, "  %s●%s  Code     %s%s%s\n"), cYellow, cReset, cBold, code, cReset)
 	}
-	fmt.Fprintf(out, "\n  %sCommands: type 'help'. Ctrl+C to quit.%s\n\n", cDim, cReset)
+	fmt.Fprintf(out, localization.Text(code, "\n  %sCommands: type 'help'. Ctrl+C to quit.%s\n\n"), cDim, cReset)
 }
 
 // announceUpdate says a newer release exists, on the dashboard and on the phone.
@@ -868,7 +881,7 @@ func reportInterruptedMonitoring(sb *statusBar, hub *ws.Hub, store *state.Store,
 }
 
 func buildDashboard(out *os.File, in io.Reader, srv *server.Server, authMgr *auth.Manager,
-	hub *ws.Hub, sensorMgr *monitor.Manager,
+	hub *ws.Hub, sensorMgr *monitor.Manager, selected ...string,
 ) *statusBar {
 	urls := srv.URLs()
 
@@ -881,6 +894,10 @@ func buildDashboard(out *os.File, in io.Reader, srv *server.Server, authMgr *aut
 		key:       authMgr.PairingKey(),
 		rawKey:    authMgr.RawPairingKey(),
 		urls:      urls,
+	}
+
+	if len(selected) > 0 {
+		sb.language = selected[0]
 	}
 
 	// The dashboard clears the screen, draws at absolute positions and pins a
@@ -928,11 +945,11 @@ func (sb *statusBar) doPaint() {
 	sb.layout = l
 
 	fmt.Fprintf(out, "\033[2J\033[H")
-	drawHeader(out, l)
-	drawScanLabel(out, l)
+	drawHeader(out, l, sb.language)
+	drawScanLabel(out, l, sb.language)
 	sb.drawQR()
 	sb.drawGrid()
-	drawFooter(out, l)
+	drawFooter(out, l, sb.language)
 
 	// Everything above is drawn once and must stay put, so the scrolling region
 	// starts below it. Without this the log would scroll over the QR code the
@@ -1017,7 +1034,11 @@ var bannerLines = []string{
 // code can stay. The second is only knowable once the code has been placed, so
 // the layout owns the answer — and a header that drew more rows than the layout
 // allowed put its own banner underneath whatever was placed below it.
-func drawHeader(out io.Writer, l layout) {
+func drawHeader(out io.Writer, l layout, selected ...string) {
+	code := "en"
+	if len(selected) > 0 {
+		code = selected[0]
+	}
 	row := 1
 	if l.headRows >= bannerRows {
 		for _, line := range bannerLines {
@@ -1026,7 +1047,7 @@ func drawHeader(out io.Writer, l layout) {
 		}
 	}
 	fmt.Fprintf(out, "\033[%d;1H%s", row,
-		truncateVisible(fmt.Sprintf("  %s%s%s  %sDevice Security Monitor%s",
+		truncateVisible(fmt.Sprintf(localization.Text(code, "  %s%s%s  %sDevice Security Monitor%s"),
 			cBold, version, cReset, cDim, cReset), l.termW))
 	row++
 	fmt.Fprintf(out, "\033[%d;1H%s%s%s", row, cDim, rule(l.termW), cReset)
@@ -1075,11 +1096,14 @@ func qrBoxSize(lines []string) (width, height int) {
 // looking for something to scan deserves to be told that, and told what to do
 // about it, instead of hunting for a code that was never drawn. The addresses
 // are still listed in the grid.
-func drawScanLabel(out io.Writer, l layout) {
-	label := fmt.Sprintf("  %sScan to connect:%s", cDim, cReset)
+func drawScanLabel(out io.Writer, l layout, selected ...string) {
+	code := "en"
+	if len(selected) > 0 {
+		code = selected[0]
+	}
+	label := fmt.Sprintf(localization.Text(code, "  %sScan to connect:%s"), cDim, cReset)
 	if l.qrBoxH == 0 {
-		label = fmt.Sprintf("  %sNo room for a QR code — widen the window, "+
-			"or open an address below.%s", cYellow, cReset)
+		label = fmt.Sprintf(localization.Text(code, "  %sNo room for a QR code — widen the window, or open an address below.%s"), cYellow, cReset)
 	}
 	fmt.Fprintf(out, "\033[%d;1H%s", l.labelRow, truncateVisible(label, l.termW))
 }
@@ -1091,7 +1115,11 @@ func drawScanLabel(out io.Writer, l layout) {
 // footer pushes the first log line down a row, and the row it pushes it onto is
 // inside the scrolling region the layout just pinned — so the screen ends up one
 // line out of step with what the program believes it drew.
-func drawFooter(out io.Writer, l layout) {
+func drawFooter(out io.Writer, l layout, selected ...string) {
+	code := "en"
+	if len(selected) > 0 {
+		code = selected[0]
+	}
 	if !l.footerShown {
 		return
 	}
@@ -1100,8 +1128,7 @@ func drawFooter(out io.Writer, l layout) {
 	// rest. The full list came to a hundred and thirty-four columns, which is
 	// wider than the window most people run this in — so it wrapped, and a
 	// wrapped footer is a row of the log that the layout does not know it lost.
-	commands := fmt.Sprintf("  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, "+
-		"qr <n>, urls, help  %s│%s  %sCtrl+C to quit%s",
+	commands := fmt.Sprintf(localization.Text(code, "  %sCommands:%s arm, disarm, status, stop, test, trigger <sensor>, qr <n>, urls, help  %s│%s  %sCtrl+C to quit%s"),
 		cDim, cReset, cDim, cReset, cDim, cReset)
 
 	fmt.Fprintf(out, "\033[%d;1H%s", l.logRow-2, truncateVisible(commands, l.termW))
@@ -1273,23 +1300,27 @@ func consoleStatus(_ context.Context, c *console) {
 	}
 	c.sb.writeLine("  Phones connected: %d", c.hub.ClientCount())
 	for _, s := range c.hub.GetSensorInfos() {
-		c.sb.writeLine("    %-10s %s", s.Name, sensorMark(s))
+		c.sb.writeLine("    %-10s %s", s.Name, sensorMark(s, c.sb.languageCode()))
 	}
 }
 
 // sensorMark is the word the status listing puts next to a sensor's name.
-func sensorMark(s ws.SensorInfo) string {
+func sensorMark(s ws.SensorInfo, selected ...string) string {
+	code := "en"
+	if len(selected) > 0 {
+		code = selected[0]
+	}
 	switch {
 	case !s.Available:
-		return "unavailable"
+		return localization.Text(code, "unavailable")
 	case s.Failure != "":
-		// Named rather than folded into "on": this is the state the user most
+		// Named rather than folded into localization.Text(code, "on"): this is the state the user most
 		// needs to see and least expects to be in.
-		return "FAILED — " + s.Failure
+		return localization.Text(code, "FAILED — ") + s.Failure
 	case s.Enabled:
-		return "on"
+		return localization.Text(code, "on")
 	default:
-		return "off"
+		return localization.Text(code, "off")
 	}
 }
 
@@ -1369,8 +1400,11 @@ func consoleUpdate(_ context.Context, c *console) {
 }
 
 func consoleLang(_ context.Context, c *console) {
-	c.sb.writeLine("  [1] Türkçe   [2] English   (currently %s)", languageByCode(c.cfg.Language).code)
-	c.sb.writeLine("  Type 1 or 2, or press enter to leave it alone:")
+	c.sb.writeLine("  Current language: %s", languageByCode(c.cfg.Language).code)
+	for index, lang := range localization.Supported() {
+		c.sb.writeLine("  [%d] %s (%s)", index+1, lang.Name, lang.Code)
+	}
+	c.sb.writeLine("  Choose a number or language code; press enter to keep the current language:")
 	typed, ok := c.in.readLine()
 	if !ok {
 		return
@@ -1387,12 +1421,11 @@ func consoleLang(_ context.Context, c *console) {
 		c.sb.writeLine("  %s[LANG]%s Could not save the setting: %v", cRed, cReset, err)
 		return
 	}
-	// Said plainly rather than implied. The language reaches the two questions
-	// asked before this dashboard exists and nothing on it, so a user who
-	// changes it here and watches for the screen to turn would be waiting for
-	// something that is never going to happen.
-	c.sb.writeLine("  %s[LANG]%s Startup questions will be in %s from the next start.",
-		cGreen, cReset, code)
+	c.sb.mu.Lock()
+	c.sb.language = code
+	c.sb.mu.Unlock()
+	c.sb.paint()
+	c.sb.writeLine("  %s[LANG]%s Language changed to %s.", cGreen, cReset, code)
 }
 
 func consoleHelp(_ context.Context, c *console) {

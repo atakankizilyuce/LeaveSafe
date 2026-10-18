@@ -1,0 +1,14 @@
+{
+  "locale": "vi",
+  "reviewer": "/root/review_web_vi",
+  "sources": {
+    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/vi.json": "2a11820f8185fd65f488838403c94d380014ddd9d24c8d740221c34b3da23a1f",
+    "internal/localization/catalogs/vi.json": "8cb37f27db3ffc734d177b1b6699e6638efed87849fa49477a32bb6b3d013861",
+    "internal/localization/service/vi.json": "4c6e1dedef4b72c86dd851619e1f74bc0efca32238ebaa8755968cae4c2372b3"
+  }
+}
