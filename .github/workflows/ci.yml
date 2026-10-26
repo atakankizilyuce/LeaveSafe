@@ -180,7 +180,7 @@ jobs:
         with:
           name: coverage-report-${{ matrix.label }}
           path: coverage-${{ matrix.label }}.out
-          retention-days: 14
+          retention-days: 7
 
       # The HTML report is for whoever is reading the run, and it is kept in its
       # own artifact so that the sonar job never downloads it. Analysing it fails
@@ -192,7 +192,7 @@ jobs:
         with:
           name: coverage-html
           path: coverage.html
-          retention-days: 14
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # Layer 0: the real binary is started on every supported OS and driven through
@@ -410,6 +410,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: localization-coverage
+          retention-days: 7
           path: ${{ runner.temp }}/localization-coverage.xml
           if-no-files-found: error
 
@@ -433,7 +434,7 @@ jobs:
         with:
           name: web-coverage
           path: web/coverage/lcov.info
-          retention-days: 14
+          retention-days: 7
 
       - name: Test the landing page
         working-directory: site
@@ -447,7 +448,7 @@ jobs:
         with:
           name: site-coverage
           path: site/coverage/lcov.info
-          retention-days: 14
+          retention-days: 7
 
       - name: Build
         working-directory: web
@@ -555,7 +556,7 @@ jobs:
         with:
           name: leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
-          retention-days: 14
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # Known vulnerabilities in the Go toolchain and dependencies. gosec runs as
