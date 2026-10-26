@@ -22,8 +22,10 @@ jobs:
         run: |
           npm --prefix web ci --ignore-scripts
           npm --prefix site ci --ignore-scripts
-          npm --prefix web audit fix --ignore-scripts
-          npm --prefix site audit fix --ignore-scripts
+          npm --prefix web update vite vitest @vitest/coverage-v8 undici --ignore-scripts
+          npm --prefix web audit
+          npm --prefix site update vitest @vitest/coverage-v8 undici --ignore-scripts
+          npm --prefix site audit
       - name: Rebuild committed browser assets
         run: |
           npm --prefix web ci --ignore-scripts
