@@ -20,8 +20,10 @@ jobs:
           node-version: 22
       - name: Resolve compatible security fixes
         run: |
-          npm --prefix web audit fix --package-lock-only --ignore-scripts
-          npm --prefix site audit fix --package-lock-only --ignore-scripts
+          npm --prefix web ci --ignore-scripts
+          npm --prefix site ci --ignore-scripts
+          npm --prefix web audit fix --ignore-scripts
+          npm --prefix site audit fix --ignore-scripts
       - name: Rebuild committed browser assets
         run: |
           npm --prefix web ci --ignore-scripts
