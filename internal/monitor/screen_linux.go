@@ -30,7 +30,7 @@ func (s *ScreenSensor) Name() string        { return "screen" }
 func (s *ScreenSensor) DisplayName() string { return "Screen/Display" }
 
 func (s *ScreenSensor) Available() bool {
-	_, err := exec.LookPath("xset")
+	_, err := exec.LookPath("/usr/bin/xset")
 	return err == nil
 }
 
@@ -46,7 +46,7 @@ func (s *ScreenSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 func (s *ScreenSensor) Stop() error { return nil }
 
 func isScreenOnLinux() (bool, error) {
-	out, err := exec.Command("xset", "q").Output()
+	out, err := exec.Command("/usr/bin/xset", "q").Output()
 	if err != nil {
 		return true, err
 	}

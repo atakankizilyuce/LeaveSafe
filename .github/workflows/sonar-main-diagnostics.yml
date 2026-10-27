@@ -1,44 +1,44 @@
-name: Inspect main Sonar findings
+name: Validate Sonar fixes
 
 on:
   push:
     branches: [codex/fix-sonar-main-20261028]
     paths: [.github/workflows/sonar-main-diagnostics.yml]
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
-  inspect:
+  frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Read main branch issue locations
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+        working-directory: web
+      - run: npm ci --ignore-scripts
+        working-directory: site
+      - run: web/node_modules/.bin/biome ci . --error-on-warnings
+      - run: npm run typecheck
+        working-directory: web
+      - run: npm run coverage
+        working-directory: web
+      - run: npm run coverage
+        working-directory: site
+      - run: npm run build
+        working-directory: web
+      - name: Return generated bundle
         run: |
           node --input-type=module <<'NODE'
-          if (!process.env.SONAR_TOKEN) throw new Error('SONAR_TOKEN is unavailable');
-          for (let page = 1; ; page++) {
-            const url = new URL('https://sonarcloud.io/api/issues/search');
-            url.search = new URLSearchParams({
-              componentKeys: 'atakankizilyuce_LeaveSafe',
-              branch: 'main',
-              inNewCodePeriod: 'true',
-              issueStatuses: 'OPEN,CONFIRMED,ACCEPTED',
-              ps: '500',
-              p: String(page),
-            });
-            const response = await fetch(url, {
-              headers: { Authorization: 'Bearer ' + process.env.SONAR_TOKEN },
-              signal: AbortSignal.timeout(30000),
-            });
-            if (!response.ok) throw new Error('Sonar issue request failed: HTTP ' + response.status);
-            const data = await response.json();
-            console.log(JSON.stringify({ page, total: data.paging.total }));
-            for (const issue of data.issues) {
-              const { key, rule, component, line, message, status, severity, textRange, flows } = issue;
-              console.log(JSON.stringify({ key, rule, component, line, message, status, severity, textRange, flows }));
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          for (const path of execFileSync('git', ['diff', '--name-only', '--', 'web/dist'], {encoding: 'utf8'}).trim().split('\n').filter(Boolean)) {
+            const content = readFileSync(path, 'utf8');
+            for (let offset = 0; offset < content.length; offset += 12000) {
+              console.log('BUNDLE_CHUNK=' + JSON.stringify({path, offset, content: content.slice(offset, offset + 12000)}));
             }
-            if (page * data.paging.pageSize >= data.paging.total) break;
           }
           NODE

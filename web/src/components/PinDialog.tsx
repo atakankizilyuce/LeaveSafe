@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../lib/i18n';
 import { pinPrompt, send } from '../lib/store';
 import { Scrim } from './Scrim';
@@ -8,7 +8,21 @@ export function PinDialog() {
     const [pin, setPin] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    if (!pinPrompt.value) return null;
+    const heading = useRef<HTMLHeadingElement>(null);
+    const open = pinPrompt.value;
+
+    useLayoutEffect(() => {
+        if (!open) return;
+        const previousFocus = document.activeElement;
+        heading.current?.focus();
+        return () => {
+            if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+                previousFocus.focus();
+            }
+        };
+    }, [open]);
+
+    if (!open) return null;
 
     const close = () => {
         setPin('');
@@ -28,7 +42,9 @@ export function PinDialog() {
     return (
         <Scrim onClose={close} label={t('Enter your PIN to disarm')}>
             <div class="dialog rise">
-                <h2 class="readout">{t('Disarm')}</h2>
+                <h2 ref={heading} tabIndex={-1} class="readout">
+                    {t('Disarm')}
+                </h2>
                 <p class="dialog-lead">{t('Enter your PIN.')}</p>
                 <input
                     class="field figure"
@@ -37,8 +53,7 @@ export function PinDialog() {
                     autoComplete="off"
                     maxLength={8}
                     value={pin}
-                    // biome-ignore lint/a11y/noAutofocus: the dialog exists only to take this one value
-                    autoFocus
+                    aria-label={t('Enter your PIN.')}
                     onInput={(e) => setPin((e.target as HTMLInputElement).value)}
                     onKeyDown={(e) => e.key === 'Enter' && submit()}
                 />

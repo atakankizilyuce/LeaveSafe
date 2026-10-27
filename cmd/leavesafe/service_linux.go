@@ -170,12 +170,12 @@ func autostartStatus() (bool, string, error) {
 // about the system rather than a failure, so it is a boolean here and never an
 // error the callers have to decide how to swallow.
 func haveSystemctl() bool {
-	_, err := exec.LookPath("systemctl")
+	_, err := exec.LookPath("/usr/bin/systemctl")
 	return err == nil
 }
 
 func runSystemctl(args ...string) (string, error) {
-	cmd := exec.Command("systemctl", append([]string{"--user"}, args...)...) // #nosec G204 -- arguments are literals from this file, never user input
+	cmd := exec.Command("/usr/bin/systemctl", append([]string{"--user"}, args...)...) // #nosec G204 -- arguments are literals from this file, never user input
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

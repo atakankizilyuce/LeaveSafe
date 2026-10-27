@@ -105,7 +105,7 @@ func TestASecondGestureIsAnsweredAsWell(t *testing.T) {
 func settleFast(t *testing.T) {
 	t.Helper()
 
-	real := resizeSettle
+	original := resizeSettle
 	resizeSettle = 10 * time.Millisecond
-	t.Cleanup(func() { resizeSettle = real })
+	t.Cleanup(func() { resizeSettle = original })
 }

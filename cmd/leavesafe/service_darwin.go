@@ -160,7 +160,7 @@ func autostartStatus() (bool, string, error) {
 }
 
 func runLaunchctl(args ...string) (string, error) {
-	cmd := exec.Command("launchctl", args...) // #nosec G204 -- arguments are literals and paths this program derived, never user input
+	cmd := exec.Command("/bin/launchctl", args...) // #nosec G204 -- arguments are literals and paths this program derived, never user input
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

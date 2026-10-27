@@ -79,13 +79,13 @@ func takeConsole(out, keys *os.File) func() {
 	}
 }
 
-// changeConsoleMode sets the flags in set and clears the ones in clear on a
+// changeConsoleMode sets the flags in setFlags and clears the ones in clearFlags on a
 // console handle, and returns what puts the mode back byte for byte.
 //
 // Nil whenever there is nothing to undo: no handle, no console behind it, the
 // mode already as wanted, or a console that would not take the change. The
 // caller is not told which — every one of them means "carry on without it".
-func changeConsoleMode(f *os.File, set, clear uint32) func() {
+func changeConsoleMode(f *os.File, setFlags, clearFlags uint32) func() {
 	if f == nil {
 		return nil
 	}
@@ -96,7 +96,7 @@ func changeConsoleMode(f *os.File, set, clear uint32) func() {
 		return nil
 	}
 
-	wanted := (before | set) &^ clear
+	wanted := (before | setFlags) &^ clearFlags
 	if wanted == before {
 		return nil
 	}

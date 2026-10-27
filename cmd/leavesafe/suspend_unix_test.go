@@ -19,9 +19,9 @@ func stubStopProcess(t *testing.T) *int {
 	t.Helper()
 
 	calls := 0
-	real := stopProcess
+	original := stopProcess
 	stopProcess = func(chan os.Signal) { calls++ }
-	t.Cleanup(func() { stopProcess = real })
+	t.Cleanup(func() { stopProcess = original })
 	return &calls
 }
 
@@ -88,9 +88,9 @@ func TestTheSuspendLoopAnswersEverySignal(t *testing.T) {
 	// random, so a loop given everything at once could return on the first one
 	// and prove nothing.
 	handled := make(chan struct{})
-	real := stopProcess
+	original := stopProcess
 	stopProcess = func(chan os.Signal) { handled <- struct{}{} }
-	t.Cleanup(func() { stopProcess = real })
+	t.Cleanup(func() { stopProcess = original })
 
 	ch := make(chan os.Signal, 1)
 	ctx, cancel := context.WithCancel(context.Background())

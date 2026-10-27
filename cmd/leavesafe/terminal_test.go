@@ -238,9 +238,9 @@ func TestTheSizeTheDashboardIsLaidOutFor(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			real := termSizeFn
+			original := termSizeFn
 			termSizeFn = func(int) (int, int, error) { return tc.w, tc.h, tc.err }
-			t.Cleanup(func() { termSizeFn = real })
+			t.Cleanup(func() { termSizeFn = original })
 
 			w, h := terminalSize(os.Stdout)
 
