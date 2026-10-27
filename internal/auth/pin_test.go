@@ -81,22 +81,22 @@ func TestVerifyAcceptsLegacySHA256Hashes(t *testing.T) {
 
 	// The digest above is a placeholder; compute the real one the same way the
 	// old code did so the test asserts on behavior rather than a copied string.
-	real := legacySHA256Hash(t, "000102030405060708090a0b0c0d0e0f", "4271")
+	validHash := legacySHA256Hash(t, "000102030405060708090a0b0c0d0e0f", "4271")
 
 	if VerifyPinHash("4271", legacy) {
 		t.Error("a legacy hash with the wrong digest verified")
 	}
-	if !VerifyPinHash("4271", real) {
+	if !VerifyPinHash("4271", validHash) {
 		t.Error("a correct legacy hash did not verify")
 	}
-	if VerifyPinHash("0000", real) {
+	if VerifyPinHash("0000", validHash) {
 		t.Error("a wrong PIN verified against a legacy hash")
 	}
 }
 
 func TestNeedsRehash(t *testing.T) {
-	real := legacySHA256Hash(t, "000102030405060708090a0b0c0d0e0f", "4271")
-	if !NeedsRehash(real) {
+	validHash := legacySHA256Hash(t, "000102030405060708090a0b0c0d0e0f", "4271")
+	if !NeedsRehash(validHash) {
 		t.Error("a legacy SHA-256 hash was not reported as needing a rehash")
 	}
 	if !NeedsRehash("") {
