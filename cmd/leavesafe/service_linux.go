@@ -166,7 +166,7 @@ func autostartStatus() (bool, string, error) {
 	return true, detail, nil
 }
 
-// haveSystemctl reports whether systemctl is on PATH. Its absence is a fact
+// haveSystemctl reports whether the system copy of systemctl exists. Its absence is a fact
 // about the system rather than a failure, so it is a boolean here and never an
 // error the callers have to decide how to swallow.
 func haveSystemctl() bool {
