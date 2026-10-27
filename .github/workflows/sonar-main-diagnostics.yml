@@ -1,0 +1,44 @@
+name: Inspect main Sonar findings
+
+on:
+  push:
+    branches: [codex/fix-sonar-main-20261028]
+    paths: [.github/workflows/sonar-main-diagnostics.yml]
+
+permissions: {}
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read main branch issue locations
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          if (!process.env.SONAR_TOKEN) throw new Error('SONAR_TOKEN is unavailable');
+          for (let page = 1; ; page++) {
+            const url = new URL('https://sonarcloud.io/api/issues/search');
+            url.search = new URLSearchParams({
+              componentKeys: 'atakankizilyuce_LeaveSafe',
+              branch: 'main',
+              inNewCodePeriod: 'true',
+              issueStatuses: 'OPEN,CONFIRMED,ACCEPTED',
+              ps: '500',
+              p: String(page),
+            });
+            const response = await fetch(url, {
+              headers: { Authorization: 'Bearer ' + process.env.SONAR_TOKEN },
+              signal: AbortSignal.timeout(30000),
+            });
+            if (!response.ok) throw new Error('Sonar issue request failed: HTTP ' + response.status);
+            const data = await response.json();
+            console.log(JSON.stringify({ page, total: data.paging.total }));
+            for (const issue of data.issues) {
+              const { key, rule, component, line, message, status, severity, textRange, flows } = issue;
+              console.log(JSON.stringify({ key, rule, component, line, message, status, severity, textRange, flows }));
+            }
+            if (page * data.paging.pageSize >= data.paging.total) break;
+          }
+          NODE
