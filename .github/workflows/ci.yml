@@ -592,10 +592,8 @@ jobs:
   # Reading only the Linux profile would leave every _darwin.go and _windows.go
   # file counted as uncovered, tests or no tests.
   #
-  # This job is deliberately absent from ci-success's needs list below. It cannot
-  # run without SONAR_TOKEN, a pull request opened from a fork never receives
-  # secrets, and ci-success counts a skipped job as a failure — wiring it in
-  # would permanently block every outside contribution.
+  # The final CI check includes Sonar failures. Skipping only this job is allowed
+  # for fork and Dependabot contributions, which do not receive SONAR_TOKEN.
   # ---------------------------------------------------------------------------
   sonar:
     name: Sonar
@@ -692,7 +690,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Single required status check for branch protection. Fails if any job above
-  # failed or was skipped, so a new job cannot be silently left out.
+  # failed or was skipped, except for Sonar's secret-free contribution paths.
   # ---------------------------------------------------------------------------
   ci-success:
     name: CI
@@ -700,17 +698,22 @@ jobs:
     timeout-minutes: 5
     # This job reads the other jobs' results, never the repository.
     permissions: {}
-    needs: [format, typos, lint, test, e2e, realtrigger, sandbox-linux, frontend, build, vulncheck]
+    needs: [format, typos, lint, test, e2e, realtrigger, sandbox-linux, frontend, build, vulncheck, sonar]
     if: always()
     steps:
-      - name: Fail if any job did not succeed
-        if: >-
-          contains(needs.*.result, 'failure') ||
-          contains(needs.*.result, 'cancelled') ||
-          contains(needs.*.result, 'skipped')
+      - name: Check every required job
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
         run: |
-          echo "::error::At least one CI job did not succeed."
-          exit 1
-
-      - name: All checks passed
-        run: echo "All CI jobs succeeded."
+          node --input-type=module <<'NODE'
+          const results = JSON.parse(process.env.JOB_RESULTS);
+          const failed = Object.entries(results).filter(([name, job]) =>
+            job.result !== 'success' && !(name === 'sonar' && job.result === 'skipped'));
+          if (failed.length) {
+            for (const [name, job] of failed) {
+              console.error('::error::' + name + ': ' + job.result);
+            }
+            process.exit(1);
+          }
+          console.log('All required CI jobs succeeded.');
+          NODE
