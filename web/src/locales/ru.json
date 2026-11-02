@@ -202,5 +202,8 @@
   "USB connected: {device}": "USB подключено: {device}",
   "USB device removed: {device}": "USB-устройство отключено: {device}",
   "USB device connected: {device}": "USB-устройство подключено: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP-адрес изменился, возможно переключение сети. IP-адреса: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP-адрес изменился, возможно переключение сети. IP-адреса: {device}",
+  "MOTION": "ДВИЖЕНИЕ",
+  "Device moved!": "Устройство переместилось!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Отслеживает физическое движение без доступа к местоположению. Срабатывает при обнаружении движения, когда охрана включена."
 }

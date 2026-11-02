@@ -196,5 +196,8 @@
   "USB connected: {device}": "USB 已接駁：{device}",
   "USB device removed: {device}": "USB 裝置已拔走：{device}",
   "USB device connected: {device}": "USB 裝置已接駁：{device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP 位址已改變，可能轉咗網絡。IP 位址：{device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP 位址已改變，可能轉咗網絡。IP 位址：{device}",
+  "MOTION": "移動",
+  "Device moved!": "裝置郁動咗！",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "監察裝置嘅實際移動，唔使存取位置。保護啟用期間偵測到移動就會觸發警報。"
 }

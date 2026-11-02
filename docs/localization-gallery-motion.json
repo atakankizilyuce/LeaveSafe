@@ -1,0 +1,628 @@
+{
+  "verified_at_utc": "2026-11-02T10:53:45.292366+00:00",
+  "scope": "Focused independent per-language AI delta review; historical reports preserved. No new full-catalog, native-human, device, legal-policy, store or remote-CI certification claim.",
+  "source_sha256": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+  "locales": {
+    "ar": {
+      "review": {
+        "locale": "ar",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_ar",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/ar.json": "2ed068a4b33562586a6a666d1d78d3b5bb34efda54baccd130ea6d1cbeb441cd",
+          "internal/localization/catalogs/ar.json": "e5b05bfa6dfcf6852ee922e661074eeac2089a13d1b603d10d2060d72f547d8c",
+          "internal/localization/service/ar.json": "6005906b68791a3cc7e9f2cb3af45f4772e50670735a84cac24423bdfbd3dc87"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "arz": {
+      "review": {
+        "locale": "arz",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_arz",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/arz.json": "8f45afc6246b8c7a75f46e79f54d56899b030da870b1b5a6d7808a3907bcfafe",
+          "internal/localization/catalogs/arz.json": "87c9428b0896f82f36f12fc6ece9666267eb7a44c16e59f764403e48875b2e38",
+          "internal/localization/service/arz.json": "eb45a5d392b89ee89a962a75199274a10211cd4d786dfec3728b83a2e2c5a18c"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "bn": {
+      "review": {
+        "locale": "bn",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_bn",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/bn.json": "a7cfdfad5296223c8f9136643ad9feae87a974204e37c9e981c303dafc942246",
+          "internal/localization/catalogs/bn.json": "031a8e4653f3cd4cd6e822a92ec5cf27604bab74528e4915ccfc5954f97dad77",
+          "internal/localization/service/bn.json": "53f9c1e5cc600080ebd403b5c035d70455a1ab9d35071a8fb1203f6b80e02df6"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "de": {
+      "review": {
+        "locale": "de",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_de",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/de.json": "d92b879c6af1c0cc5eb341f464d1e89f0a6ee66893000833c222b37795aa6611",
+          "internal/localization/catalogs/de.json": "11844f1d8866d473f18951c101424d8a6a7e31ea5ce7c79722f692247dd3f228",
+          "internal/localization/service/de.json": "632de5f144973d62d2fee9ebb5d856e31bc8827793d19da7ce10d07f70e62d92"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "en": {
+      "review": {
+        "locale": "en",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_en",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "es": {
+      "review": {
+        "locale": "es",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_es",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/es.json": "a61031e192cf2ff9e2a66761e322a06dd8065240fe9d0d91c4c4ac206d28bf32",
+          "internal/localization/catalogs/es.json": "29cd7ac10dae9407b51b3376f909cd8daec6352eb9dca9524dfb6bf028ff8319",
+          "internal/localization/service/es.json": "50cdbc2fbba335f8247ef6d08dd8344584ea247da2f852779622b229f6396991"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "fr": {
+      "review": {
+        "locale": "fr",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_fr",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/fr.json": "511a0016bb2b5250d08c18da1ebd4a365193b262e09141541f23bb25e4474437",
+          "internal/localization/catalogs/fr.json": "f7001552e84951ad5c9ae265839ec28c09b8683ed86874d2aeb25e1582701315",
+          "internal/localization/service/fr.json": "c2e29f1358b139e9449c4131fbc06cee1ed80bd8e3e2919bd123e05365f12bf8"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "ha": {
+      "review": {
+        "locale": "ha",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_ha",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/ha.json": "2b9b1627da7633d2e3c179aab6afc7f210366cbe8e789c1cffaa30166f78e96f",
+          "internal/localization/catalogs/ha.json": "7bf74d4c3ed6b35156247bccc3ee392ad7bd87ff8c3ba335543ac2c2f56a1b45",
+          "internal/localization/service/ha.json": "bb3398bb1bba448bafc17c733269bfd73af530495a3b697f7452fd2904563932"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "hi": {
+      "review": {
+        "locale": "hi",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_hi",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/hi.json": "34d6193d1b7ac64bebb2f4db2d1bab526b356312d01d4e7f98da7d819a595282",
+          "internal/localization/catalogs/hi.json": "012f39b1dfe2fadb5bae453c5fff167b8f9877efd95bd2f5c2d7746cf47176cf",
+          "internal/localization/service/hi.json": "eaba9863acf3797384e45bcfd2cd9966ba320b9d4064c4ffe08f9e3f60a997e9"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "id": {
+      "review": {
+        "locale": "id",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_id",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/id.json": "a013d5fa319ff4baa1272eb3b824c9974903a203e17ac47f7736ab29c3c6fb34",
+          "internal/localization/catalogs/id.json": "e560c5ecc4a1f23c2d7dccf4cb59704f54695dfb1379a31c95e5af180043caf5",
+          "internal/localization/service/id.json": "375d4e18d089692f2961e524524ccc0337760ef3b31d19d0d0434b4cfdb39394"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "ja": {
+      "review": {
+        "locale": "ja",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_ja",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/ja.json": "321389cba67828b44f580f6e5fa133684f49702f903f816650943a94e7658330",
+          "internal/localization/catalogs/ja.json": "5ef072fa29c85da00eb17e29c33e89e87d3cd0721cc51f3ccc962fc2d71c02d6",
+          "internal/localization/service/ja.json": "bf25e43626bb52725b0ecd948852c0927fdf917bc99b6e99127564d1bfde4ddd"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "mr": {
+      "review": {
+        "locale": "mr",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_mr",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/mr.json": "f161da1769b504a490db3318bdd21a99efe963a7fd11915b37b6b1dde738dae8",
+          "internal/localization/catalogs/mr.json": "5cc64a69f19bc39b73a0553cd0fe21f4636f259f17f0462c0eb08d759ee57357",
+          "internal/localization/service/mr.json": "a291b86aad556f70175bb54c3bc2476f941f44daca3e49ae9c81dd0c835a75cf"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "pcm": {
+      "review": {
+        "locale": "pcm",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_pcm",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/pcm.json": "7ae7f565be34885673289d22b4504bbd8945e6dcedba561cbc39de00692f33b8",
+          "internal/localization/catalogs/pcm.json": "55ba094d4160c2582e7bf90b886c3aeef1d1495b190f999dbfcd1013fb83fdcb",
+          "internal/localization/service/pcm.json": "72156ac7a1a466ac6847341a150b51a86fbd8db02645136c88f4ca0ed5f576e9"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "pnb-Arab": {
+      "review": {
+        "locale": "pnb-Arab",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_pnb_arab",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/pnb-Arab.json": "1bd111b67bf5abee3789607c2e6cce6f76edb62cf22d6a3b74990b0bfa2c8dae",
+          "internal/localization/catalogs/pnb-Arab.json": "f8233ded0ec0d560e59b9a03655c1a52a27aab8ccd257550a3f57cb0cb9e3a18",
+          "internal/localization/service/pnb-Arab.json": "4fa2c09ab15c45d295efd13e4f5dd55823ec9f5c8e00a799cf0708ff4a51d2d7"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "pt": {
+      "review": {
+        "locale": "pt",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_pt",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/pt.json": "4a316de445531a48fe428b72690b2b8130bbff6e67c41ac427b5e5041bb25566",
+          "internal/localization/catalogs/pt.json": "0a23ca3b1ed6bce9095de4cbd14f75ad3ff7613ecd1c1fedf6a453fb74a67a4b",
+          "internal/localization/service/pt.json": "63e6c5d347d270f5e98b637d591c6959a0e8009e22ea70455cd8da178aa215c8"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "ru": {
+      "review": {
+        "locale": "ru",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_ru",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/ru.json": "526d393cbf241f6849f5cc0fa75826264a011f1de5f9f0fbed7779957286de59",
+          "internal/localization/catalogs/ru.json": "b67df9f5dc10afa089b11ef8800799cb58cb984708395f5e9ee0fe37ec46bc1b",
+          "internal/localization/service/ru.json": "13bb20241193de13a0ab99a6f94178453e0de1d1c3d0c84ec4d6313ed632cc2f"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "sw": {
+      "review": {
+        "locale": "sw",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_sw",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/sw.json": "01685a90f9c4c5e8cb16e4527855f9989afe7cb8378fd65208be8209c9c95012",
+          "internal/localization/catalogs/sw.json": "53b777126609cddb751c3ecca2215c333e631737957c65511e84fc581e76bbb5",
+          "internal/localization/service/sw.json": "410423a5033b3948a14ddab9aff24ad4631dced93fcd95e07a4d06600904a8c9"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "ta": {
+      "review": {
+        "locale": "ta",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_ta",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/ta.json": "f722a42ecc7b57b0ceadb5ea8ceceb9c16d61ebbeeaeb20ef62f45a23dc39ae2",
+          "internal/localization/catalogs/ta.json": "e5ae57caaebebb116214b83e41b748bcd3e0f56b9bf2de3a78ee10e8a7c70408",
+          "internal/localization/service/ta.json": "796c99d99cb676e05f5d1d4510fbe53facfcdb4855f823919b8c89929a3b99a4"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "te": {
+      "review": {
+        "locale": "te",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_te",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/te.json": "3819bb91fdacdef2b8e29141567cf2185d85d98554814786d943652d68cf1c07",
+          "internal/localization/catalogs/te.json": "10581a19fd9c37a1126f07fbe884eef53f1bb34035745a0bc5bdd20962b1d7a2",
+          "internal/localization/service/te.json": "7d1c73dce0ffd9f9d9e51b1af81d1f99940bab24f4a3f433842ef312583207f2"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "tl": {
+      "review": {
+        "locale": "tl",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_tl",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/tl.json": "efc67427d9d985fe385cd19196ebdb81c6b4a920d4f49023e5947e1cd25074c6",
+          "internal/localization/catalogs/tl.json": "c3a08e3a46f122692c9d9e486cf80d25515679cff8ba3e3b39a9097553afd9bd",
+          "internal/localization/service/tl.json": "85446e058aded26e1963483794b20a1d063703a209f7ca316ebb4f462117b260"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "tr": {
+      "review": {
+        "locale": "tr",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_tr",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/tr.json": "656d6750d3a95f918cd3aba833c5a71ebeb32582181086cd305d9f21a9b98721",
+          "internal/localization/catalogs/tr.json": "b078c652cec7c70cb507fe2cdbe3c129c79502f149e8ee28bd63d5bdde431fcc",
+          "internal/localization/service/tr.json": "a734739c0babaee4ce3a67c5aa499f16f5b2eea923fd5ce808412d0f7823066f"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "ur": {
+      "review": {
+        "locale": "ur",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_ur",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/ur.json": "bdd1b7b59e332b06d692c1efbddd23d5127ed2175dab786fda99c62776d26296",
+          "internal/localization/catalogs/ur.json": "ffde56a2172de2e1be95eaa74fa8d6747e43c95b2a5f3061abdc263d8e8423cc",
+          "internal/localization/service/ur.json": "6a45ffebab3998046c2e3c70f1678049684585b5d7724779b5c393e0f2c06d53"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "vi": {
+      "review": {
+        "locale": "vi",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_vi",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/vi.json": "90844f58d67a5386711a46efb15dd938da0adbf72afa7b4f28340345985e3f66",
+          "internal/localization/catalogs/vi.json": "8cb37f27db3ffc734d177b1b6699e6638efed87849fa49477a32bb6b3d013861",
+          "internal/localization/service/vi.json": "4c6e1dedef4b72c86dd851619e1f74bc0efca32238ebaa8755968cae4c2372b3"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "yue-Hant": {
+      "review": {
+        "locale": "yue-Hant",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_yue_hant",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/yue-Hant.json": "5e88df94fc6f8f4b2e692df9d29e1f043bac6b1600073bd02fc8ed7a4cd9eabe",
+          "internal/localization/catalogs/yue-Hant.json": "2a3c8c7ce088a3e9806c6dd11e583df10ad96ba5b8886374f2411fa283dcfa80",
+          "internal/localization/service/yue-Hant.json": "4506ff66f562aca50a76ee6fa1ae86005846e24cb46b8e11b2651c0b95de91f5"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    },
+    "zh-Hans": {
+      "review": {
+        "locale": "zh-Hans",
+        "reviewer": "/root/review_alarm_photo_languages/review_existing_zh_hans",
+        "sources": {
+          "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+          "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+          "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+        },
+        "files": {
+          "web/src/locales/zh-Hans.json": "7592e034f3ee69d84d3517bf86be0c40a9b0825ecc85a663b2c62dafc6854b57",
+          "internal/localization/catalogs/zh-Hans.json": "a7f9a5e39d47ea075be8a43ac72af2453d4a2a49467688826a949bbabb4769e0",
+          "internal/localization/service/zh-Hans.json": "74e1c86475b0ef670d36561a59ae009a65a9c7df1730e03b2ca478aa6cab7e1d"
+        }
+      },
+      "new_browser_keys": [
+        "Device moved!",
+        "MOTION",
+        "Watches physical movement without location access. Triggers when movement is detected while armed."
+      ],
+      "unchanged_browser_messages": 194,
+      "total_browser_messages": 197,
+      "terminal_and_service_byte_identical": true
+    }
+  },
+  "checks": {
+    "python3 tools/localization/check.py": "PASS",
+    "python3 tools/localization/reviews.py --require-all": "PASS",
+    "python3 tools/localization/fonts.py --check": "PASS",
+    "git diff --check -- web/src/locales docs/localization-reviews": "PASS"
+  },
+  "distinct_reviewers": 25,
+  "baseline_local_commit": "0d2dfbfe8b608557c947138bef2693b28494fc78",
+  "baseline_tree_sha": "9370d06d9336cca7f25e58303f7bf1e66d12eff9",
+  "baseline_english_sha256": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+  "cjk_fonts": [
+    {
+      "path": "web/public/fonts/NotoSansCJK.ttf",
+      "bytes": 530264,
+      "sha256": "7f442aad02e34b96ce12718dee641b7900ac0e8c08c0be69b3492d0db4ca22a4",
+      "git_blob_sha": "7130772a76ce3ff837ea1c78a104200dfc025c8d"
+    }
+  ],
+  "pinned_full_source_sha256": "990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f",
+  "integration_note": "Final application/UI tests, daemon/web bundles and remote CI/Sonar are handled separately by integration owner; this artifact covers localization scope and local gates only.",
+  "fonttools_version": "4.65.0"
+}

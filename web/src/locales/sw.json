@@ -198,5 +198,8 @@
   "USB connected: {device}": "USB imeunganishwa: {device}",
   "USB device removed: {device}": "Kifaa cha USB kimechomolewa: {device}",
   "USB device connected: {device}": "Kifaa cha USB kimeunganishwa: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "Anwani ya IP imebadilika (huenda mtandao umebadilishwa). IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "Anwani ya IP imebadilika (huenda mtandao umebadilishwa). IP: {device}",
+  "MOTION": "MWENDO",
+  "Device moved!": "Kifaa kimesogezwa!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Hufuatilia mwendo halisi bila kufikia taarifa za mahali kifaa kilipo. Huwasha kengele mwendo unapotambuliwa wakati ulinzi umewashwa."
 }

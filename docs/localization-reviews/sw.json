@@ -1,13 +1,13 @@
 {
   "locale": "sw",
-  "reviewer": "/root/review_web_sw",
+  "reviewer": "/root/review_alarm_photo_languages/review_existing_sw",
   "sources": {
-    "web/src/locales/en.json": "662a1ed3eeea0b059353734cc500e520407d02f379069951d4bcdec2957f0a9a",
+    "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
     "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
     "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
   },
   "files": {
-    "web/src/locales/sw.json": "8ced30b54808417f37ba0416f475d5f830bc06962ffd7fb0dade5d7d4866a585",
+    "web/src/locales/sw.json": "01685a90f9c4c5e8cb16e4527855f9989afe7cb8378fd65208be8209c9c95012",
     "internal/localization/catalogs/sw.json": "53b777126609cddb751c3ecca2215c333e631737957c65511e84fc581e76bbb5",
     "internal/localization/service/sw.json": "410423a5033b3948a14ddab9aff24ad4631dced93fcd95e07a4d06600904a8c9"
   }

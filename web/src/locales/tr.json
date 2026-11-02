@@ -196,5 +196,8 @@
   "USB connected: {device}": "USB bağlandı: {device}",
   "USB device removed: {device}": "USB cihazı çıkarıldı: {device}",
   "USB device connected: {device}": "USB cihazı bağlandı: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP adresi değişti (ağ değiştirilmiş olabilir). IP adresleri: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP adresi değişti (ağ değiştirilmiş olabilir). IP adresleri: {device}",
+  "MOTION": "HAREKET",
+  "Device moved!": "Cihaz hareket etti!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Konuma erişmeden fiziksel hareketi izler. Koruma açıkken hareket algılandığında tetiklenir."
 }

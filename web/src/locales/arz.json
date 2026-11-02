@@ -204,5 +204,8 @@
   "USB connected: {device}": "USB اتوصل: {device}",
   "USB device removed: {device}": "جهاز USB اتفصل: {device}",
   "USB device connected: {device}": "جهاز USB اتوصل: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "عنوان IP اتغيّر (ممكن الشبكة اتبدّلت). عناوين IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "عنوان IP اتغيّر (ممكن الشبكة اتبدّلت). عناوين IP: {device}",
+  "MOTION": "الحركة",
+  "Device moved!": "الجهاز اتحرّك!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "بيراقب الحركة الفعلية من غير الوصول للموقع. بيطلّع إنذار لما يكتشف حركة والحماية شغّالة."
 }

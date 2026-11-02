@@ -198,5 +198,8 @@
   "USB connected: {device}": "USB இணைக்கப்பட்டது: {device}",
   "USB device removed: {device}": "USB சாதனம் அகற்றப்பட்டது: {device}",
   "USB device connected: {device}": "USB சாதனம் இணைக்கப்பட்டது: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP முகவரி மாறியது (பிணையம் மாறியிருக்கலாம்). IP-கள்: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP முகவரி மாறியது (பிணையம் மாறியிருக்கலாம்). IP-கள்: {device}",
+  "MOTION": "அசைவு",
+  "Device moved!": "சாதனம் அசைந்தது!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "இருப்பிடத்தை அணுகாமல் சாதனத்தின் உண்மையான அசைவைக் கண்காணிக்கும். பாதுகாப்பு செயல்படும்போது அசைவு கண்டறியப்பட்டால் அலாரத்தை இயக்கும்."
 }

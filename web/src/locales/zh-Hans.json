@@ -196,5 +196,8 @@
   "USB connected: {device}": "USB 已连接：{device}",
   "USB device removed: {device}": "USB 设备已移除：{device}",
   "USB device connected: {device}": "USB 设备已连接：{device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP 地址已更改，可能切换了网络。IP 地址：{device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP 地址已更改，可能切换了网络。IP 地址：{device}",
+  "MOTION": "移动",
+  "Device moved!": "设备发生了移动！",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "监测设备的物理移动，不访问位置信息。防护开启时检测到移动便会触发警报。"
 }

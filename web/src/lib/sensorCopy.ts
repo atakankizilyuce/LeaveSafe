@@ -1,6 +1,10 @@
 import { t } from './i18n';
 
 const copy: Record<string, [string, string]> = {
+    motion: [
+        'MOTION',
+        'Watches physical movement without location access. Triggers when movement is detected while armed.',
+    ],
     power: ['POWER', 'Watches the charger. Fires when power is disconnected or reconnected.'],
     lid: ['LID', 'Watches the lid. Fires when it is opened or closed.'],
     usb: ['USB', 'Watches the USB ports. Fires when a device is plugged in or pulled out.'],
