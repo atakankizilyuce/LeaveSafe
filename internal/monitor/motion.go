@@ -83,7 +83,9 @@ func (s *MotionSensor) firstReading(ctx context.Context, r motionReader) (motion
 }
 
 func (s *MotionSensor) Start(ctx context.Context, alerts chan<- Alert) error {
-	return s.StartWithReady(ctx, alerts, func() {})
+	return s.StartWithReady(ctx, alerts, func() {
+		// Direct callers do not publish supervisor readiness.
+	})
 }
 
 // StartWithReady reports coverage only after a fresh sample is available.

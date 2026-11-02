@@ -46,7 +46,7 @@ func (o *motionObject) release() {
 
 func motionHRESULT(hr uintptr) error {
 	if hr&0x80000000 != 0 {
-		return fmt.Errorf("Windows motion API failed (0x%08x)", hr&0xffffffff)
+		return fmt.Errorf("windows motion API failed (0x%08x)", hr&0xffffffff)
 	}
 	return nil
 }
