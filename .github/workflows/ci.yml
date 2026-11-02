@@ -675,6 +675,11 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # Release tags scan the default branch; PRs keep automatic PR scope.
+          # Match the evidence scope below. Rehearse on main when the Sonar
+          # plan does not include feature-branch analysis.
+          args: ${{ github.event_name != 'pull_request' && format('-Dsonar.branch.name={0}', github.ref_type == 'tag' && github.event.repository.default_branch || github.ref_name) || '' }}
 
       - name: Node for Sonar evidence
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -685,7 +690,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BRANCH: ${{ github.ref_name }}
+          BRANCH: ${{ github.ref_type == 'tag' && github.event.repository.default_branch || github.ref_name }}
         run: node tools/quality/sonar-evidence.mjs
 
   # ---------------------------------------------------------------------------
