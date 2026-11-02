@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	log "github.com/sirupsen/logrus"
 	"strconv"
@@ -1498,6 +1499,9 @@ func registerSensors(mgr *monitor.Manager, cfg *config.Config) {
 	mgr.Register(monitor.NewScreenSensor())
 	mgr.Register(monitor.NewNetworkSensor())
 	mgr.Register(monitor.NewInputSensorWithThreshold(cfg.InputThreshold))
+	if runtime.GOOS == "windows" {
+		mgr.Register(monitor.NewMotionSensor())
+	}
 
 	applySensorPreferences(mgr, cfg.EnabledSensors)
 }
