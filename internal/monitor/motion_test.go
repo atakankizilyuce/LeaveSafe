@@ -146,17 +146,7 @@ func TestMotionFailureWithdrawsCoverage(t *testing.T) {
 	now := time.Now()
 	for _, fault := range []bool{false, true} {
 		t.Run(map[bool]string{true: "driver", false: "stale"}[fault], func(t *testing.T) {
-			calls := 0
-			r := &fakeMotionReader{next: func() (motionReading, error) {
-				calls++
-				if calls == 1 {
-					return motionReading{z: 1, at: now}, nil
-				}
-				if fault {
-					return motionReading{}, errors.New("driver stopped")
-				}
-				return motionReading{z: 1, at: now.Add(-time.Second)}, nil
-			}}
+			r := failedMotionReader(now, fault)
 			alerts := make(chan Alert, 1)
 			if !errors.Is(testMotion(r, now).Start(context.Background(), alerts), errMotionUnavailable) {
 				t.Fatal("lost sensor did not fail")
@@ -166,6 +156,20 @@ func TestMotionFailureWithdrawsCoverage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func failedMotionReader(now time.Time, driverFailure bool) *fakeMotionReader {
+	first := true
+	return &fakeMotionReader{next: func() (motionReading, error) {
+		if first {
+			first = false
+			return motionReading{z: 1, at: now}, nil
+		}
+		if driverFailure {
+			return motionReading{}, errors.New("driver stopped")
+		}
+		return motionReading{z: 1, at: now.Add(-time.Second)}, nil
+	}}
 }
 
 func TestMotionDisarmUnblocksFullAlarmQueue(t *testing.T) {
@@ -188,46 +192,60 @@ func TestMotionDisarmUnblocksFullAlarmQueue(t *testing.T) {
 func TestMotionRetryPreservesArmReferenceAndAlarmLatch(t *testing.T) {
 	for _, alarmBeforeLoss := range []bool{false, true} {
 		t.Run(map[bool]string{false: "movement during outage", true: "already alarmed"}[alarmBeforeLoss], func(t *testing.T) {
-			now := time.Now()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			alerts := make(chan Alert, 10)
-			attempt, ready := 0, 0
-			s := &MotionSensor{every: time.Millisecond, now: func() time.Time { return now }}
-			s.open = func() (motionReader, error) {
-				attempt++
-				values := []float64{1, 1, 1, 1}
-				if attempt == 1 {
-					values = []float64{0, 0}
-					if alarmBeforeLoss {
-						values[1] = 1
-					}
-				}
-				i := 0
-				return &fakeMotionReader{next: func() (motionReading, error) {
-					if i == len(values) {
-						return motionReading{}, errMotionUnavailable
-					}
-					reading := motionReading{x: values[i], z: 1, at: now.Add(time.Duration(i+attempt*10) * time.Millisecond)}
-					i++
-					return reading, nil
-				}}, nil
-			}
-			for range 2 {
-				if !errors.Is(s.StartWithReady(ctx, alerts, func() { ready++ }), errMotionUnavailable) {
-					t.Fatal("driver outage was not reported")
-				}
-			}
-			if ready != 2 || len(alerts) != 1 {
-				t.Fatalf("retry reset the reference or latch: ready=%d alerts=%d", ready, len(alerts))
-			}
-			cancel()
-			rearmed, disarm := context.WithCancel(context.Background())
-			defer disarm()
-			if !errors.Is(s.Start(rearmed, alerts), errMotionUnavailable) || len(alerts) != 1 {
-				t.Fatal("new arm did not establish its own stationary reference")
-			}
+			checkMotionRetry(t, alarmBeforeLoss)
 		})
+	}
+}
+
+func retryMotionSensor(now time.Time, alarmBeforeLoss bool) *MotionSensor {
+	attempt := 0
+	s := &MotionSensor{every: time.Millisecond, now: func() time.Time { return now }}
+	s.open = func() (motionReader, error) {
+		attempt++
+		values := []float64{1, 1, 1, 1}
+		if attempt == 1 {
+			values = []float64{0, 0}
+			if alarmBeforeLoss {
+				values[1] = 1
+			}
+		}
+		return motionSequenceReader(now.Add(time.Duration(attempt*10)*time.Millisecond), values), nil
+	}
+	return s
+}
+
+func motionSequenceReader(now time.Time, values []float64) *fakeMotionReader {
+	i := 0
+	return &fakeMotionReader{next: func() (motionReading, error) {
+		if i == len(values) {
+			return motionReading{}, errMotionUnavailable
+		}
+		reading := motionReading{x: values[i], z: 1, at: now.Add(time.Duration(i) * time.Millisecond)}
+		i++
+		return reading, nil
+	}}
+}
+
+func checkMotionRetry(t *testing.T, alarmBeforeLoss bool) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	alerts := make(chan Alert, 10)
+	ready := 0
+	s := retryMotionSensor(time.Now(), alarmBeforeLoss)
+	for range 2 {
+		if !errors.Is(s.StartWithReady(ctx, alerts, func() { ready++ }), errMotionUnavailable) {
+			t.Fatal("driver outage was not reported")
+		}
+	}
+	if ready != 2 || len(alerts) != 1 {
+		t.Fatalf("retry reset the reference or latch: ready=%d alerts=%d", ready, len(alerts))
+	}
+	cancel()
+	rearmed, disarm := context.WithCancel(context.Background())
+	defer disarm()
+	if !errors.Is(s.Start(rearmed, alerts), errMotionUnavailable) || len(alerts) != 1 {
+		t.Fatal("new arm did not establish its own stationary reference")
 	}
 }
 
