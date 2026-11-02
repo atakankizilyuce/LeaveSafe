@@ -196,5 +196,8 @@
   "USB connected: {device}": "USB जुड़ा: {device}",
   "USB device removed: {device}": "USB डिवाइस हटाया गया: {device}",
   "USB device connected: {device}": "USB डिवाइस जुड़ा: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP पता बदला (नेटवर्क शायद बदला है)। IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP पता बदला (नेटवर्क शायद बदला है)। IP: {device}",
+  "MOTION": "हलचल",
+  "Device moved!": "डिवाइस हिला!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "स्थान की जानकारी लिए बिना वास्तविक हलचल पर नज़र रखता है। सुरक्षा चालू होने पर हलचल का पता चलने से अलार्म बजता है।"
 }

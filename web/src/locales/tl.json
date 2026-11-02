@@ -198,5 +198,8 @@
   "USB connected: {device}": "Ikinabit na USB: {device}",
   "USB device removed: {device}": "Tinanggal na USB device: {device}",
   "USB device connected: {device}": "Ikinabit na USB device: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "Nagbago ang IP address, maaaring lumipat ng network. Mga IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "Nagbago ang IP address, maaaring lumipat ng network. Mga IP: {device}",
+  "MOTION": "PAGGALAW",
+  "Device moved!": "Gumalaw ang device!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Binabantayan ang pisikal na paggalaw nang walang pag-access sa lokasyon. Nag-aalarma kapag may natukoy na paggalaw habang naka-on ang proteksiyon."
 }

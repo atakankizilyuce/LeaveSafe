@@ -198,5 +198,8 @@
   "USB connected: {device}": "USB కనెక్ట్ అయింది: {device}",
   "USB device removed: {device}": "USB పరికరం తొలగించారు: {device}",
   "USB device connected: {device}": "USB పరికరం కనెక్ట్ అయింది: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP చిరునామా మారింది (నెట్‌వర్క్ మారి ఉండవచ్చు). IPలు: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP చిరునామా మారింది (నెట్‌వర్క్ మారి ఉండవచ్చు). IPలు: {device}",
+  "MOTION": "కదలిక",
+  "Device moved!": "పరికరం కదిలింది!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "స్థానానికి యాక్సెస్ లేకుండా భౌతిక కదలికను పర్యవేక్షిస్తుంది. రక్షణ ఆన్‌లో ఉన్నప్పుడు కదలికను గుర్తిస్తే అలారాన్ని మోగిస్తుంది."
 }

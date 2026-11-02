@@ -196,5 +196,8 @@
   "USB connected: {device}": "USB 接続：{device}",
   "USB device removed: {device}": "USB 機器の取り外し：{device}",
   "USB device connected: {device}": "USB 機器の接続：{device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP アドレスが変わりました。ネットワークが切り替わった可能性があります。IP：{device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP アドレスが変わりました。ネットワークが切り替わった可能性があります。IP：{device}",
+  "MOTION": "動き",
+  "Device moved!": "デバイスが動きました!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "位置情報にアクセスせず、デバイスの物理的な動きを監視します。保護中に動きを検出するとアラームを作動させます。"
 }

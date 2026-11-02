@@ -117,6 +117,13 @@ it('translates known sensor alerts while preserving device names and unknown dia
     expect(alertCopy('USB removed: My Device')).toBe('USB çıkarıldı: My Device');
     expect(alertCopy('Unknown diagnostic')).toBe('Unknown diagnostic');
     expect(sensorCaption('power', 'Power')).toBe(t('POWER'));
+    expect(sensorCaption('motion', 'Motion')).toBe(t('MOTION'));
+    expect(alertCopy('Device moved!')).toBe(t('Device moved!'));
+    expect(sensorDescription('motion')).toBe(
+        t(
+            'Watches physical movement without location access. Triggers when movement is detected while armed.',
+        ),
+    );
     expect(sensorCaption('future', 'Custom Sensor')).toBe('Custom Sensor');
     expect(sensorDescription('power')).toBe(
         t('Watches the charger. Fires when power is disconnected or reconnected.'),

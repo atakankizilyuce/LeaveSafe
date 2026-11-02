@@ -196,5 +196,8 @@
   "USB connected: {device}": "USB যুক্ত হয়েছে: {device}",
   "USB device removed: {device}": "USB ডিভাইস খোলা হয়েছে: {device}",
   "USB device connected: {device}": "USB ডিভাইস যুক্ত হয়েছে: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP ঠিকানা বদলেছে (নেটওয়ার্ক বদলে থাকতে পারে)। IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP ঠিকানা বদলেছে (নেটওয়ার্ক বদলে থাকতে পারে)। IP: {device}",
+  "MOTION": "নড়াচড়া",
+  "Device moved!": "ডিভাইসটি নড়েছে!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "অবস্থানের তথ্য ছাড়াই বাস্তব নড়াচড়া পর্যবেক্ষণ করে। সুরক্ষা চালু থাকা অবস্থায় নড়াচড়া শনাক্ত হলে অ্যালার্ম সক্রিয় হয়।"
 }

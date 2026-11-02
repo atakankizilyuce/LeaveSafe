@@ -92,6 +92,9 @@ extend-ignore-re = ["[A-Za-z0-9_-]{40,}"]
 AttributePermissionsWriteable = "AttributePermissionsWriteable"
 
 [default.extend-words]
+# Literal French UI strings quoted by the independent language reviewer.
+MOUVEMENT = "MOUVEMENT"
+appareil = "appareil"
 # Literal Turkish macOS menu name quoted in the linguistic review.
 Sistem = "Sistem"
 # "UPnP" splits into U/Pn/P, and "Pn" reads as a typo for "On".

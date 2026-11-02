@@ -196,5 +196,8 @@
   "USB connected: {device}": "USB disambungkan: {device}",
   "USB device removed: {device}": "Perangkat USB dilepas: {device}",
   "USB device connected: {device}": "Perangkat USB disambungkan: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "Alamat IP berubah, mungkin karena pergantian jaringan. IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "Alamat IP berubah, mungkin karena pergantian jaringan. IP: {device}",
+  "MOTION": "GERAKAN",
+  "Device moved!": "Perangkat bergerak!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Memantau gerakan fisik tanpa akses lokasi. Memicu alarm saat gerakan terdeteksi ketika perlindungan aktif."
 }

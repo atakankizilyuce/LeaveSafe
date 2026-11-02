@@ -1,6 +1,7 @@
 import { t } from './i18n';
 
 const exact = new Set([
+    'Device moved!',
     'Charger disconnected!',
     'Charger reconnected',
     'Lid closed!',

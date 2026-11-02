@@ -198,5 +198,8 @@
   "USB connected: {device}": "An haɗa USB: {device}",
   "USB device removed: {device}": "An cire na'urar USB: {device}",
   "USB device connected: {device}": "An haɗa na'urar USB: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "Adireshin IP ya sauya (wataƙila an sauya hanyar sadarwa). IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "Adireshin IP ya sauya (wataƙila an sauya hanyar sadarwa). IP: {device}",
+  "MOTION": "MOTSI",
+  "Device moved!": "Na'urar ta motsa!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Yana sa ido kan motsi na zahiri ba tare da samun bayanan wuri ba. Yana kunna ƙararrawa idan an gano motsi yayin da kariya take kunne."
 }

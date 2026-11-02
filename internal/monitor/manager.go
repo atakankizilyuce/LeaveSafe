@@ -14,6 +14,11 @@ import (
 // without being asked to and without saying why.
 var errStoppedWatching = errors.New("the sensor stopped watching without being asked to")
 
+// readySensor defers the coverage claim until its driver has live data.
+type readySensor interface {
+	StartWithReady(context.Context, chan<- Alert, func()) error
+}
+
 // Manager handles sensor registration, lifecycle, and alert routing.
 type Manager struct {
 	mu      sync.RWMutex
@@ -148,6 +153,9 @@ func (m *Manager) StartEnabled() {
 		ctx, cancel := context.WithCancel(context.Background())
 		m.cancels[s.Name()] = cancel
 		alertCh := m.alertCh
+		if _, reportsReady := s.(readySensor); reportsReady {
+			m.failures[s.Name()] = "waiting for live sensor readings"
+		}
 
 		// Supervised rather than a bare goroutine: a sensor driver reads from
 		// the OS — sysfs files, WMI, IOKit, netlink — and a panic in one of
@@ -164,9 +172,7 @@ func (m *Manager) StartEnabled() {
 		// machine as armed.
 		safe.SuperviseRetry(ctx, "sensor:"+sensor.Name(), func(runCtx context.Context) error {
 			log.WithField("sensor", sensor.Name()).Info("Sensor started")
-			m.clearFailure(sensor.Name())
-
-			err := sensor.Start(runCtx, alertCh)
+			err := m.startSensor(runCtx, sensor, alertCh)
 
 			// Being asked to stop is the one clean way out of this loop. The
 			// sensor reports that as an error — usually runCtx.Err() itself —
@@ -189,6 +195,22 @@ func (m *Manager) StartEnabled() {
 			return err
 		})
 	}
+}
+
+// Sensors with asynchronous warm-up keep their failure visible during retries.
+func (m *Manager) startSensor(ctx context.Context, sensor Sensor, alerts chan<- Alert) error {
+	if reporting, ok := sensor.(readySensor); ok {
+		return reporting.StartWithReady(ctx, alerts, func() {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			// A late callback from a disarmed run must not clear a new run's fault.
+			if ctx.Err() == nil {
+				delete(m.failures, sensor.Name())
+			}
+		})
+	}
+	m.clearFailure(sensor.Name())
+	return sensor.Start(ctx, alerts)
 }
 
 // StopAll stops all running sensors.

@@ -198,5 +198,8 @@
   "USB connected: {device}": "USB branché : {device}",
   "USB device removed: {device}": "Appareil USB débranché : {device}",
   "USB device connected: {device}": "Appareil USB branché : {device}",
-  "IP address changed (possible network switch). IPs: {device}": "Adresse IP modifiée (changement de réseau possible). IP : {device}"
+  "IP address changed (possible network switch). IPs: {device}": "Adresse IP modifiée (changement de réseau possible). IP : {device}",
+  "MOTION": "MOUVEMENT",
+  "Device moved!": "L’appareil a bougé !",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Surveille les mouvements physiques sans accéder à la localisation. Se déclenche si un mouvement est détecté pendant que la protection est active."
 }

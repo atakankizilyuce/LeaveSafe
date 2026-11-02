@@ -196,5 +196,8 @@
   "USB connected: {device}": "Đã kết nối USB: {device}",
   "USB device removed: {device}": "Đã rút thiết bị USB: {device}",
   "USB device connected: {device}": "Đã kết nối thiết bị USB: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "Địa chỉ IP đã thay đổi, có thể do chuyển mạng. Các IP: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "Địa chỉ IP đã thay đổi, có thể do chuyển mạng. Các IP: {device}",
+  "MOTION": "CHUYỂN ĐỘNG",
+  "Device moved!": "Thiết bị đã di chuyển!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Theo dõi chuyển động thực tế mà không truy cập vị trí. Kích hoạt báo động khi phát hiện chuyển động trong lúc chế độ bảo vệ đang bật."
 }

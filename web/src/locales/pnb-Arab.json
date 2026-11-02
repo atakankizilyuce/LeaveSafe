@@ -198,5 +198,8 @@
   "USB connected: {device}": "USB لایا گیا: {device}",
   "USB device removed: {device}": "USB آلہ کڈھیا گیا: {device}",
   "USB device connected: {device}": "USB آلہ لایا گیا: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "IP پتہ بدل گیا (شاید نیٹ ورک بدل گیا ہووے)۔ IP پتے: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "IP پتہ بدل گیا (شاید نیٹ ورک بدل گیا ہووے)۔ IP پتے: {device}",
+  "MOTION": "حرکت",
+  "Device moved!": "آلہ ہل گیا!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "مقام تک رسائی توں بغیر آلے دے ہلن دی نگرانی کردا اے۔ حفاظت چالو ہووے تے حرکت دا پتا لگن نال الارم وجدا اے۔"
 }

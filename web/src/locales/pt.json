@@ -198,5 +198,8 @@
   "USB connected: {device}": "USB conectado: {device}",
   "USB device removed: {device}": "Dispositivo USB removido: {device}",
   "USB device connected: {device}": "Dispositivo USB conectado: {device}",
-  "IP address changed (possible network switch). IPs: {device}": "O endereço IP mudou (possível troca de rede). IPs: {device}"
+  "IP address changed (possible network switch). IPs: {device}": "O endereço IP mudou (possível troca de rede). IPs: {device}",
+  "MOTION": "MOVIMENTO",
+  "Device moved!": "O dispositivo se moveu!",
+  "Watches physical movement without location access. Triggers when movement is detected while armed.": "Monitora o movimento físico sem acessar a localização. Dispara quando detecta movimento com a proteção ativada."
 }
