@@ -15,8 +15,10 @@ At the start of monitoring, the sensor establishes a fixed acceleration
 reference, including gravity. It polls at 20 Hz, respecting the driver's minimum
 report interval. Three distinct samples differing by at least 0.18 g, or one
 sample differing by at least 0.65 g, trigger the existing critical alarm path.
-One event is emitted per uninterrupted monitoring run. Samples older than one
-second withdraw coverage. Cancellation releases the sensor and COM apartment.
+One event is emitted per arm session. A driver reconnect keeps the original
+reference and the alarm latch; disarm/rearm establishes a new reference. Samples
+older than one second withdraw coverage. Warm-up and retry do not claim coverage
+until fresh readings arrive. Cancellation releases the sensor and COM apartment.
 
 This detects movement, not distance, and cannot guarantee detection of every
 slow translation. It requires the computer and sensor driver to remain awake.
@@ -32,6 +34,7 @@ acceptance, and app/daemon package integration. Do not describe a compiled test
 binary or simulated input as a successful physical movement test.
 
 References:
+- https://github.com/microsoft/windows-rs/blob/master/crates/libs/windows/src/Windows/Devices/Sensors/mod.rs
 - https://learn.microsoft.com/en-us/uwp/api/windows.devices.sensors.accelerometer
 - https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/winrt-api-desktop-app-support
 - https://developer.apple.com/documentation/coremotion/cmmotionmanager

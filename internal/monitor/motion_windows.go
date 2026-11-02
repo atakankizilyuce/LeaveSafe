@@ -40,13 +40,13 @@ func (o *motionObject) setInterval(value uint32) error {
 
 func (o *motionObject) release() {
 	if o != nil {
-		syscall.SyscallN(o.table[2], uintptr(unsafe.Pointer(o)))
+		_, _, _ = syscall.SyscallN(o.table[2], uintptr(unsafe.Pointer(o)))
 	}
 }
 
 func motionHRESULT(hr uintptr) error {
-	if int32(hr) < 0 {
-		return fmt.Errorf("Windows motion API failed (0x%08x)", uint32(hr))
+	if hr&0x80000000 != 0 {
+		return fmt.Errorf("Windows motion API failed (0x%08x)", hr&0xffffffff)
 	}
 	return nil
 }
@@ -62,7 +62,7 @@ func openMotionReader() (motionReader, error) {
 	}
 	sensor, err := defaultAccelerometer()
 	if err != nil {
-		motionUninitialize.Call()
+		_, _, _ = motionUninitialize.Call()
 		runtime.UnlockOSThread()
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func defaultAccelerometer() (*motionObject, error) {
 	if err = motionHRESULT(hr); err != nil {
 		return nil, err
 	}
-	defer motionDeleteString.Call(class)
+	defer func() { _, _, _ = motionDeleteString.Call(class) }()
 	var factory *motionObject
 	hr, _, _ = motionFactory.Call(class, uintptr(unsafe.Pointer(&motionStaticsID)), uintptr(unsafe.Pointer(&factory)))
 	if err = motionHRESULT(hr); err != nil {
@@ -138,6 +138,6 @@ func (r *windowsMotionReader) read() (motionReading, error) {
 func (r *windowsMotionReader) close() {
 	_ = r.sensor.setInterval(0) // Return this client's report interval to default.
 	r.sensor.release()
-	motionUninitialize.Call()
+	_, _, _ = motionUninitialize.Call()
 	runtime.UnlockOSThread()
 }

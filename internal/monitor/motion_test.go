@@ -95,7 +95,7 @@ func TestMotionWarmupCancellation(t *testing.T) {
 		t.Fatal("empty reading accepted")
 	}
 	if !errors.Is(s.Start(ctx, make(chan Alert)), context.Canceled) {
-		t.Fatal("cancelled sensor opened")
+		t.Fatal("canceled sensor opened")
 	}
 }
 
@@ -182,5 +182,101 @@ func TestMotionDisarmUnblocksFullAlarmQueue(t *testing.T) {
 	}
 	if !r.closed {
 		t.Fatal("reader not released")
+	}
+}
+
+func TestMotionRetryPreservesArmReferenceAndAlarmLatch(t *testing.T) {
+	for _, alarmBeforeLoss := range []bool{false, true} {
+		t.Run(map[bool]string{false: "movement during outage", true: "already alarmed"}[alarmBeforeLoss], func(t *testing.T) {
+			now := time.Now()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			alerts := make(chan Alert, 10)
+			attempt, ready := 0, 0
+			s := &MotionSensor{every: time.Millisecond, now: func() time.Time { return now }}
+			s.open = func() (motionReader, error) {
+				attempt++
+				values := []float64{1, 1, 1, 1}
+				if attempt == 1 {
+					values = []float64{0, 0}
+					if alarmBeforeLoss {
+						values[1] = 1
+					}
+				}
+				i := 0
+				return &fakeMotionReader{next: func() (motionReading, error) {
+					if i == len(values) {
+						return motionReading{}, errMotionUnavailable
+					}
+					reading := motionReading{x: values[i], z: 1, at: now.Add(time.Duration(i+attempt*10) * time.Millisecond)}
+					i++
+					return reading, nil
+				}}, nil
+			}
+			for range 2 {
+				if !errors.Is(s.StartWithReady(ctx, alerts, func() { ready++ }), errMotionUnavailable) {
+					t.Fatal("driver outage was not reported")
+				}
+			}
+			if ready != 2 || len(alerts) != 1 {
+				t.Fatalf("retry reset the reference or latch: ready=%d alerts=%d", ready, len(alerts))
+			}
+			cancel()
+			rearmed, disarm := context.WithCancel(context.Background())
+			defer disarm()
+			if !errors.Is(s.Start(rearmed, alerts), errMotionUnavailable) || len(alerts) != 1 {
+				t.Fatal("new arm did not establish its own stationary reference")
+			}
+		})
+	}
+}
+
+type warmingMotionSensor struct {
+	failingSensor
+	started  chan struct{}
+	proceed  chan struct{}
+	watching chan struct{}
+}
+
+func (s *warmingMotionSensor) StartWithReady(ctx context.Context, _ chan<- Alert, ready func()) error {
+	close(s.started)
+	<-s.proceed
+	ready()
+	close(s.watching)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestMotionManagerWaitsForLiveReading(t *testing.T) {
+	s := &warmingMotionSensor{failingSensor: failingSensor{name: "motion", available: true}, started: make(chan struct{}), proceed: make(chan struct{}), watching: make(chan struct{})}
+	m := NewManager()
+	m.Register(s)
+	m.Enable(s.Name())
+	m.StartEnabled()
+	defer m.StopAll()
+	<-s.started
+	if m.Failure(s.Name()) == "" {
+		t.Error("warm-up incorrectly reported live coverage")
+	}
+	close(s.proceed)
+	<-s.watching
+	if m.Failure(s.Name()) != "" {
+		t.Error("live reading did not restore coverage")
+	}
+}
+
+func TestMotionLateReadyCannotClearNewSessionFailure(t *testing.T) {
+	s := &warmingMotionSensor{failingSensor: failingSensor{name: "motion", available: true}, started: make(chan struct{}), proceed: make(chan struct{}), watching: make(chan struct{})}
+	m := NewManager()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = m.startSensor(ctx, s, make(chan Alert)) }()
+	<-s.started
+	cancel()
+	m.recordFailure(s.Name(), errMotionUnavailable)
+	close(s.proceed)
+	<-done
+	if m.Failure(s.Name()) == "" {
+		t.Fatal("canceled attempt claimed coverage for a later session")
 	}
 }

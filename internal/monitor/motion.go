@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
 	"time"
 )
 
@@ -31,12 +32,16 @@ type motionReader interface {
 var errMotionUnavailable = errors.New("no live accelerometer readings available")
 
 // MotionSensor watches movement against a fixed arm-time reference. Each
-// Start owns its reader and baseline; disarm cancels it through the manager.
+// Start owns its reader; the arm context retains its baseline across retries.
 // The OS adapter uses only the documented Windows Runtime sensor interface.
 type MotionSensor struct {
 	open  func() (motionReader, error)
 	every time.Duration
 	now   func() time.Time
+
+	mu          sync.Mutex
+	sessionDone <-chan struct{}
+	detector    *motionDetector
 }
 
 func NewMotionSensor() *MotionSensor {
@@ -78,6 +83,11 @@ func (s *MotionSensor) firstReading(ctx context.Context, r motionReader) (motion
 }
 
 func (s *MotionSensor) Start(ctx context.Context, alerts chan<- Alert) error {
+	return s.StartWithReady(ctx, alerts, func() {})
+}
+
+// StartWithReady reports coverage only after a fresh sample is available.
+func (s *MotionSensor) StartWithReady(ctx context.Context, alerts chan<- Alert, ready func()) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -92,14 +102,33 @@ func (s *MotionSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 	if err != nil {
 		return err
 	}
-	return s.watch(ctx, alerts, r, reference)
+	detector, err := s.session(ctx, reference)
+	if err != nil {
+		return err
+	}
+	ready()
+	return s.watch(ctx, alerts, r, detector, reference.at)
 }
 
-func (s *MotionSensor) watch(ctx context.Context, alerts chan<- Alert, r motionReader, reference motionReading) error {
+// The supervisor reuses its context on retry and creates a new one on rearm.
+// Keep the original baseline and alarm latch through a temporary driver loss.
+func (s *MotionSensor) session(ctx context.Context, reference motionReading) (*motionDetector, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.detector == nil || ctx.Done() == nil || s.sessionDone != ctx.Done() {
+		s.sessionDone = ctx.Done()
+		s.detector = &motionDetector{reference: reference}
+	}
+	s.detector.consecutive = 0
+	return s.detector, nil
+}
+
+func (s *MotionSensor) watch(ctx context.Context, alerts chan<- Alert, r motionReader, detector *motionDetector, last time.Time) error {
 	ticker := time.NewTicker(s.every)
 	defer ticker.Stop()
-	detector := motionDetector{reference: reference}
-	last := reference.at
 	for {
 		select {
 		case <-ctx.Done():

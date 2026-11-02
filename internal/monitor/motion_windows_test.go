@@ -58,6 +58,12 @@ func TestMotionNativeReadingAndCleanup(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := &windowsMotionReader{sensor: sensor}
+			closed := false
+			defer func() {
+				if !closed {
+					r.close()
+				}
+			}()
 			got, err := r.read()
 			if failSlot >= 0 {
 				if err == nil {
@@ -67,6 +73,7 @@ func TestMotionNativeReadingAndCleanup(t *testing.T) {
 				t.Fatalf("reading=%+v err=%v", got, err)
 			}
 			r.close()
+			closed = true
 			if releasedReading != 1 || releasedSensor != 1 || interval != 0 {
 				t.Fatalf("cleanup: reading=%d sensor=%d interval=%d", releasedReading, releasedSensor, interval)
 			}
