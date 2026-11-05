@@ -393,17 +393,20 @@ func isHTTPS(raw string) bool {
 // from anywhere else. The state store and the update ledger already write this
 // way; this is the file with the most to lose.
 func Save(cfg *Config) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return saveConfigData("config.json", data)
+}
+
+func saveConfigData(name string, data []byte) error {
 	dir := ConfigDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	tmp, err := os.CreateTemp(dir, "config.json.*")
+	tmp, err := os.CreateTemp(dir, name+".*")
 	if err != nil {
 		return fmt.Errorf("create temp config: %w", err)
 	}
@@ -431,5 +434,5 @@ func Save(cfg *Config) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp config: %w", err)
 	}
-	return os.Rename(tmpName, ConfigPath())
+	return os.Rename(tmpName, filepath.Join(dir, name))
 }

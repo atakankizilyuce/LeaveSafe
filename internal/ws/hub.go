@@ -112,6 +112,7 @@ type Hub struct {
 	cfg *config.Config
 
 	// Alarm state tracking to prevent re-trigger loops
+	alarmTone   string
 	alarmActive bool
 	alarmSensor string
 	// alarmMessage is what the alarm said, kept beside the sensor so a phone
@@ -1053,6 +1054,8 @@ func withinRateLimit(client *Client, msg ClientMessage) bool {
 // handlePairedMessage acts on a message from a client that has proved itself.
 func (h *Hub) handlePairedMessage(client *Client, msg ClientMessage) {
 	switch msg.Type {
+	case "get_alarm_sound", "set_alarm_sound":
+		h.handleAlarmSound(msg, client)
 	case MsgTypeArm:
 		h.Arm()
 	case MsgTypeDisarm:

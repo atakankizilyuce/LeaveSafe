@@ -97,6 +97,7 @@ func startApp(opts appOptions) (*app, error) {
 
 	hub := ws.NewHub(authMgr, sensorMgr, version)
 	hub.SetConfig(cfg)
+	hub.SetAlarmSound(config.LoadAlarmSound())
 	hub.SetTimings(
 		time.Duration(cfg.HeartbeatSeconds)*time.Second,
 		time.Duration(cfg.DisconnectGraceSeconds)*time.Second,
@@ -153,7 +154,7 @@ func startApp(opts appOptions) (*app, error) {
 	a.sb = a.drawInterface(opts, authMgr, keyPath)
 	a.installPanicHandler()
 
-	a.alarm = alarm.New(cfg.Alarm)
+	a.alarm = alarm.NewWithToneSource(cfg.Alarm, hub.AlarmTone)
 	a.applyGuardSettings(cfg)
 
 	reportInterruptedMonitoring(a.sb, hub, stateStore, prevState, prevStateErr, cfg.RestoreArmedState)

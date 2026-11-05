@@ -67,6 +67,8 @@ Commands:
   install-service     Start LeaveSafe automatically when you log in
   uninstall-service   Remove the autostart entry
   service-status      Report whether the autostart entry is installed
+  preview-alarm-sound <tone>
+                      Play a bundled tone for three seconds at current volume
 
 Flags:
   -dev                Serve the phone UI from web/dist instead of the embedded
@@ -100,6 +102,8 @@ Report bugs at %s
 // not silently start the monitor instead.
 func runSubcommand(args []string) int {
 	switch args[0] {
+	case "preview-alarm-sound":
+		return previewAlarmSound(args[1:])
 	case "install-service":
 		return runInstallService()
 	case "uninstall-service":
