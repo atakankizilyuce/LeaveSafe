@@ -27,34 +27,39 @@ func TestApprovedTonesLoopSampleForSampleAndStop(t *testing.T) {
 	t.Cleanup(func() { openOutputFn = old })
 	for tone, file := range toneFiles {
 		t.Run(tone, func(t *testing.T) {
-			wav, err := tones.ReadFile("tones/" + file)
-			if err != nil {
-				t.Fatal(err)
-			}
-			pcm, err := tonePCM(wav)
-			if err != nil {
-				t.Fatal(err)
-			}
-			d := &toneDevice{stop: make(chan struct{})}
-			openOutputFn = func(rate int) (Device, error) {
-				if rate != 44100 {
-					t.Fatal(rate)
-				}
-				return d, nil
-			}
-			if err := PlayTone(tone, d.stop); err != nil {
-				t.Fatal(err)
-			}
-			if !d.closed {
-				t.Fatal("device left open")
-			}
-			for i, v := range d.samples {
-				at := (i * 2) % len(pcm)
-				if v != int16(binary.LittleEndian.Uint16(pcm[at:at+2])) {
-					t.Fatalf("sample %d differs", i)
-				}
-			}
+			assertToneLoops(t, tone, file)
 		})
+	}
+}
+
+func assertToneLoops(t *testing.T, tone, file string) {
+	t.Helper()
+	wav, err := tones.ReadFile("tones/" + file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pcm, err := tonePCM(wav)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &toneDevice{stop: make(chan struct{})}
+	openOutputFn = func(rate int) (Device, error) {
+		if rate != 44100 {
+			t.Fatal(rate)
+		}
+		return d, nil
+	}
+	if err := PlayTone(tone, d.stop); err != nil {
+		t.Fatal(err)
+	}
+	if !d.closed {
+		t.Fatal("device left open")
+	}
+	for i, v := range d.samples {
+		at := (i * 2) % len(pcm)
+		if v != int16(binary.LittleEndian.Uint16(pcm[at:at+2])) {
+			t.Fatalf("sample %d differs", i)
+		}
 	}
 }
 
