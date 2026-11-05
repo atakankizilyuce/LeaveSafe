@@ -50,7 +50,7 @@ func PlayTone(tone string, stop <-chan struct{}) error {
 		default:
 		}
 		for i := range buf {
-			buf[i] = int16(binary.LittleEndian.Uint16(pcm[at : at+2]))
+			buf[i] = int16(binary.LittleEndian.Uint16(pcm[at : at+2])) //nolint:gosec // PCM reinterprets the same 16 bits as signed.
 			at = (at + 2) % len(pcm)
 		}
 		if err := dev.Write(buf); err != nil {
