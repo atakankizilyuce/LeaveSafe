@@ -39,6 +39,7 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 	isolate(t)
 
 	cfg := Default()
+	cfg.Alarm.Tone = "beep"
 	cfg.MaxSessions = 7
 	cfg.InputThreshold = 4
 	cfg.Location.GeolocateKey = "secret-key"
@@ -49,6 +50,9 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 	got, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
+	}
+	if got.Alarm.Tone != "beep" {
+		t.Fatal("alarm tone did not survive restart")
 	}
 	if got.MaxSessions != 7 {
 		t.Errorf("MaxSessions = %d, want 7", got.MaxSessions)

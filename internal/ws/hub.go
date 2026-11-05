@@ -1053,6 +1053,8 @@ func withinRateLimit(client *Client, msg ClientMessage) bool {
 // handlePairedMessage acts on a message from a client that has proved itself.
 func (h *Hub) handlePairedMessage(client *Client, msg ClientMessage) {
 	switch msg.Type {
+	case "get_alarm_sound", "set_alarm_sound":
+		h.handleAlarmSound(msg, client)
 	case MsgTypeArm:
 		h.Arm()
 	case MsgTypeDisarm:
@@ -1717,7 +1719,11 @@ func applyServerSettings(cfg *config.Config, p *ConfigPayload) bool {
 	cfg.DisconnectGraceSeconds = p.DisconnectGraceSeconds
 	cfg.AutoArmOnLock = p.AutoArmOnLock
 	cfg.InputThreshold = p.InputThreshold
+	tone := cfg.Alarm.Tone
 	cfg.Alarm = p.Alarm
+	// Sound changes use the dedicated disarmed-only command, including for
+	// older clients whose full config payload does not contain a tone.
+	cfg.Alarm.Tone = tone
 
 	// The update check and its channel take effect on the next scheduled check
 	// rather than forcing one, so switching to beta from the phone is a quiet

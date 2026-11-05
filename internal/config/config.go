@@ -19,6 +19,7 @@ type AlarmLevel struct {
 
 // AlarmConfig controls how the alarm escalates.
 type AlarmConfig struct {
+	Tone              string       `json:"tone,omitempty"`
 	EscalationEnabled bool         `json:"escalation_enabled"`
 	Levels            []AlarmLevel `json:"levels"`
 }

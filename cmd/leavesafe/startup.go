@@ -153,7 +153,7 @@ func startApp(opts appOptions) (*app, error) {
 	a.sb = a.drawInterface(opts, authMgr, keyPath)
 	a.installPanicHandler()
 
-	a.alarm = alarm.New(cfg.Alarm)
+	a.alarm = alarm.NewWithToneSource(cfg.Alarm, hub.AlarmTone)
 	a.applyGuardSettings(cfg)
 
 	reportInterruptedMonitoring(a.sb, hub, stateStore, prevState, prevStateErr, cfg.RestoreArmedState)
