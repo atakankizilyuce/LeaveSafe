@@ -112,6 +112,7 @@ type Hub struct {
 	cfg *config.Config
 
 	// Alarm state tracking to prevent re-trigger loops
+	alarmTone   string
 	alarmActive bool
 	alarmSensor string
 	// alarmMessage is what the alarm said, kept beside the sensor so a phone
@@ -1719,11 +1720,7 @@ func applyServerSettings(cfg *config.Config, p *ConfigPayload) bool {
 	cfg.DisconnectGraceSeconds = p.DisconnectGraceSeconds
 	cfg.AutoArmOnLock = p.AutoArmOnLock
 	cfg.InputThreshold = p.InputThreshold
-	tone := cfg.Alarm.Tone
 	cfg.Alarm = p.Alarm
-	// Sound changes use the dedicated disarmed-only command, including for
-	// older clients whose full config payload does not contain a tone.
-	cfg.Alarm.Tone = tone
 
 	// The update check and its channel take effect on the next scheduled check
 	// rather than forcing one, so switching to beta from the phone is a quiet

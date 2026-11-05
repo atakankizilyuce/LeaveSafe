@@ -13,13 +13,20 @@ func (h *Hub) AlarmTone() string {
 }
 
 func (h *Hub) alarmToneLocked() string {
-	if h.cfg != nil && audio.ValidTone(h.cfg.Alarm.Tone) {
-		return h.cfg.Alarm.Tone
+	if audio.ValidTone(h.alarmTone) {
+		return h.alarmTone
 	}
 	return "original"
 }
 
-var saveAlarmSoundConfig = config.Save
+// SetAlarmSound restores the independent device sound preference at startup.
+func (h *Hub) SetAlarmSound(tone string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.alarmTone = tone
+}
+
+var saveAlarmSoundConfig = config.SaveAlarmSound
 
 // The paired command changes only sound, with no sensor or PIN side effects.
 func (h *Hub) handleAlarmSound(msg ClientMessage, client *Client) {
@@ -32,14 +39,12 @@ func (h *Hub) handleAlarmSound(msg ClientMessage, client *Client) {
 		case h.cfg == nil || !audio.ValidTone(msg.Tone):
 			reason = "invalid"
 		default:
-			copy := *h.cfg
-			copy.Alarm.Tone = msg.Tone
 			// Serialize this short atomic file write with arming: success must
 			// mean both persisted and active, before protection can begin.
-			if err := saveAlarmSoundConfig(&copy); err != nil {
+			if err := saveAlarmSoundConfig(msg.Tone); err != nil {
 				reason = "save_failed"
 			} else {
-				h.cfg.Alarm.Tone = msg.Tone
+				h.alarmTone = msg.Tone
 			}
 		}
 	}

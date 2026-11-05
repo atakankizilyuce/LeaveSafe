@@ -97,6 +97,7 @@ func startApp(opts appOptions) (*app, error) {
 
 	hub := ws.NewHub(authMgr, sensorMgr, version)
 	hub.SetConfig(cfg)
+	hub.SetAlarmSound(config.LoadAlarmSound())
 	hub.SetTimings(
 		time.Duration(cfg.HeartbeatSeconds)*time.Second,
 		time.Duration(cfg.DisconnectGraceSeconds)*time.Second,

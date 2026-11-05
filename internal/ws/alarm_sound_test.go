@@ -21,13 +21,13 @@ func TestAlarmSoundPersistenceAndRefusals(t *testing.T) {
 			rec := &alertRecorder{}
 			client := &Client{hub: h, transport: rec, authenticated: true}
 			writes := 0
-			saveAlarmSoundConfig = func(c *config.Config) error {
+			saveAlarmSoundConfig = func(tone string) error {
 				writes++
 				if mode == "disk" {
 					return errors.New("full")
 				}
-				if c.Alarm.Tone != "beep" {
-					t.Fatal(c.Alarm.Tone)
+				if tone != "beep" {
+					t.Fatal(tone)
 				}
 				return nil
 			}
@@ -63,12 +63,13 @@ func TestAlarmSoundPersistenceAndRefusals(t *testing.T) {
 }
 
 func TestLegacyConfigCannotOverwriteSound(t *testing.T) {
+	h, _ := hubWithSensors(t, "power")
 	cfg := config.Default()
-	cfg.Alarm.Tone = "bells"
+	h.SetConfig(cfg)
+	h.SetAlarmSound("bells")
 	p := configToPayload(config.Default())
-	p.Alarm.Tone = "beep"
 	applyServerSettings(cfg, &p)
-	if cfg.Alarm.Tone != "bells" {
-		t.Fatal("full config bypassed sound guard")
+	if h.AlarmTone() != "bells" {
+		t.Fatal("full config overwrote device sound")
 	}
 }
