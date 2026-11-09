@@ -278,7 +278,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: |
             dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -292,7 +292,7 @@ jobs:
       # files, and a rehearsal is worthless if you cannot tell which is which.
       - name: Upload as a workflow artifact (rehearsal)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-rehearsal-${{ matrix.goos }}-${{ matrix.goarch }}
           retention-days: 7
@@ -336,13 +336,13 @@ jobs:
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: leavesafe-${{ env.VERSION }}-sbom.cdx.json
 
       - name: Upload as a workflow artifact (rehearsal)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-rehearsal-sbom
           retention-days: 7
@@ -372,7 +372,7 @@ jobs:
         run: packaging/generate.sh "${{ github.ref_name }}" dist-manifests
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: dist-manifests/*
 
