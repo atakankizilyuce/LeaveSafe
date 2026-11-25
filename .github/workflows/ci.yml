@@ -551,6 +551,18 @@ jobs:
             -o dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
             ./cmd/leavesafe
 
+      - name: Verify binary Go toolchain
+        shell: bash
+        run: |
+          binary="dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          expected="go$(awk '$1 == "go" { print $2 }' go.mod)"
+          actual=$(go version "$binary" | awk '{ print $NF }')
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Binary toolchain $actual does not match pinned $expected"
+            exit 1
+          fi
+          go version -m "$binary"
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

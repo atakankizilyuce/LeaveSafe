@@ -115,6 +115,18 @@ jobs:
             -o dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
             ./cmd/leavesafe
 
+      - name: Verify binary Go toolchain
+        shell: bash
+        run: |
+          binary="dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          expected="go$(awk '$1 == "go" { print $2 }' go.mod)"
+          actual=$(go version "$binary" | awk '{ print $NF }')
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Binary toolchain $actual does not match pinned $expected"
+            exit 1
+          fi
+          go version -m "$binary"
+
       # -----------------------------------------------------------------------
       # Signing. A security tool whose install instructions are "run `xattr -d
       # com.apple.quarantine`" has taught its users to disarm the exact warning
@@ -251,7 +263,7 @@ jobs:
             -pass "$WINDOWS_CERTIFICATE_PASSWORD" \
             -n "LeaveSafe" \
             -i "https://github.com/atakankizilyuce/LeaveSafe" \
-            -ts "http://timestamp.digicert.com" \
+            -ts "https://timestamp.sectigo.com" \
             -h sha256 \
             -in "$BINARY" -out "$BINARY.signed"
           mv "$BINARY.signed" "$BINARY"

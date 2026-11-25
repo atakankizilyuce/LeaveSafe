@@ -30,6 +30,7 @@ var (
 	restoreVolumeFn = restoreVolume
 	beepToneFn      = beepTone
 	playSirenFn     = audio.PlaySiren
+	playToneFn      = audio.PlayTone
 )
 
 // clampLevel keeps a volume scalar inside the 0..1 range every platform's audio
@@ -66,7 +67,8 @@ type Alarm struct {
 	savedVolume float64
 	volumeSaved bool
 
-	alarmCfg config.AlarmConfig
+	alarmCfg   config.AlarmConfig
+	toneSource func() string
 }
 
 // spawn starts one of the alarm's own goroutines and counts it.
@@ -93,6 +95,13 @@ func (a *Alarm) spawn(name string, fn func()) {
 // New creates a new Alarm instance with the given alarm configuration.
 func New(cfg config.AlarmConfig) *Alarm {
 	return &Alarm{alarmCfg: cfg}
+}
+
+// NewWithToneSource reads the current selection when an alarm begins.
+func NewWithToneSource(cfg config.AlarmConfig, source func() string) *Alarm {
+	a := New(cfg)
+	a.toneSource = source
+	return a
 }
 
 // Start activates the alarm. If escalation is enabled, the alarm will
@@ -295,7 +304,14 @@ func (a *Alarm) IsPlaying() bool {
 // nobody, and the machine that cannot open its sound card is exactly the
 // machine whose owner is not there to be told why.
 func (a *Alarm) sirenLoop(stop chan struct{}) {
-	if err := playSirenFn(stop); err != nil {
+	play := playSirenFn
+	if a.toneSource != nil {
+		tone := a.toneSource()
+		if tone != "" && tone != "original" {
+			play = func(stop <-chan struct{}) error { return playToneFn(tone, stop) }
+		}
+	}
+	if err := play(stop); err != nil {
 		log.Warnf("Siren: %v — falling back to the console beep", err)
 		a.beepLoop(stop)
 	}

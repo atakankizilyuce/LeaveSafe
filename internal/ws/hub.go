@@ -112,6 +112,7 @@ type Hub struct {
 	cfg *config.Config
 
 	// Alarm state tracking to prevent re-trigger loops
+	alarmTone   string
 	alarmActive bool
 	alarmSensor string
 	// alarmMessage is what the alarm said, kept beside the sensor so a phone
@@ -588,15 +589,14 @@ func (h *Hub) HandleConnection(ctx context.Context, conn *websocket.Conn, remote
 	deadline := time.Now().Add(deadlineAfter)
 
 	for {
-		readCtx := ctx
-		var cancel context.CancelFunc
-		if !client.authenticated {
-			readCtx, cancel = context.WithDeadline(ctx, deadline)
-		}
-		_, data, err := conn.Read(readCtx)
-		if cancel != nil {
-			cancel()
-		}
+		_, data, err := func() (websocket.MessageType, []byte, error) {
+			if client.authenticated {
+				return conn.Read(ctx)
+			}
+			readCtx, cancel := context.WithDeadline(ctx, deadline)
+			defer cancel()
+			return conn.Read(readCtx)
+		}()
 		if err != nil {
 			return
 		}
@@ -1053,6 +1053,8 @@ func withinRateLimit(client *Client, msg ClientMessage) bool {
 // handlePairedMessage acts on a message from a client that has proved itself.
 func (h *Hub) handlePairedMessage(client *Client, msg ClientMessage) {
 	switch msg.Type {
+	case "get_alarm_sound", "set_alarm_sound":
+		h.handleAlarmSound(msg, client)
 	case MsgTypeArm:
 		h.Arm()
 	case MsgTypeDisarm:

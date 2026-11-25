@@ -57,7 +57,9 @@ const (
 
 // ClientMessage represents a message from the phone to the laptop.
 type ClientMessage struct {
-	Type string `json:"type"`
+	Type      string `json:"type"`
+	Tone      string `json:"tone,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
 	// No key field, and that is the point of the handshake: the pairing key
 	// never crosses the wire. An app answers the greeting's challenge with
 	// Nonce and Proof, and an auth message carrying anything else — including
@@ -139,9 +141,11 @@ type LocationConfigPayload struct {
 
 // ServerMessage represents a message from the laptop to the phone.
 type ServerMessage struct {
-	Type    string `json:"type"`
-	Token   string `json:"token,omitempty"`
-	Version string `json:"version,omitempty"`
+	Type      string `json:"type"`
+	Tone      string `json:"tone,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+	Token     string `json:"token,omitempty"`
+	Version   string `json:"version,omitempty"`
 	// Nonce on a hello is this connection's challenge, one per connection and
 	// never reused. Proof on an auth_ok is the laptop's answer to the client's
 	// challenge — the field that lets an app tell this daemon apart from
