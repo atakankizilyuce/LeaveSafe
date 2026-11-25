@@ -111,12 +111,10 @@ func installAutostart(exe string) (string, error) {
 		return "", fmt.Errorf("launchctl enable: %w: %s", err, out)
 	}
 
-	detail := "LaunchAgent: " + path
-	detail += "\nLoaded with: launchctl bootstrap " + target
-	detail += "\nLogs:        " + LogFilePath()
-	detail += "\n\nmacOS will ask for permission the first time the background copy reads input\n" +
-		"state. Grant it under System Settings → Privacy & Security → Accessibility,\n" +
-		"otherwise the input sensor stays unavailable."
+	detail := serviceText("LaunchAgent: %s", path)
+	detail += serviceText("\nLoaded with: launchctl bootstrap %s", target)
+	detail += serviceText("\nLogs:        %s", LogFilePath())
+	detail += serviceText("\n\nmacOS will ask for permission the first time the background copy reads input\nstate. Grant it under System Settings → Privacy & Security → Accessibility,\notherwise the input sensor stays unavailable.")
 	return detail, nil
 }
 
@@ -147,22 +145,22 @@ func autostartStatus() (bool, string, error) {
 		return false, "", err
 	}
 
-	detail := "LaunchAgent: " + path
+	detail := serviceText("LaunchAgent: %s", path)
 	target := "gui/" + strconv.Itoa(os.Getuid()) + "/" + agentLabel
 	if out, err := runLaunchctl("print", target); err == nil {
-		detail += "\nLoaded:      yes"
+		detail += serviceText("\nLoaded:      yes")
 		if state := firstFieldAfter(out, "state = "); state != "" {
-			detail += "\nState:       " + state
+			detail += serviceText("\nState:       %s", state)
 		}
 	} else {
-		detail += "\nLoaded:      no (the plist exists but launchd has not loaded it)"
+		detail += serviceText("\nLoaded:      no (the plist exists but launchd has not loaded it)")
 	}
-	detail += "\nLogs:        " + LogFilePath()
+	detail += serviceText("\nLogs:        %s", LogFilePath())
 	return true, detail, nil
 }
 
 func runLaunchctl(args ...string) (string, error) {
-	cmd := exec.Command("launchctl", args...) // #nosec G204 -- arguments are literals and paths this program derived, never user input
+	cmd := exec.Command("/bin/launchctl", args...) // #nosec G204 -- arguments are literals and paths this program derived, never user input
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

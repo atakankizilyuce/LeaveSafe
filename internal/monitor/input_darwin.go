@@ -28,7 +28,7 @@ func (s *InputSensor) DisplayName() string { return "Mouse/Keyboard" }
 
 func (s *InputSensor) Available() bool {
 	// ioreg is always available on macOS
-	_, err := exec.LookPath("ioreg")
+	_, err := exec.LookPath("/usr/sbin/ioreg")
 	return err == nil
 }
 
@@ -66,7 +66,7 @@ func (s *InputSensor) Stop() error { return nil }
 // getIdleSeconds returns the system idle time in seconds using ioreg.
 // Returns -1 on error.
 func getIdleSeconds() float64 {
-	out, err := exec.Command("ioreg", "-c", "IOHIDSystem", "-d", "4", "-S").Output()
+	out, err := exec.Command("/usr/sbin/ioreg", "-c", "IOHIDSystem", "-d", "4", "-S").Output()
 	if err != nil {
 		return -1
 	}

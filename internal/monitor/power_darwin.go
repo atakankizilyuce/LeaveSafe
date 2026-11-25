@@ -30,7 +30,7 @@ func (s *PowerSensor) Name() string        { return "power" }
 func (s *PowerSensor) DisplayName() string { return "Power/Charger" }
 
 func (s *PowerSensor) Available() bool {
-	_, err := exec.LookPath("pmset")
+	_, err := exec.LookPath("/usr/bin/pmset")
 	return err == nil
 }
 
@@ -46,7 +46,7 @@ func (s *PowerSensor) Start(ctx context.Context, alerts chan<- Alert) error {
 func (s *PowerSensor) Stop() error { return nil }
 
 func isOnACPower() (bool, error) {
-	out, err := exec.Command("pmset", "-g", "batt").Output()
+	out, err := exec.Command("/usr/bin/pmset", "-g", "batt").Output()
 	if err != nil {
 		return false, err
 	}

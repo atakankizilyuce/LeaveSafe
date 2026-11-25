@@ -18,6 +18,7 @@ export default defineConfig({
         include: ['test/**/*.test.js'],
         coverage: {
             provider: 'v8',
+            allowExternal: true,
             reporter: ['text', 'lcov'],
             reportsDirectory: 'coverage',
             // index.html and style.css have no statements to cover, and asking
@@ -29,7 +30,7 @@ export default defineConfig({
             // nothing threw, and counting that as coverage would make the
             // number worse than no number. Its arithmetic lives in
             // ascii-mark.js, which is here and is tested.
-            include: ['demo.js', 'ascii-mark.js'],
+            include: ['demo.js', 'ascii-mark.js', '**/tools/quality/*.mjs'],
         },
     },
 });

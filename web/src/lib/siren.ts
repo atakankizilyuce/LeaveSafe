@@ -1,3 +1,5 @@
+import { t } from './i18n';
+
 // The phone's half of the alarm: the same siren the laptop is making, plus
 // vibration, a notification and a flashing title. Kept apart from the UI so
 // starting and stopping it is one call rather than four intervals to remember
@@ -211,7 +213,7 @@ function startVibration() {
 function startTitleFlash(message: string) {
     let on = true;
     titleFlash = window.setInterval(() => {
-        document.title = on ? `ALERT — ${message}` : BASE_TITLE;
+        document.title = on ? t('ALERT — {message}', { message }) : BASE_TITLE;
         on = !on;
     }, 500);
     titleStop = window.setTimeout(() => {
@@ -224,12 +226,12 @@ function startTitleFlash(message: string) {
 function notify(message: string) {
     const worker = navigator.serviceWorker?.controller;
     if (worker) {
-        worker.postMessage({ type: 'alarm', message });
+        worker.postMessage({ type: 'alarm', message, title: t('LeaveSafe alert') });
         return;
     }
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') {
-        new Notification('LeaveSafe alert', {
+        new Notification(t('LeaveSafe alert'), {
             body: message,
             tag: 'leavesafe-alert',
             requireInteraction: true,
@@ -243,7 +245,7 @@ export function warnDisconnected() {
     navigator.vibrate?.([300, 100, 300, 100, 300]);
     if ('Notification' in window && Notification.permission === 'granted') {
         new Notification('LeaveSafe', {
-            body: 'Connection to your laptop was lost.',
+            body: t('Connection to your laptop was lost.'),
             tag: 'leavesafe-disconnect',
         });
     }

@@ -1,4 +1,6 @@
+import { alertCopy } from '../lib/alertCopy';
 import { clock } from '../lib/format';
+import { t } from '../lib/i18n';
 import { clearLog, log, logFilter, logNewestFirst, send, visibleLog } from '../lib/store';
 
 const FILTERS: Array<{ value: 'all' | 'critical' | 'warning'; label: string }> = [
@@ -14,13 +16,13 @@ export function Log() {
     return (
         <section class="card">
             <div class="card-head">
-                <h2 class="readout">Log</h2>
+                <h2 class="readout">{t('Log')}</h2>
                 <div class="log-tools">
                     <button type="button" class="chip" onClick={() => send({ type: 'test_alert' })}>
-                        Send test
+                        {t('Send test')}
                     </button>
                     <button type="button" class="chip" onClick={clearLog} disabled={log.value.length === 0}>
-                        Clear
+                        {t('Clear')}
                     </button>
                 </div>
             </div>
@@ -36,7 +38,7 @@ export function Log() {
                             logFilter.value = f.value;
                         }}
                     >
-                        {f.label}
+                        {t(f.label)}
                     </button>
                 ))}
                 <button
@@ -46,12 +48,12 @@ export function Log() {
                         logNewestFirst.value = !logNewestFirst.value;
                     }}
                 >
-                    {logNewestFirst.value ? 'Newest' : 'Oldest'}
+                    {logNewestFirst.value ? t('Newest') : t('Oldest')}
                 </button>
             </div>
 
             {entries.length === 0 ? (
-                <p class="empty">Nothing has happened yet. That is the good outcome.</p>
+                <p class="empty">{t('Nothing has happened yet. That is the good outcome.')}</p>
             ) : (
                 <ol class="log-list">
                     {entries.map((entry) => (
@@ -59,8 +61,8 @@ export function Log() {
                             <span class="log-time figure">{clock(entry.at)}</span>
                             <span class="log-msg">
                                 {entry.sensor === 'system'
-                                    ? 'A setting needs attention. Check the settings on the device.'
-                                    : entry.message}
+                                    ? t('A setting needs attention. Check the settings on the device.')
+                                    : alertCopy(entry.message)}
                             </span>
                         </li>
                     ))}

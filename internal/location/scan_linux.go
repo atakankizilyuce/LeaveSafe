@@ -27,7 +27,7 @@ func wifiScanUnsupportedReason() string {
 	if !hasWirelessDevice() {
 		return "no wireless device in " + wirelessSysfsPath
 	}
-	return "neither nmcli nor iw was found on PATH"
+	return "neither nmcli nor iw was found in the system directories"
 }
 
 func hasWirelessDevice() bool {
@@ -36,12 +36,19 @@ func hasWirelessDevice() bool {
 }
 
 func hasNmcli() bool {
-	_, err := exec.LookPath("nmcli")
+	_, err := exec.LookPath("/usr/bin/nmcli")
 	return err == nil
 }
 
+func iwPath() string {
+	if _, err := exec.LookPath("/usr/bin/iw"); err == nil {
+		return "/usr/bin/iw"
+	}
+	return "/usr/sbin/iw"
+}
+
 func hasIW() bool {
-	_, err := exec.LookPath("iw")
+	_, err := exec.LookPath(iwPath())
 	return err == nil
 }
 
@@ -55,7 +62,7 @@ func scanAccessPoints(ctx context.Context) ([]AccessPoint, error) {
 	var errs []string
 
 	if hasNmcli() {
-		out, err := exec.CommandContext(ctx, "nmcli", "-t", "-f", "BSSID,SIGNAL,CHAN", "dev", "wifi", "list").Output()
+		out, err := exec.CommandContext(ctx, "/usr/bin/nmcli", "-t", "-f", "BSSID,SIGNAL,CHAN", "dev", "wifi", "list").Output()
 		if err == nil {
 			if aps := parseNmcliWiFi(string(out)); len(aps) > 0 {
 				return aps, nil
@@ -92,7 +99,7 @@ func scanWithIW(ctx context.Context) ([]AccessPoint, error) {
 
 	// #nosec G204 -- iface comes from a kernel directory listing under /sys,
 	// not from user input.
-	out, err := exec.CommandContext(ctx, "iw", "dev", iface, "scan").Output()
+	out, err := exec.CommandContext(ctx, iwPath(), "dev", iface, "scan").Output()
 	if err != nil {
 		return nil, fmt.Errorf("iw dev %s scan: %w", iface, err)
 	}

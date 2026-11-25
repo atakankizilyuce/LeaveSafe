@@ -91,14 +91,13 @@ func installAutostart(exe string) (string, error) {
 		return "", fmt.Errorf("write unit: %w", err)
 	}
 
-	detail := "Unit file: " + path
+	detail := serviceText("Unit file: %s", path)
 	// Plenty of systems run something other than systemd. The unit is written
 	// either way so it is ready if systemd appears, and the user is told
 	// plainly that nothing was enabled — which is a state to report, not an
 	// error to fail the install over.
 	if !haveSystemctl() {
-		return detail + "\n\nsystemctl was not found, so nothing was enabled. Start LeaveSafe\n" +
-			"however your desktop session starts background programs.", nil
+		return detail + serviceText("\n\nsystemctl was not found, so nothing was enabled. Start LeaveSafe\nhowever your desktop session starts background programs."), nil
 	}
 
 	if out, err := runSystemctl("daemon-reload"); err != nil {
@@ -108,12 +107,11 @@ func installAutostart(exe string) (string, error) {
 		return "", fmt.Errorf("systemctl enable: %w: %s", err, out)
 	}
 
-	detail += "\nEnabled with: systemctl --user enable --now " + unitName
-	detail += "\nLogs:         journalctl --user -u " + unitName + " -f"
+	detail += serviceText("\nEnabled with: systemctl --user enable --now %s", unitName)
+	detail += serviceText("\nLogs:         journalctl --user -u %s -f", unitName)
 	// Without lingering, the user unit is torn down at logout and never starts
 	// on an unattended boot — which is exactly the case this is meant to cover.
-	detail += "\n\nTo keep it running when you are logged out, and to have it start on boot:\n" +
-		"  sudo loginctl enable-linger " + os.Getenv("USER")
+	detail += serviceText("\n\nTo keep it running when you are logged out, and to have it start on boot:\n  sudo loginctl enable-linger %s", os.Getenv("USER"))
 	return detail, nil
 }
 
@@ -151,40 +149,40 @@ func autostartStatus() (bool, string, error) {
 		return false, "", err
 	}
 
-	detail := "Unit file: " + path
+	detail := serviceText("Unit file: %s", path)
 	// Not an error: the unit is installed either way, and its running state is
 	// simply something this system cannot be asked about.
 	if !haveSystemctl() {
-		return true, detail + "\nsystemctl is not available, so its running state is unknown.", nil
+		return true, detail + serviceText("\nsystemctl is not available, so its running state is unknown."), nil
 	}
 
 	// systemctl exits non-zero for "inactive", which is a state to report
 	// rather than an error to fail on.
 	active, _ := runSystemctl("is-active", unitName)
 	enabled, _ := runSystemctl("is-enabled", unitName)
-	detail += "\nEnabled:   " + orUnknown(enabled)
-	detail += "\nRunning:   " + orUnknown(active)
-	detail += "\nLogs:      journalctl --user -u " + unitName + " -f"
+	detail += serviceText("\nEnabled:   %s", orUnknown(enabled))
+	detail += serviceText("\nRunning:   %s", orUnknown(active))
+	detail += serviceText("\nLogs:      journalctl --user -u %s -f", unitName)
 	return true, detail, nil
 }
 
-// haveSystemctl reports whether systemctl is on PATH. Its absence is a fact
+// haveSystemctl reports whether the system copy of systemctl exists. Its absence is a fact
 // about the system rather than a failure, so it is a boolean here and never an
 // error the callers have to decide how to swallow.
 func haveSystemctl() bool {
-	_, err := exec.LookPath("systemctl")
+	_, err := exec.LookPath("/usr/bin/systemctl")
 	return err == nil
 }
 
 func runSystemctl(args ...string) (string, error) {
-	cmd := exec.Command("systemctl", append([]string{"--user"}, args...)...) // #nosec G204 -- arguments are literals from this file, never user input
+	cmd := exec.Command("/usr/bin/systemctl", append([]string{"--user"}, args...)...) // #nosec G204 -- arguments are literals from this file, never user input
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 
 func orUnknown(s string) string {
 	if s == "" {
-		return "unknown"
+		return serviceText("unknown")
 	}
 	return s
 }

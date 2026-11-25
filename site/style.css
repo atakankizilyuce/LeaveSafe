@@ -273,11 +273,6 @@ body {
 
 a { color: inherit; }
 
-/* `hidden` is how this page hides the alarm and the install tabs, and a `display`
-   rule further down would otherwise outrank it. Stated once here rather than
-   remembered at every element that grows one. */
-[hidden] { display: none !important; }
-
 :focus-visible {
     outline: 2px solid var(--brand);
     outline-offset: 3px;
@@ -1843,7 +1838,16 @@ a { color: inherit; }
     /* The invitations stop moving, but do not disappear: the ring around the
        arm button stays, held at the size the breath would have reached. */
     .p-alert,
-    .core-icons { animation: none; }
+    .core-icons,
+    .lap-log li,
+    .lap-siren .ico,
+    :root[data-intro='on'] .gate-cue .ico { animation: none; }
+
+    :root[data-intro='on'] .gate-word,
+    :root[data-intro='on'] .gate-cue {
+        animation: none;
+        opacity: 1;
+    }
 
     .phone[data-untouched] .p-arm {
         animation: none;
@@ -1857,3 +1861,8 @@ a { color: inherit; }
     [data-reveal] { transition: none; }
     .wires span::after { animation: none; opacity: 0.5; }
 }
+
+/* Keep hidden alarms and install panels out of layout, including when their
+   normal component styles set display. */
+:root [hidden] { display: none; }
+

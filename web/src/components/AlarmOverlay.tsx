@@ -1,3 +1,5 @@
+import { alertCopy } from '../lib/alertCopy';
+import { t } from '../lib/i18n';
 import { stopSiren } from '../lib/siren';
 import { alarm, send } from '../lib/store';
 import { Icon } from './Icons';
@@ -20,17 +22,17 @@ export function AlarmOverlay() {
     };
 
     return (
-        <div class="alarm" role="alertdialog" aria-modal="true" aria-label="Security alert">
+        <div class="alarm" role="alertdialog" aria-modal="true" aria-label={t('Security alert')}>
             <div class="alarm-field" aria-hidden="true" />
             <div class="alarm-body">
-                <div class="alarm-eyebrow readout">Alert</div>
-                <p class="alarm-msg">{active.message}</p>
+                <div class="alarm-eyebrow readout">{t('Alert')}</div>
+                <p class="alarm-msg">{alertCopy(active.message)}</p>
                 <div class="alarm-actions">
                     {/* A crossed-out bell, not a tick. This button does not
                         agree with the alert — it stops the noise. */}
                     <button type="button" class="alarm-primary" onClick={() => dismiss('dismiss_alarm')}>
                         <Icon name="bellOff" />
-                        Dismiss
+                        {t('Dismiss')}
                     </button>
                     <button
                         type="button"
@@ -38,11 +40,11 @@ export function AlarmOverlay() {
                         onClick={() => dismiss('dismiss_alarm_pause', { duration: 5 })}
                     >
                         <Icon name="pause" size={13} />
-                        Pause this sensor 5s
+                        {t('Pause this sensor 5s')}
                     </button>
                     <button type="button" class="chip" onClick={() => dismiss('dismiss_alarm_disable')}>
                         <Icon name="power" size={13} />
-                        Stop using this sensor
+                        {t('Stop using this sensor')}
                     </button>
                 </div>
             </div>

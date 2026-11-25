@@ -76,22 +76,24 @@ jobs:
           warn_days=21
 
           resolves() {
+            local host=$1
             # Through a public resolver rather than the runner's, so this reads
             # what a phone reads and not what a GitHub network happens to cache.
             if command -v dig >/dev/null 2>&1; then
-              [ -n "$(dig +short +time=5 +tries=2 A "$1" @1.1.1.1)" ]
+              [ -n "$(dig +short +time=5 +tries=2 A "$host" @1.1.1.1)" ]
             else
-              getent ahostsv4 "$1" >/dev/null 2>&1
+              getent ahostsv4 "$host" >/dev/null 2>&1
             fi
           }
 
           status_of() {
-            curl -sS -m 20 -o /dev/null -w '%{http_code}' "https://$1$2" 2>/dev/null
+            local host=$1 path=$2
+            curl -sS -m 20 -o /dev/null -w '%{http_code}' "https://$host$path" 2>/dev/null
           }
 
           days_of_cert() {
-            local end
-            end=$(openssl s_client -connect "$1:443" -servername "$1" </dev/null 2>/dev/null \
+            local host=$1 end
+            end=$(openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>/dev/null \
                   | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
             [ -n "$end" ] || return 1
             echo $(( ( $(date -d "$end" +%s) - $(date +%s) ) / 86400 ))

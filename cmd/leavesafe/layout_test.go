@@ -384,8 +384,8 @@ func TestARepaintNoticesWhenTheLayoutHasMoved(t *testing.T) {
 func TestARepaintNoticesTheWindowChangingSize(t *testing.T) {
 	sb, _ := drawnDashboard(t)
 
-	real := termSizeFn
-	t.Cleanup(func() { termSizeFn = real })
+	original := termSizeFn
+	t.Cleanup(func() { termSizeFn = original })
 
 	// drawnDashboard draws into a file, which cannot be asked its size and gets
 	// the 120x40 fallback. This is the same run in a window half as tall.

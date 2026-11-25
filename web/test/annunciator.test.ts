@@ -230,7 +230,7 @@ it('refuses to turn on a sensor the machine has not got, and says why', () => {
 
     tap('.snode');
 
-    expect(toast.value).toBe('This machine has no charger to watch');
+    expect(toast.value).toBe('This machine has no POWER to watch');
     expect(sensors.value[0].enabled).toBe(false);
 });
 

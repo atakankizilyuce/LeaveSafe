@@ -119,6 +119,7 @@ export function Icon({ name, size = 15 }: { name: string; size?: number }) {
 /* ── what a sensor is ──────────────────────────────────────────────────── */
 
 const SENSOR: Record<string, Shape[]> = {
+    motion: [{ r: [8, 4, 8, 16, 2] }, { p: 'M4 8l-2 4 2 4' }, { p: 'M20 8l2 4-2 4' }],
     /* The charger, drawn as the plug — the thing that gets pulled out. */
     power: [
         { p: 'M9 2v6' },

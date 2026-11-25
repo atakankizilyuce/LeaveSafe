@@ -830,9 +830,9 @@ func TestQuitShutsTheProgramDownAndLeavesWithNothingToReport(t *testing.T) {
 // test below would take that branch and prove nothing about the others.
 func asRelease(t *testing.T, v string) {
 	t.Helper()
-	real := version
+	original := version
 	version = v
-	t.Cleanup(func() { version = real })
+	t.Cleanup(func() { version = original })
 }
 
 // The complaint this answers: a release is cut, the program is restarted, and

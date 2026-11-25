@@ -528,17 +528,15 @@ func TestConsoleLangEndsQuietlyWhenTheInputStops(t *testing.T) {
 		hub: testHub(t), sb: &statusBar{headless: true}, cfg: config.Default(),
 	})
 
-	if !strings.Contains(out, "Type 1 or 2") {
+	if !strings.Contains(out, "Choose a number or language code") {
 		t.Fatalf("lang did not ask; output was:\n%s", out)
 	}
-	if strings.Contains(out, "from the next start") {
+	if strings.Contains(out, "Language changed to en") {
 		t.Errorf("lang acted on an answer nobody gave; output was:\n%s", out)
 	}
 }
 
-// The language reaches the two questions asked before the dashboard exists and
-// nothing on it, so the reply has to say when the change will show — otherwise
-// the user waits for a screen that is never going to turn.
+// A successful language change applies immediately and is persisted for the next start.
 func TestConsoleLangSavesTheChoiceAndSaysWhenItApplies(t *testing.T) {
 	tempConfigDir(t)
 	cfg := config.Default()
@@ -547,7 +545,7 @@ func TestConsoleLangSavesTheChoiceAndSaysWhenItApplies(t *testing.T) {
 		hub: testHub(t), sb: &statusBar{headless: true}, cfg: cfg,
 	})
 
-	if !strings.Contains(out, "from the next start") {
+	if !strings.Contains(out, "Language changed to en") {
 		t.Fatalf("lang did not say when the change applies; output was:\n%s", out)
 	}
 	if cfg.Language == "" {
@@ -565,7 +563,7 @@ func TestConsoleLangStopsWhenTheSettingCannotBeSaved(t *testing.T) {
 	if !strings.Contains(out, "Could not save the setting") {
 		t.Fatalf("lang did not report the failed save; output was:\n%s", out)
 	}
-	if strings.Contains(out, "from the next start") {
+	if strings.Contains(out, "Language changed to en") {
 		t.Error("lang promised a change it could not write down")
 	}
 }

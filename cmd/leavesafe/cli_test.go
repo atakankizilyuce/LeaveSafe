@@ -44,10 +44,10 @@ func TestPrintUsageWritesTheHelpTextToStandardError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create the capture file: %v", err)
 	}
-	real := os.Stderr
+	original := os.Stderr
 	os.Stderr = captured
 	t.Cleanup(func() {
-		os.Stderr = real
+		os.Stderr = original
 		_ = captured.Close()
 	})
 

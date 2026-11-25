@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import type { ClientMessage, ServerMessage } from './protocol';
 
 // One interface over the way a phone reaches the laptop. It covered two once —
@@ -32,14 +33,14 @@ export function connectWebSocket(handlers: TransportHandlers): Transport {
     try {
         socket = new WebSocket(url);
     } catch {
-        handlers.onError('Could not open a connection. Check that you are on the same network.');
+        handlers.onError(t('Could not open a connection. Check that you are on the same network.'));
         return deadTransport('websocket');
     }
 
     const timeout = window.setTimeout(() => {
         if (socket.readyState !== WebSocket.OPEN) {
             socket.close();
-            handlers.onError('Connection timed out. Check that you are on the same network.');
+            handlers.onError(t('Connection timed out. Check that you are on the same network.'));
         }
     }, CONNECT_TIMEOUT_MS);
 
@@ -62,7 +63,7 @@ export function connectWebSocket(handlers: TransportHandlers): Transport {
     };
     socket.onerror = () => {
         window.clearTimeout(timeout);
-        handlers.onError('Connection error.');
+        handlers.onError(t('Connection error.'));
     };
 
     return {

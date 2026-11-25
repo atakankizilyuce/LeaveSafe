@@ -1,0 +1,14 @@
+{
+  "locale": "fr",
+  "reviewer": "/root/review_alarm_photo_languages/review_existing_fr",
+  "sources": {
+    "web/src/locales/en.json": "c68e38161ad02fa912f390b6db9e0e010e359aa8e5e0fcd2e08062c8bb2a838e",
+    "internal/localization/catalogs/en.json": "53580ade3de6397aacc4274c6fec16ef897b39d1e40c4a55a3a7511f86430150",
+    "internal/localization/service/en.json": "41969649e89ecb7cb5ea71d37cd9b0647d02fff0659e015192f1fabb3a042e07"
+  },
+  "files": {
+    "web/src/locales/fr.json": "511a0016bb2b5250d08c18da1ebd4a365193b262e09141541f23bb25e4474437",
+    "internal/localization/catalogs/fr.json": "f7001552e84951ad5c9ae265839ec28c09b8683ed86874d2aeb25e1582701315",
+    "internal/localization/service/fr.json": "c2e29f1358b139e9449c4131fbc06cee1ed80bd8e3e2919bd123e05365f12bf8"
+  }
+}

@@ -32,11 +32,11 @@ func installAutostart(exe string) (string, error) {
 		return "", fmt.Errorf("schtasks /create: %w: %s", err, out)
 	}
 
-	detail := "Scheduled Task: " + taskName
-	detail += "\nTrigger:        at logon"
-	detail += "\nCommand:        " + exe + " -headless"
-	detail += "\nLogs:           " + LogFilePath()
-	detail += "\n\nInspect it in Task Scheduler, or with:\n  schtasks /query /tn " + taskName
+	detail := serviceText("Scheduled Task: %s", taskName)
+	detail += serviceText("\nTrigger:        at logon")
+	detail += serviceText("\nCommand:        %s -headless", exe)
+	detail += serviceText("\nLogs:           %s", LogFilePath())
+	detail += serviceText("\n\nInspect it in Task Scheduler, or with:\n  schtasks /query /tn %s", taskName)
 	return detail, nil
 }
 
@@ -60,14 +60,14 @@ func autostartStatus() (bool, string, error) {
 		return false, "", fmt.Errorf("schtasks /query: %w: %s", err, out)
 	}
 
-	detail := "Scheduled Task: " + taskName
+	detail := serviceText("Scheduled Task: %s", taskName)
 	if status := fieldValue(out, "Status:"); status != "" {
-		detail += "\nStatus:         " + status
+		detail += serviceText("\nStatus:         %s", status)
 	}
 	if next := fieldValue(out, "Next Run Time:"); next != "" {
-		detail += "\nNext run:       " + next
+		detail += serviceText("\nNext run:       %s", next)
 	}
-	detail += "\nLogs:           " + LogFilePath()
+	detail += serviceText("\nLogs:           %s", LogFilePath())
 	return true, detail, nil
 }
 

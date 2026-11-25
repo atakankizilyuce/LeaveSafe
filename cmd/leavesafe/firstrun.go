@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/leavesafe/leavesafe/internal/config"
+	"github.com/leavesafe/leavesafe/internal/localization"
 )
 
 // The first screen anybody sees: which language to be asked questions in.
@@ -19,19 +21,15 @@ import (
 // layout reads as two programs. The same frame, the same ◉ heading and the same
 // two-column option shape make it one.
 //
-// The language reaches these questions and stops there — see Config.Language.
-// The choice is deliberately narrow: Turkish or English, no third option and no
-// guess from the operating system's locale. Guessing wrong on the first screen
-// costs the user the only question they have to answer before the program runs.
+// The stored choice also selects terminal UI copy. Protocol values and diagnostic
+// log identifiers remain stable; the browser has its own per-device language choice.
 
 // promptWidth is the outside width of the boxes, chosen to sit inside an
 // 80-column terminal with room to spare and to hold the longest line of either
 // language without wrapping.
 const promptWidth = 64
 
-// language holds the wording for one language. There are two of these, and the
-// wording is small enough and stable enough that a table beats a translation
-// framework — the alternative is a dependency and a file format for two strings.
+// language holds the selection prompt wording; catalogs provide the terminal copy.
 type language struct {
 	code string
 
@@ -59,6 +57,9 @@ var english = language{
 func languageByCode(code string) language {
 	if code == "tr" {
 		return turkish
+	}
+	if localization.Complete(code) {
+		return language{code: localization.Normalize(code), langTitle: localization.Text(code, "LANGUAGE"), langChoice: localization.Text(code, "Your choice")}
 	}
 	return english
 }
@@ -144,15 +145,16 @@ func askLanguage(in io.Reader, out io.Writer) string {
 	scanner := bufio.NewScanner(in)
 
 	promptHeading(out, turkish.langTitle)
-	promptOption(out, 1, "Türkçe")
-	promptOption(out, 2, "English")
+	for index, lang := range localization.Supported() {
+		promptOption(out, index+1, lang.Name)
+	}
 
 	typed, ok := promptClose(scanner, out, "", turkish.langChoice, "1")
 	if !ok {
 		return "en"
 	}
-	if typed == "2" {
-		return "en"
+	if code, valid := parseLanguageChoice(typed); valid {
+		return code
 	}
 	// Enter and anything unrecognized land on Turkish, which is what the [1]
 	// in the prompt promises. A default that does not match the number shown is
@@ -184,12 +186,14 @@ func ensureLanguage(cfg *config.Config) language {
 // alone" — reading either as a choice would let someone who typed the command
 // to see what it said change a setting by looking at it.
 func parseLanguageChoice(typed string) (code string, ok bool) {
-	switch strings.TrimSpace(typed) {
-	case "1":
-		return "tr", true
-	case "2":
-		return "en", true
-	default:
-		return "", false
+	value := strings.TrimSpace(typed)
+	available := localization.Supported()
+	if index, err := strconv.Atoi(value); err == nil && index > 0 && index <= len(available) {
+		return available[index-1].Code, true
 	}
+	normalized := localization.Normalize(value)
+	if normalized != "" && localization.Complete(normalized) {
+		return normalized, true
+	}
+	return "", false
 }

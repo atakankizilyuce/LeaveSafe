@@ -180,7 +180,7 @@ jobs:
         with:
           name: coverage-report-${{ matrix.label }}
           path: coverage-${{ matrix.label }}.out
-          retention-days: 14
+          retention-days: 7
 
       # The HTML report is for whoever is reading the run, and it is kept in its
       # own artifact so that the sonar job never downloads it. Analysing it fails
@@ -192,7 +192,7 @@ jobs:
         with:
           name: coverage-html
           path: coverage.html
-          retention-days: 14
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # Layer 0: the real binary is started on every supported OS and driven through
@@ -377,12 +377,42 @@ jobs:
         working-directory: site
         run: npm ci --ignore-scripts
 
+      - name: Check browser and landing-page dependency vulnerabilities
+        run: |
+          npm --prefix web audit
+          npm --prefix site audit
+
       # Biome is a devDependency rather than an `npx` download, so its version
       # comes from the lock file along with everything else. Run from the
       # repository root, because that is where biome.json is and its paths are
       # written relative to it.
       - name: Biome check
         run: web/node_modules/.bin/biome ci . --error-on-warnings
+
+      - name: Set up Python for localization tools
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Localization catalogs and bundled glyph coverage
+        run: |
+          python3 tools/localization/check.py
+          python3 tools/localization/reviews.py --require-all
+          python3 tools/localization/assets.py --check
+          python3 -m pip install --target "$RUNNER_TEMP/leavesafe-fonttools" fonttools==4.65.0 coverage==7.16.2
+          export PYTHONPATH="$RUNNER_TEMP/leavesafe-fonttools"
+          python3 tools/localization/fonts.py --check
+          python3 -m coverage run --data-file="$RUNNER_TEMP/localization.coverage" --source=tools/localization --omit='*_test.py' -m unittest discover -s tools/localization -p '*_test.py'
+          python3 -m coverage report --data-file="$RUNNER_TEMP/localization.coverage" --fail-under=80
+          python3 -m coverage xml --data-file="$RUNNER_TEMP/localization.coverage" -o "$RUNNER_TEMP/localization-coverage.xml"
+
+      - name: Upload localization tool coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: localization-coverage
+          retention-days: 7
+          path: ${{ runner.temp }}/localization-coverage.xml
+          if-no-files-found: error
 
       - name: Typecheck
         working-directory: web
@@ -404,7 +434,7 @@ jobs:
         with:
           name: web-coverage
           path: web/coverage/lcov.info
-          retention-days: 14
+          retention-days: 7
 
       - name: Test the landing page
         working-directory: site
@@ -418,7 +448,7 @@ jobs:
         with:
           name: site-coverage
           path: site/coverage/lcov.info
-          retention-days: 14
+          retention-days: 7
 
       - name: Build
         working-directory: web
@@ -521,12 +551,24 @@ jobs:
             -o dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
             ./cmd/leavesafe
 
+      - name: Verify binary Go toolchain
+        shell: bash
+        run: |
+          binary="dist/leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          expected="go$(awk '$1 == "go" { print $2 }' go.mod)"
+          actual=$(go version "$binary" | awk '{ print $NF }')
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Binary toolchain $actual does not match pinned $expected"
+            exit 1
+          fi
+          go version -m "$binary"
+
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: leavesafe-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
-          retention-days: 14
+          retention-days: 7
 
   # ---------------------------------------------------------------------------
   # Known vulnerabilities in the Go toolchain and dependencies. gosec runs as
@@ -562,10 +604,8 @@ jobs:
   # Reading only the Linux profile would leave every _darwin.go and _windows.go
   # file counted as uncovered, tests or no tests.
   #
-  # This job is deliberately absent from ci-success's needs list below. It cannot
-  # run without SONAR_TOKEN, a pull request opened from a fork never receives
-  # secrets, and ci-success counts a skipped job as a failure — wiring it in
-  # would permanently block every outside contribution.
+  # The final CI check includes Sonar failures. Skipping only this job is allowed
+  # for fork and Dependabot contributions, which do not receive SONAR_TOKEN.
   # ---------------------------------------------------------------------------
   sonar:
     name: Sonar
@@ -637,14 +677,37 @@ jobs:
           name: site-coverage
           path: site/coverage
 
+      - name: Fetch localization helper coverage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: localization-coverage
+          path: localization-coverage
+
       - name: Scan
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # Release tags scan the default branch; PRs keep automatic PR scope.
+          # Match the evidence scope below. Rehearse on main when the Sonar
+          # plan does not include feature-branch analysis.
+          args: ${{ github.event_name != 'pull_request' && format('-Dsonar.branch.name={0}', github.ref_type == 'tag' && github.event.repository.default_branch || github.ref_name) || '' }}
+
+      - name: Node for Sonar evidence
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+
+      - name: Enforce zero new issues, clear security and coverage
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.ref_type == 'tag' && github.event.repository.default_branch || github.ref_name }}
+        run: node tools/quality/sonar-evidence.mjs
 
   # ---------------------------------------------------------------------------
   # Single required status check for branch protection. Fails if any job above
-  # failed or was skipped, so a new job cannot be silently left out.
+  # failed or was skipped, except for Sonar's secret-free contribution paths.
   # ---------------------------------------------------------------------------
   ci-success:
     name: CI
@@ -652,17 +715,22 @@ jobs:
     timeout-minutes: 5
     # This job reads the other jobs' results, never the repository.
     permissions: {}
-    needs: [format, typos, lint, test, e2e, realtrigger, sandbox-linux, frontend, build, vulncheck]
+    needs: [format, typos, lint, test, e2e, realtrigger, sandbox-linux, frontend, build, vulncheck, sonar]
     if: always()
     steps:
-      - name: Fail if any job did not succeed
-        if: >-
-          contains(needs.*.result, 'failure') ||
-          contains(needs.*.result, 'cancelled') ||
-          contains(needs.*.result, 'skipped')
+      - name: Check every required job
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
         run: |
-          echo "::error::At least one CI job did not succeed."
-          exit 1
-
-      - name: All checks passed
-        run: echo "All CI jobs succeeded."
+          node --input-type=module <<'NODE'
+          const results = JSON.parse(process.env.JOB_RESULTS);
+          const failed = Object.entries(results).filter(([name, job]) =>
+            job.result !== 'success' && !(name === 'sonar' && job.result === 'skipped'));
+          if (failed.length) {
+            for (const [name, job] of failed) {
+              console.error('::error::' + name + ': ' + job.result);
+            }
+            process.exit(1);
+          }
+          console.log('All required CI jobs succeeded.');
+          NODE

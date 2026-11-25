@@ -14,9 +14,23 @@ self.addEventListener('message', function (e) {
     if (e.origin && e.origin !== self.location.origin) return;
     if (!e.data) return;
 
+    if (e.data.type === 'locale') {
+        e.waitUntil(
+            caches.open('leavesafe-language-v1').then(function (cache) {
+                return cache.put(
+                    '/notification-language',
+                    new Response(JSON.stringify(e.data), {
+                        headers: { 'Content-Type': 'application/json' },
+                    }),
+                );
+            }),
+        );
+        return;
+    }
+
     if (e.data.type === 'alarm') {
-        self.registration.showNotification('LeaveSafe ALERT', {
-            body: e.data.message || 'Security alarm triggered!',
+        self.registration.showNotification(e.data.title || 'LeaveSafe', {
+            body: e.data.message || '',
             tag: 'leavesafe-alarm',
             requireInteraction: true,
             renotify: true,
@@ -39,25 +53,55 @@ self.addEventListener('message', function (e) {
 // notification is not optional on it — the subscription was made with
 // userVisibleOnly, and a browser that sees pushes arrive without one eventually
 // takes the subscription away.
-self.addEventListener('push', function (e) {
-    let message = 'Security alarm triggered!';
+async function notificationLanguage() {
     try {
-        const text = e.data?.text();
-        if (text) message = text;
+        const cache = await caches.open('leavesafe-language-v1');
+        const stored = await cache.match('/notification-language');
+        if (stored) return await stored.json();
     } catch {
-        // Whatever arrived was not text. Something still has to be shown, and
-        // "the alarm went off" is the part that matters.
+        // Older installations or storage restrictions use the source locale.
     }
+    return { title: 'LeaveSafe ALERT', fallback: 'Security alarm triggered!', messages: {} };
+}
 
+function translatedAlert(message, copy) {
+    if (typeof copy.messages?.[message] === 'string') return copy.messages[message];
+    const prefixes = [
+        'USB removed: ',
+        'USB connected: ',
+        'USB device removed: ',
+        'USB device connected: ',
+        'IP address changed (possible network switch). IPs: ',
+    ];
+    for (const prefix of prefixes) {
+        const template = copy.messages?.[prefix + '{device}'];
+        if (message.startsWith(prefix) && typeof template === 'string') {
+            return template.replace('{device}', function () {
+                return message.slice(prefix.length);
+            });
+        }
+    }
+    return message || copy.fallback;
+}
+
+self.addEventListener('push', function (e) {
     e.waitUntil(
-        self.registration.showNotification('LeaveSafe ALERT', {
-            body: message,
-            tag: 'leavesafe-alarm',
-            requireInteraction: true,
-            renotify: true,
-            vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500],
-            icon: '/icons/icon-192.png',
-            badge: '/icons/icon-192.png',
+        notificationLanguage().then(function (copy) {
+            let message = '';
+            try {
+                message = e.data?.text() || '';
+            } catch {
+                /* Still show a generic alarm. */
+            }
+            return self.registration.showNotification(copy.title, {
+                body: translatedAlert(message, copy),
+                tag: 'leavesafe-alarm',
+                requireInteraction: true,
+                renotify: true,
+                vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500],
+                icon: '/icons/icon-192.png',
+                badge: '/icons/icon-192.png',
+            });
         }),
     );
 });

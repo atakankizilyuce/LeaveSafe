@@ -171,3 +171,42 @@ it('clears a previous error when it is opened again', () => {
 
     expect(host.textContent).not.toContain('Enter your PIN to disarm.');
 });
+
+it('announces the dialog before entry and restores the opening control on close', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    try {
+        opener.focus();
+        show();
+        expect(document.activeElement).toBe(opener);
+
+        pinPrompt.value = true;
+        show();
+        expect(document.activeElement).toBe(host.querySelector('h2'));
+
+        const field = host.querySelector<HTMLInputElement>('input');
+        field?.focus();
+        type('1234');
+        expect(document.activeElement).toBe(field);
+        expect(field?.getAttribute('aria-label')).toBe('Enter your PIN.');
+
+        click('Cancel');
+        expect(document.activeElement).toBe(opener);
+    } finally {
+        opener.remove();
+    }
+});
+
+it('closes safely when the opening control has been removed', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    pinPrompt.value = true;
+    show();
+    opener.remove();
+
+    click('Cancel');
+
+    expect(host.querySelector('dialog')).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+});
