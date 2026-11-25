@@ -91,7 +91,7 @@ func (s *audioSpy) install(t *testing.T) {
 		s.restoredTo = append(s.restoredTo, level)
 		return s.restoreErr
 	}
-	beepToneFn = func(freq int, _ int, stop <-chan struct{}) {
+	beepToneFn = func(freq, _ int, stop <-chan struct{}) {
 		select {
 		case <-stop:
 			return

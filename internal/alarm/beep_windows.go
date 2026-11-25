@@ -9,7 +9,7 @@ var (
 	procBeep = kernel32.NewProc("Beep")
 )
 
-func beepTone(freq int, durationMs int, stopCh <-chan struct{}) {
+func beepTone(freq, durationMs int, stopCh <-chan struct{}) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
