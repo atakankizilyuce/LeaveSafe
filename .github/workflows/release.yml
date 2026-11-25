@@ -263,7 +263,7 @@ jobs:
             -pass "$WINDOWS_CERTIFICATE_PASSWORD" \
             -n "LeaveSafe" \
             -i "https://github.com/atakankizilyuce/LeaveSafe" \
-            -ts "http://timestamp.digicert.com" \
+            -ts "https://timestamp.sectigo.com" \
             -h sha256 \
             -in "$BINARY" -out "$BINARY.signed"
           mv "$BINARY.signed" "$BINARY"
