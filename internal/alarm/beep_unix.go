@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func beepTone(freq int, durationMs int, stopCh <-chan struct{}) {
+func beepTone(freq, durationMs int, stopCh <-chan struct{}) {
 	fmt.Print("\a")
 
 	timer := time.NewTimer(time.Duration(durationMs) * time.Millisecond)

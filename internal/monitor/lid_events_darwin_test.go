@@ -18,7 +18,7 @@ func fakeLidIO() *lidIO {
 	return &lidIO{
 		matching: func(string) uintptr { return 1 }, service: func(uint32, uintptr) uint32 { return 2 },
 		createPort: func(uint32) uintptr { return 3 }, source: func(uintptr) uintptr { return 4 },
-		interest: func(_ uintptr, _ uint32, _ string, _ uintptr, _ uintptr, notifier *uint32) int32 {
+		interest: func(_ uintptr, _ uint32, _ string, _, _ uintptr, notifier *uint32) int32 {
 			*notifier = 5
 			return 0
 		},
@@ -34,7 +34,7 @@ func TestLidSubscriptionRoutesEventsAndCleansUp(t *testing.T) {
 	var ref uintptr
 	var released []uint32
 	var removed, destroyed bool
-	api.interest = func(_ uintptr, _ uint32, interest string, _ uintptr, id uintptr, notifier *uint32) int32 {
+	api.interest = func(_ uintptr, _ uint32, interest string, _, id uintptr, notifier *uint32) int32 {
 		if interest != "IOGeneralInterest" {
 			t.Errorf("interest=%s", interest)
 		}

@@ -37,7 +37,7 @@ var lidSubscriptions sync.Map
 var nextLidSubscription atomic.Uint64
 var lidCallback = purego.NewCallback(deliverLidEvent)
 
-func deliverLidEvent(ref uintptr, _ uint32, message uint32, bits uintptr) {
+func deliverLidEvent(ref uintptr, _, message uint32, bits uintptr) {
 	if message != clamshellChanged {
 		return
 	}
